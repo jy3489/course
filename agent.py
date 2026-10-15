@@ -174,20 +174,31 @@ def chat_with_agent(
         raise AgentError("No message to send.")
     messages, _ = build_prompt_messages(request)
     last_error: AgentError | None = None
-    for _ in range(max_attempts):
+    notes: list[str] = []
+    for attempt in range(1, max_attempts + 1):
         try:
             # Generous token budget: this is a reasoning model, and it can spend
             # several thousand thinking tokens before writing the reply.
-            raw = client.chat(messages, max_tokens=16000, temperature=0.7)
+            result = client.chat_with_reasoning(
+                messages, max_tokens=16000, temperature=0.7
+            )
         except ModelApiError as exc:
             last_error = AgentError(str(exc))
+            notes.append(f"attempt {attempt}: model call failed ({exc})")
             continue
         except Exception as exc:
             raise AgentError(f"The model call failed: {exc}") from exc
         try:
-            return _parse_reply(raw)
+            response = _parse_reply(result.content)
         except AgentError as exc:
             last_error = exc
+            notes.append(f"attempt {attempt}: {exc}")
+            continue
+        response.raw = result.content
+        response.thinking = result.reasoning
+        response.attempts = attempt
+        response.parse_note = "; ".join(notes) if notes else None
+        return response
     assert last_error is not None  # max_attempts >= 1, so set on first iteration
     if max_attempts > 1:
         raise AgentError(f"{last_error} (gave up after {max_attempts} attempts)")

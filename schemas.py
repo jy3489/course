@@ -434,3 +434,12 @@ class AgentChatResponse(BaseModel):
     code: str | None = None
     name: str | None = None
     description: str | None = None
+    # Debug info about the model turn (optional; safe to show in the UI).
+    # Chain-of-thought the model exposed for this turn, if any.
+    thinking: str | None = None
+    # The raw model reply text before JSON parsing, if any.
+    raw: str | None = None
+    # How many model calls this turn took (retries on empty/unparsable replies).
+    attempts: int = 1
+    # Human-readable note about the attempts, e.g. which ones failed and why.
+    parse_note: str | None = None
