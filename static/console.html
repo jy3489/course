@@ -2,8 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · API console</title>
-    <link rel="stylesheet" href="/static/common.css?v=2" />
+    <link rel="stylesheet" href="/static/common.css?v=3" />
     <style>
       main {
         flex: 1;
@@ -208,6 +209,24 @@
         width: 300px;
         font-family: var(--font-mono);
         font-size: var(--font-size-xs);
+      }
+
+      @media (max-width: 720px) {
+        /* The three panes (operations, request, response) stack vertically. */
+        main {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-rows: auto auto minmax(0, 1fr);
+        }
+
+        .pane {
+          border-right: none;
+          border-bottom: 1px solid var(--color-border-2);
+          overflow: visible;
+        }
+
+        .pane:last-child {
+          border-bottom: none;
+        }
       }
     </style>
   </head>
