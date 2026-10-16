@@ -28,6 +28,8 @@ final class MatchesModel {
     /// The exact game version each match plays, by "gameId@version".
     private var versions: [String: Game] = GameCache.load("game-versions", as: [String: Game].self) ?? [:]
     private var names: [String: String] = GameCache.load("user-names", as: [String: String].self) ?? [:]
+    /// Matches deleted, hidden or left in this session: late refreshes must not bring them back.
+    private var removed: Set<String> = []
     /// A message to show, e.g. "your offline move was rejected".
     var notice: String?
     var isLoading = false
@@ -154,6 +156,7 @@ final class MatchesModel {
 
     /// Puts a match from the server into the right list.
     private func store(_ m: Match) {
+        guard !removed.contains(m.id) else { return }
         if m.seat(of: me) != nil || m.ownerUserId == me {
             if let i = myMatches.firstIndex(where: { $0.id == m.id }) { myMatches[i] = m } else { myMatches.insert(m, at: 0) }
             otherMatches.removeAll { $0.id == m.id }
@@ -191,6 +194,7 @@ final class MatchesModel {
 
     func join(matchId: String) async throws -> Match {
         let m = try await API.joinMatch(id: matchId, as: try account())
+        removed.remove(m.id) // joining again after leaving is fine
         store(m)
         await downloadDetails(for: [m])
         return m
@@ -201,6 +205,7 @@ final class MatchesModel {
         let text = linkOrId.trimmingCharacters(in: .whitespacesAndNewlines)
         let id = text.components(separatedBy: "match=").last ?? text
         let m = try await API.match(id: id)
+        removed.remove(m.id)
         store(m)
         await downloadDetails(for: [m])
         return m
@@ -212,6 +217,35 @@ final class MatchesModel {
 
     func setComputers(matchId: String, _ n: Int) async throws {
         store(try await API.setComputers(matchId: matchId, n, as: try account()))
+    }
+
+    // MARK: Delete, hide, leave (need the network; never queued)
+
+    enum Action {
+        case delete, hide, leave
+    }
+
+    /// The one action that makes sense for me: the owner deletes; other players hide a
+    /// finished match or leave one that isn't over. nil when I'm neither.
+    func action(for match: Match) -> Action? {
+        guard let me else { return nil }
+        if match.ownerUserId == me { return .delete }
+        if match.isOver { return .hide }
+        return match.seat(of: me) != nil ? .leave : nil
+    }
+
+    /// Asks the server, then forgets the match (list, saved copy, queued moves).
+    func perform(_ action: Action, on match: Match) async throws {
+        let account = try account()
+        switch action {
+        case .delete, .hide: try await API.deleteMatch(id: match.id, as: account)
+        case .leave: try await API.leaveMatch(id: match.id, as: account)
+        }
+        removed.insert(match.id)
+        myMatches.removeAll { $0.id == match.id }
+        otherMatches.removeAll { $0.id == match.id }
+        pendingMoves.removeAll { $0.matchId == match.id }
+        save()
     }
 
     private func account() throws -> Account {

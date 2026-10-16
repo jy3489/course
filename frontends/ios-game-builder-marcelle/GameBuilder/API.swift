@@ -207,6 +207,18 @@ extension API {
         return try decoder.decode(Match.self, from: try await send("PATCH", "matches/\(matchId)", body: body, as: account))
     }
 
+    /// `DELETE /matches/{id}`: the owner deletes the match for everyone; another player hides
+    /// a finished match from their own list.
+    static func deleteMatch(id: String, as account: Account) async throws {
+        _ = try await send("DELETE", "matches/\(id)", as: account)
+    }
+
+    /// `POST /matches/{id}/leave`: in an ongoing match a computer takes the seat if the game
+    /// allows leaving, otherwise the match ends.
+    static func leaveMatch(id: String, as account: Account) async throws {
+        _ = try await send("POST", "matches/\(id)/leave", as: account)
+    }
+
     /// `POST /matches/{id}/moves`. `expectedMoveCount` makes the server reject a stale move.
     static func makeMove(matchId: String, newState: JSONValue, nextTurn: [Int]?, expectedMoveCount: Int,
                          as account: Account) async throws -> Match {

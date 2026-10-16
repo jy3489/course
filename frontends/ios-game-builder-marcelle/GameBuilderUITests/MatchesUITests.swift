@@ -85,6 +85,39 @@ final class MatchesUITests: XCTestCase {
         return data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data)
     }
 
+    /// The HTTP status of a request (for checking that something is gone).
+    private func statusCode(_ method: String, _ path: String) async throws -> Int {
+        var r = URLRequest(url: URL(string: serverURL + path)!)
+        r.httpMethod = method
+        let (_, response) = try await URLSession.shared.data(for: r)
+        return (response as! HTTPURLResponse).statusCode
+    }
+
+    /// Friend creates a match (no computers); the app opens it by link and joins.
+    private func joinFriendsMatch(game: String) async throws -> (String, [String: Any]) {
+        let friend = try await newFriend()
+        let m = try await request("POST", "/matches", ["game_id": game, "num_computer_opponents": 0], as: friend) as! [String: Any]
+        let id = m["id"] as! String
+        openMatchesTab()
+        // The list only builds rows on screen; "join by link" is below the open matches.
+        let field = app.textFields["match-link-field"]
+        for _ in 0..<15 where !field.exists { app.swipeUp() }
+        sleep(1) // let the scrolling stop before tapping
+        tap(field)
+        if !((field.value(forKey: "hasKeyboardFocus") as? Bool) ?? false) { sleep(1); field.tap() }
+        field.typeText(id)
+        tap(app.buttons["open"])
+        tap(app.buttons["join-match"])
+        XCTAssertTrue(app.staticTexts["Friend"].waitForExistence(timeout: 10))
+        return (id, friend)
+    }
+
+    /// Scrolls the Matches list back up to "// my matches" (rows off screen aren't built).
+    private func scrollToMyMatches() {
+        let label = app.staticTexts["// my matches"]
+        for _ in 0..<15 where !(label.exists && label.isHittable) { app.swipeDown() }
+    }
+
     private func newFriend() async throws -> [String: Any] {
         try await request("POST", "/users", ["display_name": "Friend"]) as! [String: Any]
     }
@@ -247,5 +280,97 @@ final class MatchesUITests: XCTestCase {
         let ongoing = app.staticTexts["ongoing"]
         for _ in 0..<10 where !ongoing.isHittable { app.swipeUp() }
         screenshot("status-chip-ongoing")
+    }
+
+    // MARK: Delete, hide, leave
+
+    func testDeleteOwnMatch() async throws {
+        launchLoggedIn()
+        let id = createTicTacToeMatch(computers: 1)
+        backToGames()
+        openMatchesTab()
+        let row = app.staticTexts["Tic-tac-toe"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.swipeLeft()
+        tap(app.buttons["delete"])
+        XCTAssertTrue(app.alerts["Delete this match for everyone?"].waitForExistence(timeout: 5))
+        screenshot("delete-confirm")
+        app.alerts.buttons["Delete"].tap()
+        let empty = app.staticTexts["Create a match from a game's page (\"play online\"), or join one below."]
+        XCTAssertTrue(empty.waitForExistence(timeout: 10), "the match is still listed")
+        let status = try await statusCode("GET", "/matches/\(id)")
+        XCTAssertEqual(status, 404, "the server still has the match")
+        // Not brought back by a refresh or a restart (the saved copy is gone too).
+        app.terminate()
+        launch()
+        openMatchesTab()
+        XCTAssertTrue(empty.waitForExistence(timeout: 10), "the deleted match came back")
+    }
+
+    func testHideFinishedMatch() async throws {
+        launchLoggedIn()
+        let (id, friend) = try await joinFriendsMatch(game: "tictactoe")
+        _ = try await request("POST", "/matches/\(id)/start", [:], as: friend)
+        // Friend's first move ends the match (next turn: null).
+        _ = try await request("POST", "/matches/\(id)/moves", [
+            "new_state": ["board": ["O", "", "", "", "", "", "", "", ""], "winner": NSNull(), "draw": false],
+            "next_turn_player_indices": NSNull(), "expected_move_count": 0,
+        ], as: friend)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        scrollToMyMatches()
+        app.swipeDown() // pull to refresh
+        XCTAssertTrue(app.staticTexts["over"].waitForExistence(timeout: 10))
+        app.staticTexts["Tic-tac-toe"].firstMatch.swipeLeft()
+        tap(app.buttons["hide"])               // no confirmation for hiding
+        XCTAssertTrue(app.staticTexts["over"].waitForNonExistence(timeout: 10))
+        // Hidden only for me: the match itself still exists.
+        let match = try await match(id)
+        XCTAssertEqual(match["status"] as? String, "over")
+        app.terminate()
+        launch()
+        openMatchesTab()
+        XCTAssertFalse(app.staticTexts["over"].waitForExistence(timeout: 5), "the hidden match came back")
+    }
+
+    func testLeaveOngoingMatch() async throws {
+        launchLoggedIn()
+        let (id, friend) = try await joinFriendsMatch(game: "poker")
+        _ = try await request("POST", "/matches/\(id)/start", [:], as: friend)
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 15), "the game didn't load")
+        tap(app.buttons["match-menu"])
+        tap(app.buttons["leave"])
+        let alert = app.alerts["Leave this match?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts["A computer takes over your seat and keeps playing."].exists)
+        screenshot("leave-confirm")
+        alert.buttons["Leave"].tap()
+        // Back on the list, without my seat in it (it may still be listed under open matches,
+        // since Poker lets people join mid-match). On the server a computer has my seat.
+        XCTAssertTrue(app.tabBars.buttons["Matches"].waitForExistence(timeout: 10))
+        scrollToMyMatches()
+        XCTAssertTrue(app.staticTexts["Friend · Marcelle"].waitForNonExistence(timeout: 10), "still listed as my match")
+        let m = try await match(id)
+        XCTAssertEqual(m["status"] as? String, "ongoing")
+        let seats = m["players"] as! [[String: Any]]
+        XCTAssertEqual(seats[1]["kind"] as? String, "computer", "nobody took over my seat")
+        screenshot("after-leave")
+    }
+
+    func testActionsNeedInternet() async throws {
+        launchLoggedIn()
+        _ = createTicTacToeMatch(computers: 1)
+        app.terminate()
+        launch(["-simulateOffline"])
+        openMatchesTab()
+        let row = app.staticTexts["Tic-tac-toe"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.swipeLeft()
+        let note = app.buttons["needs internet"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["delete"].exists)
+        screenshot("needs-internet")
+        note.tap()                              // does nothing: no confirmation, match stays
+        XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.exists)
     }
 }

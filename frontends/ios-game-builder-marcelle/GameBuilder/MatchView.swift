@@ -6,9 +6,11 @@ import SwiftUI
 struct MatchView: View {
     @Environment(AppModel.self) private var app
     @Environment(MatchesModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     let matchId: String
     @State private var error: String?
     @State private var busy = false
+    @State private var actionRequest: Match?
 
     var body: some View {
         Group {
@@ -23,12 +25,31 @@ struct MatchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { actionMenu } }
+        .modifier(MatchActionFlow(request: $actionRequest, onDone: { dismiss() }))
         .task {
             // Poll every 2 seconds while this screen is open (like the web portal).
             while !Task.isCancelled {
                 await model.refresh(matchId: matchId)
                 try? await Task.sleep(for: .seconds(2))
             }
+        }
+    }
+
+    /// "⋯": delete, hide or leave (whichever applies), disabled offline.
+    @ViewBuilder private var actionMenu: some View {
+        if let match = model.match(id: matchId), let action = model.action(for: match) {
+            Menu {
+                Section(app.isOffline ? "needs internet" : "") {
+                    Button(action.title, systemImage: action.systemImage, role: action == .delete ? .destructive : nil) {
+                        actionRequest = match
+                    }
+                    .disabled(app.isOffline)
+                }
+            } label: {
+                Image(systemName: "ellipsis").foregroundStyle(Theme.text)
+            }
+            .accessibilityIdentifier("match-menu")
         }
     }
 

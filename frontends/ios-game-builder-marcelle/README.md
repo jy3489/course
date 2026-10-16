@@ -48,6 +48,13 @@ Google login. Xcode downloads it on the first build.
   rejects it (someone moved first, or the match changed), that match's queued moves are
   dropped, a message says so, and the match is reloaded. A stale computer move is dropped
   silently (another player's app sent it first, which is normal).
+- **Delete, hide, leave**: swipe left on one of "// my matches" (or tap "⋯" on the match
+  screen) for the one action that applies: **delete** (red, owner only, asks first:
+  `DELETE /matches/{id}`), **hide** a finished match I don't own (the same endpoint hides it
+  just for me), or **leave** a match I play in (asks first, and says what happens: a computer
+  takes over if the game allows it, otherwise the match ends; `POST /matches/{id}/leave`).
+  The match disappears from the list and the phone once the server confirms. Offline these
+  are disabled ("needs internet"), never queued.
 
 ## Run
 1. Open `GameBuilder.xcodeproj` in Xcode.
@@ -82,6 +89,9 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
     on the web portal; start; take turns. Moves show up within 2 seconds.
 12. Airplane mode: Matches tab → open the match → move ("Offline: your move is saved…").
     Airplane mode off: the move is sent.
+13. Matches tab: swipe left on a match I created → **delete** → confirm: it's gone (also from
+    the web portal). On a finished match someone else created → **hide**. In an ongoing match
+    → "⋯" → **leave** → confirm. In airplane mode the swipe shows "needs internet".
 
 ## Files (`GameBuilder/`)
 - `GameBuilderApp.swift`: app entry; shows Login or Games.
@@ -99,6 +109,7 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
 - `MatchesModel.swift`: online matches: loading, saving on the phone, whose turn it is,
   the queue of moves and what happens when one is rejected.
 - `MatchesView.swift`: the Matches tab (my matches, open matches, join by link).
+- `MatchActions.swift`: delete / hide / leave: labels, confirmations, running them.
 - `MatchView.swift`: one match (waiting room with share link + QR, then the game), the
   "new online match" sheet, and the QR code.
 - `PlayView.swift`: test play: the setup screen (players, seats) and the play screen.
@@ -123,7 +134,9 @@ New Swift files dropped into `GameBuilder/` are picked up by Xcode automatically
   and offline edits uploaded later.
 - `GameBuilderUITests/MatchesUITests.swift`: a match vs a computer; a match with a second
   person (the test plays "Friend" through the REST API) including an offline move sent later;
-  and an offline move rejected as stale.
+  an offline move rejected as stale; the status chip colors; deleting my match (swipe),
+  hiding a finished match (swipe), leaving an ongoing Poker match ("⋯"; a computer takes the
+  seat), and "needs internet" offline.
 - The last two **write** games and matches, so they use the course backend
   running on the Mac (`http://localhost:8000`), never buildplay.fun. Start it first, from a
   folder outside the repo (the root README's "Running" section explains the steps):
