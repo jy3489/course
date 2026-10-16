@@ -24,8 +24,11 @@ class PortalOffline {
     try {
       this.storage.setItem(this.key(), JSON.stringify(data));
     } catch {
-      throw new Error(
-        "Device storage is full or unavailable. This move was not saved; free space and retry.",
+      throw Object.assign(
+        new Error(
+          "Device storage is full or unavailable. This move was not saved; free space and retry.",
+        ),
+        { storageFailure: true },
       );
     }
   }
@@ -58,7 +61,7 @@ class PortalOffline {
       turn_of_player_indices: body.next_turn_player_indices,
       status: body.next_turn_player_indices === null ? "over" : "ongoing",
       end_reason: body.next_turn_player_indices === null ? "finished" : null,
-      move_count: match.move_count + 1,
+      move_count: body.expected_move_count + 1,
     };
   }
   async get(path, options = {}) {
@@ -86,6 +89,7 @@ class PortalOffline {
             d.responses[`/matches/${match.id}`] = match;
       this.write(d);
     } catch (error) {
+      if (error.storageFailure) throw error;
       if (
         error.status === 404 &&
         localId &&
@@ -136,6 +140,10 @@ class PortalOffline {
     if (data.conflicts[id])
       throw new Error("Resolve the sync conflict before making another move.");
     if (id.startsWith("local-")) {
+      if (data.local[id]?.move_count !== body.expected_move_count)
+        throw new Error(
+          "Local practice changed in another tab. Refresh before moving.",
+        );
       data.local[id] = this.apply(data.local[id], body);
       this.write(data);
       return data.local[id];

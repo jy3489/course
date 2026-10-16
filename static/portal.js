@@ -344,14 +344,21 @@ function renderLists() {
   const key = JSON.stringify(games.map((game) => [game.id, game.version]));
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    select.replaceChildren(...games.map((game)=>el("option",{value:game.id,textContent:`${game.name} (${game.allowed_player_counts.join(", ")} players)`})));
-    const requested=new URLSearchParams(location.hash.slice(1)).get("game");
-    const chosen=requested||previous;
-    if(games.some(game=>game.id===chosen))select.value=chosen;
+    select.replaceChildren(
+      ...games.map((game) =>
+        el("option", {
+          value: game.id,
+          textContent: `${game.name} (${game.allowed_player_counts.join(", ")} players)`,
+        }),
+      ),
+    );
+    const requested = new URLSearchParams(location.hash.slice(1)).get("game");
+    const chosen = requested || previous;
+    if (games.some((game) => game.id === chosen)) select.value = chosen;
   }
   updateComputerLimit();
-  $("create").disabled=!user||games.length===0||!navigator.onLine;
-  $("practice").disabled=!user||games.length===0;
+  $("create").disabled = !user || games.length === 0 || !navigator.onLine;
+  $("practice").disabled = !user || games.length === 0;
 }
 
 // The selected match
@@ -360,7 +367,9 @@ function updateComputerLimit() {
   const game = state.games.find((game) => game.id === $("new-game").value);
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("computers").max = String(maximum);
-  $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
+  $("computers").value = String(
+    Math.min(maximum, Math.max(0, Number($("computers").value) || 0)),
+  );
   $("computers").disabled = maximum === 0;
 }
 
@@ -460,6 +469,13 @@ function renderMatch() {
   );
 
   const actions = [];
+  if (game?.code)
+    actions.push(
+      actionButton("Practice this game", async () => {
+        const practiceMatch = offline.practice(game, $("practice-mode").value);
+        selectMatch(practiceMatch.id);
+      }),
+    );
   if ($("match-message").dataset.offline === "true") {
     showMessage("");
     delete $("match-message").dataset.offline;
@@ -788,7 +804,11 @@ async function main() {
   if (state.match && !state.match.localMode)
     state.match = offline.decorate(state.match);
   render();
-  await syncGame();
+  try {
+    await syncGame();
+  } catch (error) {
+    showPageError(error.message);
+  }
   refresh();
   setInterval(() => {
     if (!document.hidden && !state.moveInFlight) refresh();
