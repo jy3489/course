@@ -119,3 +119,46 @@
   #agent-log { min-height: 100px; }
 }
 @media (max-width: 860px) { .studio-intro h2 span { margin-left: .15em; } }
+/* Iterative editor: playable draft beside the integration branch's change panel. */
+.edit-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+.edit-heading h3 { margin:0 0 8px; font-size:28px; letter-spacing:-.8px; }
+.change-layout { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,1fr); gap:20px; align-items:start; }
+.edit-preview, .edit-chat { min-width:0; border-radius:8px; padding:18px; }
+.edit-preview { background:#10141f; border:1px solid #343e55; }
+.edit-preview h4, .edit-chat h4, .version-section h4 { margin:0 0 12px; font-size:20px; letter-spacing:-.4px; }
+.edit-chat { background:#c6f432; color:#10141f; }
+.edit-chat > p { font-size:13px; line-height:1.6; margin:0 0 18px; }
+#agent-tools, #test-tools { display:flex; flex-direction:column; gap:14px; min-width:0; }
+#edit-test-host .test-layout { grid-template-columns:minmax(0,1fr); }
+#edit-test-host .frame-box { min-height:360px; }
+#edit-test-host #test-log { max-height:130px; }
+#edit-test-host .inline-row { gap:6px; }
+#edit-test-host button { font-size:12px; padding:8px 10px; }
+#edit-test-host .muted { font-size:12px; }
+.edit-chat #agent-log { min-height:130px; max-height:340px; margin:0; }
+.edit-chat #agent-log .msg { color:#eef0f5; }
+.edit-chat #agent-log .msg.user { color:#10141f; }
+.edit-chat #agent-log .msg.system { color:#b5bed0; }
+.edit-chat #agent-input { background:#e5ff9b; border:1px solid #657c1c; color:#10141f; min-height:100px; font-size:14px; }
+.edit-chat #agent-input::placeholder { color:#4f5e2d; }
+.edit-chat #agent-send { background:#10141f; border-color:#10141f; color:#c6f432; }
+.edit-chat #agent-publish { color:#10141f; border-color:#10141f; margin-left:0; }
+.edit-chat .message, .edit-chat .message.error { color:#10141f; }
+.edit-chat .proposal { background:#e5ff9b; border-color:#657c1c; }
+.edit-chat .proposal .muted { color:#334018; }
+.edit-chat #agent-apply { background:#10141f; color:#c6f432; border-color:#10141f; }
+.edit-chat #agent-discard { background:transparent; color:#10141f; border-color:#657c1c; }
+#agent-proposed-code { padding:12px; background:#10141f; color:#c9cfdc; max-height:220px; overflow:auto; font:11px/1.6 var(--font-mono); }
+.proposal details { margin-top:12px; }.proposal summary { cursor:pointer; font-size:12px; }
+.draft-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.version-section { border-top:1px solid #343e55; padding-top:18px; }
+.version-section button { font:12px var(--font-mono); }
+#advanced-editor { border:1px solid #343e55; border-radius:6px; padding:16px; }
+#advanced-editor > summary { cursor:pointer; font-weight:600; color:#a5aec2; }
+#advanced-editor[open] > summary { margin-bottom:20px; }
+#advanced-editor #code { margin-top:10px; min-height:260px; }
+#advanced-editor > label { display:block; margin-top:18px; }
+@media (max-width:1150px) { .change-layout { grid-template-columns:minmax(0,1fr); }.edit-chat { order:-1; } }
+@media (max-width:600px) { .edit-heading h3 { font-size:24px; }.edit-heading #save { width:100%; }.edit-preview,.edit-chat { padding:14px; } }
+.edit-chat label { color:#334018; }
+.edit-chat #agent-log:empty::after { content:'Ask for a rule change or a new feature.'; }

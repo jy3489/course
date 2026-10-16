@@ -665,3 +665,18 @@ configure seat types for supported counts. Online human matches use the portal.
 
 See `docs/deployment-and-builder-modes.md` for the deployment investigation,
 rollout requirements, and acceptance checks for the course assignment.
+
+### Change a game through prompts
+
+Selecting a saved game opens **Edit & publish**, with the playable draft and the
+lime **Describe your change** panel together. Ask for rule changes, features, or
+bug fixes, review the proposed source, and choose **Apply to editor**. The preview
+restarts with the new draft; follow-up prompts receive that current code and the
+conversation. Nothing is published until **Publish new version** is clicked.
+
+**Undo applied change** restores the previous local draft. The last six published
+versions can be loaded as drafts and republished as a new version. Settings and
+manual source editing remain under **Game settings & source code**. Proposals
+based on a draft that changed during generation are rejected to preserve newer
+edits. The shared conversation and test controls move between tabs without
+creating separate histories or losing the saved local test state.

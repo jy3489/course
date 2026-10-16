@@ -67,6 +67,9 @@ const state = {
   deleteArmed: false,
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
+  activeTab: "agent",
+  draftUndo: [],
+  restoring: false,
   saving: false,
   agentSending: false,
   agentDebug: false, // show the agent's thinking and raw replies in the chat
@@ -88,6 +91,7 @@ async function onUserChanged() {
   state.selectedId = null;
   state.baseline = null;
   resetAgent();
+  state.draftUndo = [];
   stopTest();
   await loadGames();
   render();
@@ -177,12 +181,17 @@ function select(id) {
   state.selectedId = id;
   state.deleteArmed = false;
   resetAgent();
+  state.draftUndo = [];
   const game = selectedGame();
   fillEditor(game ?? NEW_GAME);
+  stopTest();
   showTab(id === "new" ? "agent" : "edit");
   setMessage("edit-message", "");
-  stopTest();
   render();
+  if (game) {
+    setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
+    startTest();
+  }
 }
 
 function setMessage(id, text, kind = "") {
@@ -199,10 +208,11 @@ function updateSaveControls() {
   for (const id of ["save", "agent-publish", "delete", "revert", "new-game"]) {
     $(id).disabled = state.saving;
   }
+  renderDraftControls();
 }
 
 async function save() {
-  if (state.saving) return;
+  if (state.saving || state.restoring) return;
   if (state.agent?.pending || state.agentSending) {
     saveMessage("Wait for the agent, then apply or discard its proposal before publishing.", "error");
     return;
@@ -270,7 +280,7 @@ function renderEditorMeta() {
   $("game-meta").textContent = game
     ? `Version ${game.version} · created ${formatTime(game.created_at)} · updated ${formatTime(game.updated_at)} · id ${game.id}`
     : "A new game. Save to create it.";
-  $("save").textContent = state.selectedId === "new" ? "Create" : "Save";
+  $("save").textContent = state.selectedId === "new" ? "Publish game" : "Publish new version";
   $("delete").textContent = state.selectedId === "new" ? "Discard" : "Delete";
 }
 
@@ -279,11 +289,86 @@ function renderEditorMeta() {
 const TABS = ["edit", "test", "agent"];
 
 function showTab(name) {
+  state.activeTab = name;
   for (const tab of TABS) {
     $(`tab-${tab}`).setAttribute("aria-selected", String(name === tab));
     $(`${tab}-panel`).hidden = name !== tab;
   }
-  if (name === "test") renderTestSetup();
+  const chatHost = $(name === "edit" ? "edit-chat-host" : "agent-home");
+  if ($("agent-tools").parentNode !== chatHost) chatHost.append($("agent-tools"));
+  const testHost = $(name === "edit" ? "edit-test-host" : "test-home");
+  if ($("test-tools").parentNode !== testHost) {
+    testHost.append($("test-tools"));
+    // Moving an iframe reloads its document in some browsers. Re-send the
+    // stored match snapshot rather than losing the current test's progress.
+    if (state.test) {
+      frame.load(state.test.code ?? $("code").value);
+      sendTestState();
+    }
+  }
+  $("agent-send").textContent = name === "edit" ? "Update game ↗" : "Let’s build ↗";
+  if (name === "test" || name === "edit") renderTestSetup();
+  renderDraftControls();
+}
+
+function renderDraftControls() {
+  $("undo-ai-change").disabled = state.draftUndo.length === 0 || state.agentSending || Boolean(state.agent?.pending) || state.saving || state.restoring;
+  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Draft changes — not published" : selectedGame() ? "Published version loaded" : "New game — not published";
+  const game = selectedGame();
+  const versions = game ? Array.from({length: Math.min(game.version, 6)}, (_, i) => game.version - i) : [];
+  $("published-versions").replaceChildren(...versions.map((version) => el("button", {
+    type: "button", textContent: `Load v${version}${version === game.version ? " (latest)" : ""}`,
+    disabled: state.saving || state.agentSending || state.restoring || Boolean(state.agent?.pending),
+    onclick: () => restorePublishedVersion(version),
+  })));
+  if (!game) $("published-versions").textContent = "Publish your first version to keep its history.";
+}
+
+function replaceDraft(values) {
+  const baseline = state.baseline;
+  state.draftUndo.push(editorValues());
+  fillEditor(values);
+  state.baseline = baseline;
+  stopTest();
+  renderTestSetup();
+  renderDraftControls();
+}
+
+function undoAppliedChange() {
+  if (state.saving || state.agentSending || state.agent?.pending || state.restoring || !state.draftUndo.length) return;
+  const baseline = state.baseline;
+  fillEditor(state.draftUndo.pop());
+  state.baseline = baseline;
+  stopTest();
+  renderTestSetup();
+  renderDraftControls();
+  if (state.activeTab === "edit" || state.activeTab === "test") startTest();
+  saveMessage("Restored the previous draft. Publish to save it.", "ok");
+}
+
+async function restorePublishedVersion(version) {
+  const user = me();
+  const id = state.selectedId;
+  if (!user || !selectedGame() || state.saving || state.agentSending || state.agent?.pending || state.restoring) return;
+  const snapshot = JSON.stringify(editorValues());
+  state.restoring = true;
+  renderDraftControls();
+  try {
+    const game = await apiRequest("GET", `/games/${encodeURIComponent(id)}/versions/${version}`, {user});
+    if (state.selectedId !== id || me()?.id !== user.id) return;
+    if (JSON.stringify(editorValues()) !== snapshot) {
+      saveMessage("The draft changed while the version loaded. Click Load again to try again.", "error");
+      return;
+    }
+    replaceDraft(game);
+    if (state.activeTab === "edit" || state.activeTab === "test") startTest();
+    saveMessage(`Loaded version ${version} as a draft. Publish to use it for new matches.`, "ok");
+  } catch (error) {
+    if (state.selectedId === id && me()?.id === user.id) saveMessage(`Couldn't load version: ${error.message}`, "error");
+  } finally {
+    state.restoring = false;
+    renderDraftControls();
+  }
 }
 
 // Pass-and-play test
@@ -338,7 +423,7 @@ function startTest() {
     kind,
     name: kind === "human" ? `Player ${seat + 1}` : `Computer ${seat + 1}`,
   }));
-  state.test = { players, moves: [], state: null, turn: [0], status: "ongoing", awaiting: false };
+  state.test = { code: $("code").value, players, moves: [], state: null, turn: [0], status: "ongoing", awaiting: false };
   $("test-log").replaceChildren();
   frame.load($("code").value);
   testLog(`Started a test with ${players.length} players.`);
@@ -422,6 +507,7 @@ function resetAgent() {
   $("agent-log").replaceChildren();
   $("agent-proposal").hidden = true;
   $("agent-input").value = "";
+  $("agent-proposed-code").textContent = "";
   setMessage("agent-message", "");
 }
 
@@ -492,7 +578,7 @@ async function requestAgentReply(user, body, isCurrent) {
 async function sendAgentMessage() {
   const user = me();
   const input = $("agent-input").value.trim();
-  if (!input || !user || state.agentSending || state.saving) return;
+  if (!input || !user || state.agentSending || state.saving || state.restoring) return;
   const history = agentHistory();
   if (history.pending) {
     setMessage("agent-message", "Apply or discard the pending proposal first.", "error");
@@ -505,6 +591,7 @@ async function sendAgentMessage() {
   agentLog("user", input);
   setMessage("agent-message", "The agent is thinking…");
   state.agentSending = true;
+  renderDraftControls();
   $("agent-send").disabled = true;
   try {
     const reply = await requestAgentReply(user, {
@@ -519,7 +606,8 @@ async function sendAgentMessage() {
     history.messages.push({ role: "assistant", content: reply.message });
     agentLogReply(reply);
     if (reply.code) {
-      history.pending = { code: reply.code, name: reply.name, description: reply.description };
+      history.pending = { code: reply.code, name: reply.name, description: reply.description, base: JSON.stringify(values) };
+      $("agent-proposed-code").textContent = reply.code;
       $("agent-proposal").hidden = false;
       agentLog("system", "The agent proposed new code. Review it with Apply, or Discard it.");
     }
@@ -532,6 +620,7 @@ async function sendAgentMessage() {
     if (isCurrent()) {
       state.agentSending = false;
       $("agent-send").disabled = false;
+      renderDraftControls();
     }
   }
 }
@@ -539,14 +628,21 @@ async function sendAgentMessage() {
 function applyAgentProposal() {
   const history = agentHistory();
   const pending = history.pending;
-  if (!pending) return;
-  if (pending.name && !$("name").value.trim()) $("name").value = pending.name;
-  if (pending.description && !$("description").value.trim()) $("description").value = pending.description;
-  $("code").value = pending.code;
+  if (!pending || state.saving || state.restoring) return;
+  if (pending.base && JSON.stringify(editorValues()) !== pending.base) {
+    setMessage("agent-message", "The draft changed while Muse was working. Discard this proposal and request a fresh change to keep your edits.", "error");
+    return;
+  }
+  replaceDraft({...editorValues(), code: pending.code,
+    name: pending.name || $("name").value, description: pending.description || $("description").value});
   history.pending = null;
   $("agent-proposal").hidden = true;
-  agentLog("system", "Applied the proposal. Test it in the Test tab, then keep chatting or publish.");
-  setMessage("agent-message", "Applied. You have unsaved changes.", "ok");
+  $("agent-proposed-code").textContent = "";
+  showTab("edit");
+  startTest();
+  agentLog("system", "Applied to the draft and restarted the preview. Ask for another change or publish when ready.");
+  saveMessage("Applied to draft. Test the game, then publish the new version.", "ok");
+  renderDraftControls();
 }
 
 function discardAgentProposal() {
@@ -554,6 +650,8 @@ function discardAgentProposal() {
   history.pending = null;
   $("agent-proposal").hidden = true;
   agentLog("system", "Discarded the proposal.");
+  $("agent-proposed-code").textContent = "";
+  renderDraftControls();
 }
 
 // Rendering
@@ -575,7 +673,7 @@ function render() {
     );
   }
   $("new-game").disabled = !me() || state.saving;
-  if (showWorkspace) renderEditorMeta();
+  if (showWorkspace) { renderEditorMeta(); renderDraftControls(); }
   $("play-game").hidden = !selectedGame();
   if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
 }
@@ -591,8 +689,15 @@ async function main() {
   window.addEventListener("beforeunload", protectUnsavedChanges);
   $("new-game").addEventListener("click", () => select("new"));
   $("save").addEventListener("click", save);
+  $("undo-ai-change").addEventListener("click", undoAppliedChange);
+  for (const id of ["name", "description", "code", "allows-leave", "allows-join"]) {
+    $(id).addEventListener("input", renderDraftControls);
+  }
   $("revert").addEventListener("click", () => {
     fillEditor(selectedGame() ?? NEW_GAME);
+    stopTest();
+    renderTestSetup();
+    renderDraftControls();
     setMessage("edit-message", "Reverted.");
   });
   $("delete").addEventListener("click", deleteGame);

@@ -15,7 +15,7 @@ function setup(request = async () => {}) {
   const ctx = vm.createContext({console, URLSearchParams, Set, setTimeout: fn=>fn(),
     document:{getElementById:node}, window:{addEventListener(){}},
     Auth:{current:()=>({id:'user'})},
-    GameFrame:class {load(){} unload(){} send(){}},
+    GameFrame:class {load(code){this.lastCode=code;} unload(){} send(){}},
     apiRequest:request, formatTime:()=>'', el:()=>node(Symbol()),
     stateChangedMessage: x=>x});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/, ''),ctx);
@@ -112,4 +112,50 @@ test('a one-seat test keeps seat zero until the solo game ends',()=>{
   assert.equal(run('state.test.status'),'ongoing');
   run('onTestMove({new_state:{score:2},next_turn_player_indices:null})');
   assert.equal(run('state.test.status'),'over');
+});
+
+test('applied AI changes are drafts, open the editing workspace, and can be undone',()=>{
+  const {node,run}=setup();node('code').value='original';
+  run('state.baseline=JSON.stringify(editorValues()); agentHistory().pending={code:"updated",name:"Renamed game",base:JSON.stringify(editorValues())}; applyAgentProposal()');
+  assert.equal(node('code').value,'updated');assert.equal(node('name').value,'Renamed game');
+  assert.equal(run('state.activeTab'),'edit');assert.equal(run('isDirty()'),true);
+  run('undoAppliedChange()');assert.equal(node('code').value,'original');assert.equal(node('name').value,'Game');
+  assert.equal(run('isDirty()'),false);
+});
+
+test('follow-up prompts send the latest applied game code and conversation',async()=>{
+  const bodies=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    bodies.push(opts.body);
+    return {message:'Changed',code:bodies.length===1?'first draft':'second draft'};
+  });
+  node('code').value='initial';node('agent-input').value='Change the win rule';
+  await run('sendAgentMessage()');run('applyAgentProposal()');
+  node('agent-input').value='Now add a score counter';await run('sendAgentMessage()');
+  assert.equal(bodies[1].code,'first draft');assert.equal(bodies[1].messages.length,3);
+  assert.equal(bodies[1].messages[2].content,'Now add a score counter');
+  assert.equal(node('code').value,'first draft'); // review is required before replacing it
+});
+
+test('an outdated proposal cannot overwrite edits made during generation',async()=>{
+  const wait=deferred();const {node,run}=setup(()=>wait.promise);
+  node('agent-input').value='change rules';const request=run('sendAgentMessage()');
+  node('code').value='my newer edit';wait.resolve({message:'done',code:'outdated proposal'});await request;
+  run('applyAgentProposal()');assert.equal(node('code').value,'my newer edit');
+  assert.match(node('agent-message').textContent,/draft changed/);
+});
+
+test('loading a published version creates an undoable unpublished draft',async()=>{
+  const paths=[];
+  const {node,run}=setup(async(method,path)=>{paths.push(path);return {name:'Game',description:'',code:'version one',allowed_player_counts:[2]};});
+  run('state.games=[{id:"saved",version:2}];state.selectedId="saved";state.baseline=JSON.stringify(editorValues())');
+  await run('restorePublishedVersion(1)');
+  assert.equal(paths[0],'/games/saved/versions/1');assert.equal(node('code').value,'version one');
+  assert.equal(run('isDirty()'),true);assert.equal(run('state.draftUndo.length'),1);
+});
+
+test('switching between test and edit preserves the running test snapshot',()=>{
+  const {node,run}=setup();node('code').value='edited after test began';
+  run('state.test={code:"running code",players:[{kind:"human",name:"A"}],moves:[],turn:[0],state:{score:4},status:"ongoing"};showTab("edit")');
+  assert.equal(run('frame.lastCode'),'running code');assert.equal(run('state.test.state.score'),4);
 });
