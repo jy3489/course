@@ -50,6 +50,29 @@ val PortalJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explici
     @SerialName("expected_move_count") val expected: Int,
 )
 
+@Serializable data class AgentMessage(val role: String, val content: String)
+@Serializable data class AgentChatRequest(
+    @SerialName("game_name") val gameName: String,
+    @SerialName("game_description") val gameDescription: String,
+    @SerialName("allowed_player_counts") val allowedPlayerCounts: List<Int>,
+    val code: String,
+    val messages: List<AgentMessage>
+)
+@Serializable data class AgentChatResponse(
+    val message: String,
+    val code: String? = null,
+    val name: String? = null,
+    val description: String? = null
+)
+@Serializable data class NewGame(
+    val name: String,
+    val description: String = "",
+    @SerialName("allowed_player_counts") val counts: List<Int>,
+    @SerialName("allows_leave_mid_match") val allowsLeave: Boolean = false,
+    @SerialName("allows_join_mid_match") val allowsJoin: Boolean = false,
+    val code: String
+)
+
 object GameProtocol {
     fun stateChanged(match: Match, userId: String?, names: Map<String, String>, canMove: Boolean): JsonObject = buildJsonObject {
         put("type", "state_changed")

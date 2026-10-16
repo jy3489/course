@@ -12,16 +12,22 @@ The model is instructed to answer with a single JSON object:
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass
 
 from game_platform.model_api import ModelApiClient, ModelApiError
 from game_platform.schemas import AgentChatRequest, AgentChatResponse
 
+logger = logging.getLogger(__name__)
+GENERATION_BUDGET_SECONDS = 120.0
+
 SYSTEM_PROMPT = """\
 You are a game-building assistant inside a turn-based multiplayer game platform's \
 builder. You help the user create and refine a game by writing its code through \
 conversation. Be concise, friendly, and iterative: propose a change, explain it \
-briefly, and let the user test it.
+briefly, and let the user test it. Write compact, complete code. Avoid unnecessary \
+features or decorative markup; preserve the requested game rules.
 
 The game's `code` is a COMPLETE HTML document. It runs in an iframe with \
 `sandbox="allow-scripts"`: scripts run in an isolated origin, so keep everything \
@@ -48,6 +54,9 @@ move next - more than one when several players move at once (e.g. a simultaneous
 reveal). Send AT MOST ONE `make_move` per `state_changed`.
 
 Rules you must follow in the code you write:
+- Respect the editor's allowed player counts. A count of 1 means a genuine solo \
+  game (one human, no computer opponent). Its turns stay on seat 0 until it ends. \
+  With 2+ seats, support both human opponents and computer-controlled seats.
 - Computers are played by the game: when `acting_for_player_index` is a computer \
 seat, compute and send its move after a short delay (so humans can follow).
 - Randomness happens in moves (e.g. the first move deals cards), so every player \
@@ -172,19 +181,31 @@ def chat_with_agent(
         )
     if not request.messages:
         raise AgentError("No message to send.")
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be positive")
+    started = time.monotonic()
+    deadline = started + GENERATION_BUDGET_SECONDS
     messages, _ = build_prompt_messages(request)
     last_error: AgentError | None = None
     notes: list[str] = []
     for attempt in range(1, max_attempts + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AgentError("Muse exceeded the two-minute generation budget. Try a smaller game or change.")
+        attempt_started = time.monotonic()
+        logger.info("Builder generation attempt %d started (%.1fs remaining)", attempt, remaining)
         try:
-            # Generous token budget: this is a reasoning model, and it can spend
-            # several thousand thinking tokens before writing the reply.
             result = client.chat_with_reasoning(
-                messages, max_tokens=16000, temperature=0.7
+                messages, max_tokens=16000, temperature=1.0,
+                reasoning_effort="low", stream=True,
+                timeout=remaining, deadline=deadline,
             )
         except ModelApiError as exc:
             last_error = AgentError(str(exc))
             notes.append(f"attempt {attempt}: model call failed ({exc})")
+            logger.warning("Builder attempt %d failed after %.1fs: %s", attempt, time.monotonic() - attempt_started, type(exc).__name__)
+            if not exc.retryable:
+                raise last_error from exc
             continue
         except Exception as exc:
             raise AgentError(f"The model call failed: {exc}") from exc
@@ -194,6 +215,9 @@ def chat_with_agent(
             last_error = exc
             notes.append(f"attempt {attempt}: {exc}")
             continue
+        if time.monotonic() >= deadline:
+            raise AgentError("Muse exceeded the two-minute generation budget. Try a smaller game or change.")
+        logger.info("Builder generation succeeded on attempt %d in %.1fs", attempt, time.monotonic() - started)
         response.raw = result.content
         response.thinking = result.reasoning
         response.attempts = attempt

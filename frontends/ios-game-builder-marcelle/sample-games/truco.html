@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brazilian Truco</title>
+<style>
+  :root {
+    --bg: #10141F; --text: #EEF0F5; --muted: #9AA3B8; --line: #2A3247; --navy: #1C2233;
+    --lime: #C6F432; --surface: #171C2A; --paper: #F7F3EA; --pink: #FF5FA2; --ink: #10141F;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 10px; display: flex; flex-direction: column; gap: 7px;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  .label { font: 11px var(--mono); color: var(--muted); }
+  #top { display: flex; align-items: center; justify-content: space-between; }
+  #top h1 { margin: 0; font-size: 19px; font-weight: 800; }
+  #helpButton {
+    height: 32px; padding: 0 10px; border: 1.5px solid var(--lime); border-radius: 4px; background: none;
+    color: var(--lime); font: 700 12px var(--mono); cursor: pointer;
+  }
+  #scores { display: flex; gap: 6px; }
+  .score { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+  .score .name { display: flex; align-items: center; gap: 5px; font: 700 12px var(--mono); white-space: nowrap; overflow: hidden; }
+  .score .sq { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .score .members { font: 10px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .score .row { display: flex; align-items: baseline; justify-content: space-between; }
+  .score .pts { font-size: 20px; font-weight: 800; }
+  .score .pts small { font: 11px var(--mono); color: var(--muted); }
+  .dots { display: flex; gap: 4px; }
+  .dots span { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--line); }
+  .dots span.tie { border-style: dashed; border-color: var(--muted); }
+  #status { font: 11px var(--mono); color: var(--muted); }
+  #status b { color: var(--lime); font-weight: 700; }
+  #others { display: flex; gap: 6px; justify-content: center; }
+  .other { flex: 1; max-width: 160px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; text-align: center; }
+  .other .who { font: 700 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .other .backs { display: flex; gap: 3px; justify-content: center; margin-top: 3px; min-height: 30px; }
+  #table { display: flex; gap: 10px; min-height: 118px; }
+  #turnedBox { width: 74px; flex: none; display: flex; flex-direction: column; gap: 4px; }
+  #turnedBox .trump b { color: var(--lime); }
+  #trickBox { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative; }
+  #trick { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; }
+  .play { display: flex; flex-direction: column; align-items: center; gap: 2px; font: 10px var(--mono); max-width: 56px; }
+  .play .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56px; }
+  .slot { width: 46px; height: 64px; border: 1.5px dashed var(--line); border-radius: 6px; }
+  #note { font: 11px var(--mono); color: var(--muted); }
+  #call {
+    position: absolute; inset: 18px 0 0 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    font-size: 24px; font-weight: 900; color: var(--lime); background: rgba(16, 20, 31, 0.85); border-radius: 6px;
+  }
+  #turn { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; min-height: 22px; }
+  #turn .square { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+  #hand { display: flex; gap: 10px; justify-content: center; min-height: 104px; align-items: flex-end; }
+  #hand .card { cursor: pointer; transition: transform 0.12s; }
+  #hand .card.selected { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--lime), 0 6px 14px rgba(0, 0, 0, 0.45); }
+  #buttons { display: flex; gap: 8px; min-height: 46px; }
+  #buttons button {
+    flex: 1; height: 46px; border-radius: 4px; font: 700 15px var(--mono); cursor: pointer;
+    border: 1.5px solid var(--lime); background: none; color: var(--lime);
+  }
+  #buttons button.solid { background: var(--lime); color: var(--ink); }
+  #buttons button:disabled { opacity: 0.35; cursor: default; }
+
+  /* Cards */
+  .card {
+    position: relative; flex: none; background: var(--paper); color: var(--ink); border-radius: 7px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  }
+  .card.red { color: var(--pink); }
+  .card .corner { position: absolute; top: 4px; left: 6px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
+  .card .corner b { font-weight: 800; }
+  .card .pip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .card.big { width: 70px; height: 98px; }
+  .card.big .corner b { font-size: 18px; } .card.big .corner span { font-size: 14px; }
+  .card.big .pip { font-size: 40px; padding-top: 8px; }
+  .card.mid { width: 46px; height: 64px; border-radius: 6px; }
+  .card.mid .corner { top: 3px; left: 4px; } .card.mid .corner b { font-size: 13px; } .card.mid .corner span { font-size: 10px; }
+  .card.mid .pip { font-size: 24px; padding-top: 6px; }
+  .card .tag {
+    position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); white-space: nowrap;
+    background: var(--lime); color: var(--ink); font: 700 9px var(--mono); padding: 1px 5px; border-radius: 3px;
+  }
+  .back {
+    width: 22px; height: 30px; border-radius: 4px; background: var(--navy); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .back svg { width: 10px; height: 10px; }
+
+  /* Panels */
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; background: rgba(16, 20, 31, 0.95);
+  }
+  #help .intro { margin: 0; color: var(--lime); font: 13px var(--mono); max-width: 320px; }
+  #help ol { text-align: left; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
+  #help h2, #end h2 { margin: 0; font-size: 24px; }
+  #help button {
+    height: 44px; padding: 0 24px; border: 0; border-radius: 4px; background: var(--lime); color: var(--ink);
+    font: 700 14px var(--mono); cursor: pointer;
+  }
+  #end .final { font: 13px var(--mono); color: var(--muted); }
+  #end .made { font: 12px var(--mono); color: var(--muted); }
+  #end .made b { color: var(--lime); font-weight: 400; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="top"><h1>Brazilian Truco</h1><button id="helpButton">? how to play</button></div>
+<div id="scores"></div>
+<div id="status"></div>
+<div id="others"></div>
+<div id="table">
+  <div id="turnedBox"><div class="label">// turned card</div><div id="turned"></div><div class="label trump" id="trump"></div></div>
+  <div id="trickBox"><div class="label">// this round</div><div id="trick"></div><div id="note"></div><div id="call" hidden></div></div>
+</div>
+<div id="turn"></div>
+<div id="hand"></div>
+<div id="buttons"></div>
+
+<div id="help" class="overlay" hidden>
+  <h2>How to play</h2>
+  <p class="intro">Usually played in pairs (2 vs 2), or 1 vs 1.</p>
+  <ol>
+    <li>Cards, low to high: 4 5 6 7 Q J K A 2 3.</li>
+    <li>Each hand a turned card (vira) is shown; the next rank up is trump (manilhas), strongest of all: ♣ &gt; ♥ &gt; ♠ &gt; ♦.</li>
+    <li>Play one card each; the highest wins the round. Best of 3 rounds wins the hand (1 point).</li>
+    <li>On your turn call TRUCO! to raise the hand to 3. The other side accepts, gives up (you score), or raises: 6, 9, 12.</li>
+    <li>First side to 12 points wins.</li>
+  </ol>
+  <button id="helpClose">got it</button>
+</div>
+<div id="end" class="overlay" hidden></div>
+
+<script>
+"use strict";
+
+// Pure game rules: no DOM access. Cards are strings like "7H" (rank + suit letter).
+// Sides: seat % 2 (in 4 players, seats 0 and 2 are Team A, seats 1 and 3 Team B).
+const Logic = {
+  RANKS: ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"], // low to high
+  SUITS: ["D", "S", "H", "C"],                               // trump order, low to high
+  SYMBOLS: { D: "♦", S: "♠", H: "♥", C: "♣" },
+  VALUES: [1, 3, 6, 9, 12],
+  CALLS: { 3: "TRUCO", 6: "SIX", 9: "NINE", 12: "TWELVE" },
+  TARGET: 12,
+
+  rank: (card) => card.slice(0, -1),
+  suit: (card) => card.slice(-1),
+  side: (seat) => seat % 2,
+  nextValue: (value) => Logic.VALUES[Logic.VALUES.indexOf(value) + 1],
+
+  trumpRank(turned) {
+    return Logic.RANKS[(Logic.RANKS.indexOf(Logic.rank(turned)) + 1) % Logic.RANKS.length];
+  },
+  isTrump: (card, turned) => Logic.rank(card) === Logic.trumpRank(turned),
+  /** Trumps beat everything (by suit); other cards go by rank only, so equal ranks tie. */
+  strength(card, turned) {
+    if (Logic.isTrump(card, turned)) return 100 + Logic.SUITS.indexOf(Logic.suit(card));
+    return Logic.RANKS.indexOf(Logic.rank(card));
+  },
+
+  shuffledDeck(random) {
+    const deck = Logic.RANKS.flatMap((r) => Logic.SUITS.map((s) => r + s));
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  },
+
+  /** A new hand: shuffle, 3 cards each, turn one card. The player left of the dealer starts. */
+  deal(base, dealer, random) {
+    const n = base.n;
+    const deck = Logic.shuffledDeck(random);
+    const hands = Array.from({ length: n }, (_, seat) => deck.slice(seat * 3, seat * 3 + 3));
+    const first = (dealer + 1) % n;
+    return {
+      ...base,
+      dealer, hands, turned: deck[n * 3], deck: deck.slice(n * 3 + 1),
+      trick: [], tricks: [], turn: first,
+      value: 1, raise: null, last_raise_by: null, raise_log: null,
+      hand_no: (base.hand_no ?? 0) + 1,
+    };
+  },
+
+  /** The first move: deal the first hand so that seat 0 starts. */
+  newGame(n, random = Math.random) {
+    const base = { n, scores: [0, 0], last_trick: null, last_hand: null, winner: null, hand_no: 0 };
+    return Logic.deal(base, n - 1, random);
+  },
+
+  canRaise(state, seat) {
+    return state.winner === null && !state.raise && state.turn === seat && state.value < Logic.TARGET &&
+      state.last_raise_by !== Logic.side(seat);
+  },
+
+  /** Who won the hand so far: a side, null for nobody (all ties), or undefined if not decided. */
+  handResult(tricks) {
+    const r = tricks.map((t) => t.side);
+    if (r.length === 2) {
+      const [a, b] = r;
+      if (a === -1 && b === -1) return undefined;
+      if (a === -1) return b;
+      if (b === -1 || a === b) return a;
+      return undefined;
+    }
+    if (r.length === 3) {
+      const [a, b, c] = r;
+      if (c !== -1) return c;
+      if (a !== -1) return a;
+      return b !== -1 ? b : null;
+    }
+    return undefined;
+  },
+
+  /** Scores the hand (side may be null: nobody scores), then deals the next one or ends the game. */
+  endHand(state, side, points, how, random) {
+    const scores = [...state.scores];
+    if (side !== null) scores[side] += points;
+    const last_hand = { side, points: side === null ? 0 : points, how };
+    const done = side !== null && scores[side] >= Logic.TARGET;
+    if (done) {
+      return { state: { ...state, scores, last_hand, raise: null, winner: side }, nextTurn: null };
+    }
+    const next = Logic.deal({ ...state, scores, last_hand }, (state.dealer + 1) % state.n, random);
+    return { state: next, nextTurn: [next.turn] };
+  },
+
+  /**
+   * One action by `seat`: {type: "play", card}, {type: "raise"}, or, when answering a raise,
+   * {type: "accept"} / {type: "run"} / {type: "raise"}.
+   */
+  apply(state, seat, action, random = Math.random) {
+    if (state.winner !== null) throw new Error("the game is over");
+    const n = state.n;
+    const pending = state.raise;
+
+    if (pending) {
+      if (seat !== pending.answerer) throw new Error("not your answer");
+      if (action.type === "accept") {
+        const next = { ...state, value: pending.to, last_raise_by: pending.by, raise: null,
+          raise_log: { value: pending.to, result: "accepted" } };
+        return { state: next, nextTurn: [state.turn] };
+      }
+      if (action.type === "run") return Logic.endHand(state, pending.by, state.value, "run", random);
+      if (action.type === "raise" && pending.to < Logic.TARGET) {
+        // Raising again accepts the current raise first.
+        const to = Logic.nextValue(pending.to);
+        const raise = { to, by: Logic.side(seat), caller: seat, answerer: (seat + 1) % n };
+        const next = { ...state, value: pending.to, last_raise_by: pending.by, raise, raise_log: { value: to, result: "called" } };
+        return { state: next, nextTurn: [raise.answerer] };
+      }
+      throw new Error("illegal answer");
+    }
+
+    if (seat !== state.turn) throw new Error("not your turn");
+    if (action.type === "raise") {
+      if (!Logic.canRaise(state, seat)) throw new Error("can't raise now");
+      const raise = { to: Logic.nextValue(state.value), by: Logic.side(seat), caller: seat, answerer: (seat + 1) % n };
+      return { state: { ...state, raise, raise_log: { value: raise.to, result: "called" } }, nextTurn: [raise.answerer] };
+    }
+    if (action.type !== "play" || !state.hands[seat].includes(action.card)) throw new Error("illegal move");
+
+    const hands = state.hands.map((h, i) => (i === seat ? h.filter((c) => c !== action.card) : h));
+    const trick = [...state.trick, { seat, card: action.card }];
+    if (trick.length < n) {
+      const turn = (seat + 1) % n;
+      return { state: { ...state, hands, trick, turn }, nextTurn: [turn] };
+    }
+
+    // Trick complete: highest card wins; equal top cards from both sides tie.
+    const strengths = trick.map((p) => Logic.strength(p.card, state.turned));
+    const best = Math.max(...strengths);
+    const top = trick.filter((p, i) => strengths[i] === best);
+    const sides = new Set(top.map((p) => Logic.side(p.seat)));
+    const result = { side: sides.size === 1 ? Logic.side(top[0].seat) : -1, seat: top[0].seat };
+    const tricks = [...state.tricks, result];
+    const next = { ...state, hands, trick: [], tricks, turn: top[0].seat, last_trick: { plays: trick, ...result } };
+    const winner = Logic.handResult(tricks);
+    if (winner !== undefined) return Logic.endHand(next, winner, state.value, "tricks", random);
+    return { state: next, nextTurn: [next.turn] };
+  },
+
+  /** What the current best card in the trick is, and whether `seat`'s side holds it. */
+  trickLeader(state, seat) {
+    if (state.trick.length === 0) return null;
+    let best = null;
+    for (const p of state.trick) {
+      const s = Logic.strength(p.card, state.turned);
+      if (!best || s > best.strength) best = { strength: s, seat: p.seat };
+    }
+    return { ...best, partner: Logic.side(best.seat) === Logic.side(seat) };
+  },
+
+  computerAction(state, seat) {
+    const hand = state.hands[seat];
+    const turned = state.turned;
+    const trumps = hand.filter((c) => Logic.isTrump(c, turned)).length;
+    const atLeast = (rank) => hand.filter((c) => Logic.isTrump(c, turned) ||
+      Logic.RANKS.indexOf(Logic.rank(c)) >= Logic.RANKS.indexOf(rank)).length;
+
+    if (state.raise) {
+      if (trumps >= 2 && state.raise.to < Logic.TARGET) return { type: "raise" };
+      if (trumps >= 1 || atLeast("2") >= 2) return { type: "accept" };
+      return { type: "run" };
+    }
+    if (Logic.canRaise(state, seat)) {
+      const wants = state.value === 1 ? trumps >= 1 || atLeast("A") >= 2 : trumps >= 2;
+      if (wants) return { type: "raise" };
+    }
+    const byStrength = [...hand].sort((a, b) => Logic.strength(a, turned) - Logic.strength(b, turned));
+    const leader = Logic.trickLeader(state, seat);
+    if (leader && !leader.partner) {
+      const winning = byStrength.find((c) => Logic.strength(c, turned) > leader.strength);
+      if (winning) return { type: "play", card: winning };
+    }
+    return { type: "play", card: byStrength[0] };
+  },
+};
+
+// ---- UI ----
+
+const SEAT_COLORS = ["#FF5FA2", "#FFD84D", "#5FD4FF", "#C6F432"]; // the app's seat colors
+const STAR = `<svg viewBox="0 0 10 10"><path fill="#C6F432" d="M5 0.5 L6 4 L9.5 5 L6 6 L5 9.5 L4 6 L0.5 5 L4 4 Z"/></svg>`;
+
+let latest = null;     // the last state_changed message
+let moveSent = false;  // at most one make_move per state_changed
+let selected = null;   // the card picked in my hand
+let helpOpen = false;
+
+const $ = (id) => document.getElementById(id);
+const playerName = (seat) => latest.players[seat]?.name ?? `Player ${seat + 1}`;
+const color = (seat) => SEAT_COLORS[seat % SEAT_COLORS.length];
+const esc = (text) => String(text).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+
+function sideName(state, side) {
+  return state.n === 4 ? (side === 0 ? "Team A" : "Team B") : playerName(side);
+}
+
+function cardHTML(card, size, turned, withTag = false) {
+  const suit = Logic.suit(card);
+  const red = suit === "H" || suit === "D";
+  const sym = Logic.SYMBOLS[suit];
+  const tag = withTag && Logic.isTrump(card, turned) ? `<div class="tag">★ trump</div>` : "";
+  // Cards in my hand are buttons; the others are pictures.
+  const role = withTag ? `role="button" aria-label="play ${Logic.rank(card)}${sym}"` : `role="img" aria-label="${Logic.rank(card)}${sym}"`;
+  return `<div class="card ${size} ${red ? "red" : ""}" data-card="${card}" ${role}>` +
+    `<div class="corner"><b>${Logic.rank(card)}</b><span>${sym}</span></div><div class="pip">${sym}</div>${tag}</div>`;
+}
+
+function actingSeat() {
+  if (!latest || latest.status !== "ongoing" || !latest.state) return null;
+  const seat = latest.acting_for_player_index;
+  return seat !== null && seat < latest.state.n ? seat : null;
+}
+
+function makeMove(newState, nextTurn) {
+  if (moveSent) return;
+  moveSent = true;
+  window.parent.postMessage({ type: "make_move", new_state: newState, next_turn_player_indices: nextTurn }, "*");
+}
+
+function act(seat, action) {
+  const { state, nextTurn } = Logic.apply(latest.state, seat, action);
+  selected = null;
+  makeMove(state, nextTurn);
+}
+
+function render() {
+  const state = latest.state;
+  if (!state) { $("turn").textContent = "Dealing…"; return; }
+  const n = state.n;
+  const acting = actingSeat();
+  const humanActing = acting !== null && latest.players[acting]?.kind === "human";
+  const me = latest.my_player_index !== null && latest.my_player_index < n ? latest.my_player_index : null;
+  const turnSeat = latest.status === "ongoing" ? (latest.turn_of_player_indices ?? [])[0] : undefined;
+
+  // Score cards, one per side.
+  $("scores").replaceChildren(...[0, 1].map((side) => {
+    const seats = [...Array(n).keys()].filter((s) => Logic.side(s) === side);
+    const card = document.createElement("div");
+    card.className = "score";
+    if (turnSeat !== undefined && Logic.side(turnSeat) === side) card.style.borderColor = color(turnSeat);
+    const squares = seats.map((s) => `<span class="sq" style="background:${color(s)}"></span>`).join("");
+    const dots = [0, 1, 2].map((i) => {
+      const t = state.tricks[i];
+      if (!t) return "<span></span>";
+      if (t.side === -1) return `<span class="tie"></span>`;
+      return t.side === side ? `<span style="background:${color(t.seat)};border-color:${color(t.seat)}"></span>` : "<span></span>";
+    }).join("");
+    card.innerHTML = `<div class="name">${squares}<span>${esc(sideName(state, side))}</span></div>` +
+      (n === 4 ? `<div class="members">${seats.map((s) => esc(playerName(s))).join(" · ")}</div>` : "") +
+      `<div class="row"><span class="pts">${state.scores[side]} <small>/ ${Logic.TARGET}</small></span><span class="dots">${dots}</span></div>`;
+    return card;
+  }));
+
+  // Status line.
+  const raiseText = state.raise ? `${Logic.CALLS[state.raise.to]} called`
+    : state.raise_log ? `${Logic.CALLS[state.raise_log.value]} ${state.raise_log.result}` : "no raise";
+  const trickNo = Math.min(state.tricks.length + 1, 3);
+  $("status").innerHTML = `this hand: <b>${state.value}</b> pts · ${raiseText} · round ${trickNo} of 3`;
+
+  // Everyone else's cards, face down (spectators see every seat face down).
+  const others = [...Array(n).keys()].filter((s) => s !== me);
+  $("others").replaceChildren(...others.map((s) => {
+    const box = document.createElement("div");
+    box.className = "other";
+    if (s === turnSeat) box.style.borderColor = color(s);
+    const tag = me !== null && n === 4 && Logic.side(s) === Logic.side(me) ? " (partner)" : "";
+    box.innerHTML = `<div class="who" style="color:${color(s)}">${esc(playerName(s))}${tag}</div>` +
+      `<div class="backs">${state.hands[s].map(() => `<div class="back">${STAR}</div>`).join("")}</div>`;
+    return box;
+  }));
+
+  // Turned card and trump.
+  $("turned").innerHTML = cardHTML(state.turned, "mid", state.turned);
+  $("trump").innerHTML = `trump: <b>${Logic.trumpRank(state.turned)}</b>`;
+
+  // This trick (or the last one, until the next card is played).
+  const showLast = state.trick.length === 0 && state.tricks.length > 0 && state.last_trick;
+  const plays = state.trick.length ? state.trick : showLast ? state.last_trick.plays : [];
+  const trickEls = plays.map((p) => {
+    const el = document.createElement("div");
+    el.className = "play";
+    el.innerHTML = cardHTML(p.card, "mid", state.turned) + `<span class="who" style="color:${color(p.seat)}">${esc(playerName(p.seat))}</span>`;
+    if (showLast) el.style.opacity = "0.55";
+    return el;
+  });
+  if (!showLast && latest.status === "ongoing") {
+    for (let i = state.trick.length; i < n; i++) {
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      trickEls.push(slot);
+    }
+  }
+  $("trick").replaceChildren(...trickEls);
+  let note = "";
+  if (showLast) {
+    const t = state.last_trick;
+    note = t.side === -1 ? "last round: tie" : `last round: ${esc(playerName(t.seat))}`;
+  } else if (state.tricks.length === 0 && state.last_hand) {
+    const h = state.last_hand;
+    note = h.side === null ? "last hand: all rounds tied, nobody scores"
+      : `last hand: ${esc(sideName(state, h.side))} +${h.points}${h.how === "run" ? " (they gave up)" : ""}`;
+  }
+  $("note").innerHTML = note;
+  $("call").hidden = !state.raise;
+  if (state.raise) $("call").textContent = `${playerName(state.raise.caller)}: ${Logic.CALLS[state.raise.to]}!`;
+
+  // Whose turn.
+  if (turnSeat === undefined) {
+    $("turn").replaceChildren();
+  } else {
+    const square = document.createElement("span");
+    square.className = "square";
+    square.style.background = color(turnSeat);
+    const text = document.createElement("span");
+    text.textContent = humanActing ? (state.raise ? `Your turn: answer ${Logic.CALLS[state.raise.to]}` : "Your turn") : `${playerName(turnSeat)}'s turn`;
+    $("turn").replaceChildren(square, text);
+  }
+
+  // My hand.
+  const myCards = me === null ? [] : state.hands[me];
+  if (selected && !myCards.includes(selected)) selected = null;
+  $("hand").innerHTML = myCards.map((c) => cardHTML(c, "big", state.turned, true)).join("");
+  for (const el of $("hand").querySelectorAll(".card")) {
+    if (el.dataset.card === selected) el.classList.add("selected");
+    el.addEventListener("click", () => {
+      if (!humanActing || acting !== me || state.raise) return;
+      selected = selected === el.dataset.card ? null : el.dataset.card;
+      render();
+    });
+  }
+
+  // Buttons.
+  const buttons = [];
+  const button = (label, solid, onClick, disabled = false) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (solid) b.className = "solid";
+    b.disabled = disabled;
+    b.onclick = onClick;
+    buttons.push(b);
+  };
+  if (humanActing && acting === me) {
+    if (state.raise) {
+      button("accept", false, () => act(me, { type: "accept" }));
+      button("give up", false, () => act(me, { type: "run" }));
+      if (state.raise.to < Logic.TARGET) button(`${Logic.CALLS[Logic.nextValue(state.raise.to)]}!`, true, () => act(me, { type: "raise" }));
+    } else {
+      if (Logic.canRaise(state, me)) button(`${Logic.CALLS[Logic.nextValue(state.value)]}!`, true, () => act(me, { type: "raise" }));
+      button("play card", false, () => selected && act(me, { type: "play", card: selected }), !selected);
+    }
+  }
+  $("buttons").replaceChildren(...buttons);
+
+  // The end.
+  const end = $("end");
+  if (latest.status === "over") {
+    const w = state.winner;
+    let title = "The match is over";
+    if (w === 0 || w === 1) {
+      title = n === 4
+        ? `${sideName(state, w)} wins! (${[w, w + 2].map(playerName).join(" & ")})`
+        : `${playerName(w)} wins!`;
+    }
+    end.innerHTML = `<h2></h2><div class="final"></div><div class="made">made with g<b>/</b>b</div>`;
+    end.querySelector("h2").textContent = title;
+    end.querySelector(".final").textContent = w === 0 || w === 1
+      ? `${state.scores[0]} – ${state.scores[1]}` : latest.end_reason === "player_left" ? "a player left" : "";
+    end.hidden = false;
+  } else {
+    end.hidden = true;
+  }
+  $("help").hidden = !helpOpen;
+}
+
+$("helpButton").onclick = () => { helpOpen = true; render(); };
+$("helpClose").onclick = () => { helpOpen = false; render(); };
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const message = event.data;
+  if (!message || message.type !== "state_changed") return;
+  latest = message;
+  moveSent = false;
+
+  if (latest.status === "ongoing" && latest.state === null) {
+    // The first move deals the first hand (seat 0 starts).
+    if (latest.acting_for_player_index === 0) {
+      const n = latest.players.length >= 4 ? 4 : 2;
+      makeMove(Logic.newGame(n), [0]);
+    }
+    render();
+    return;
+  }
+  render();
+  const acting = actingSeat();
+  if (acting !== null && latest.players[acting]?.kind === "computer") {
+    const scheduledFor = latest;
+    setTimeout(() => {
+      if (latest !== scheduledFor) return;
+      act(acting, Logic.computerAction(latest.state, acting));
+    }, 800);
+  }
+});
+</script>
+</body>
+</html>

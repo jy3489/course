@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fox and Geese</title>
+<style>
+  :root {
+    --bg: #10141F; --text: #EEF0F5; --muted: #9AA3B8; --line: #2A3247; --empty: #1C2233;
+    --lime: #C6F432; --surface: #171C2A; --fox: #FF5FA2; --geese: #FFD84D;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 15px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 10px; -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  #cards { display: flex; gap: 6px; }
+  .card { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+  .card .who { font: 700 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .goal { font: 11px var(--mono); color: var(--muted); }
+  #info { display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--muted); margin: 6px 0 4px; }
+  #quiet { font: 11px var(--mono); color: var(--lime); margin-bottom: 4px; }
+  #turn { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; min-height: 24px; }
+  #turn .square { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+  #board {
+    position: relative; margin: 6px auto 0; aspect-ratio: 1 / 1;
+    width: min(100%, max(308px, calc(100vh - 200px)));
+  }
+  #board > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .point {
+    position: absolute; width: calc(100% / 7); height: calc(100% / 7); padding: 0; border: 0; background: none;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .dot { width: 22%; height: 22%; border-radius: 50%; background: var(--empty); border: 1.5px solid var(--line); }
+  .target { width: 26%; height: 26%; border-radius: 50%; background: var(--lime); }
+  .target.capture { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--lime); }
+  .piece { border-radius: 50%; position: relative; }
+  .piece svg { display: block; width: 100%; height: 100%; }
+  .piece.fox { width: 96%; height: 96%; }
+  .piece.goose { width: 80%; height: 80%; }
+  .piece.selected { box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px var(--lime); }
+  .piece.gone { position: absolute; animation: fade 1.2s ease-out forwards; pointer-events: none; }
+  @keyframes fade { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.6); } }
+  #stop {
+    display: block; margin: 8px auto 0; width: min(100%, 220px); height: 46px; border: 0; border-radius: 4px;
+    background: var(--lime); color: var(--bg); font: 700 16px var(--mono); cursor: pointer;
+  }
+  #end {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; background: rgba(16, 20, 31, 0.93);
+  }
+  #end .big { width: 130px; height: 130px; }
+  #end .big.pair { width: auto; height: 96px; display: flex; gap: 12px; }
+  #end .big.pair .piece { width: 96px; height: 96px; }
+  #end h2 { margin: 0; font-size: 28px; }
+  #end .why { font: 13px var(--mono); color: var(--muted); }
+  #end .made { font: 12px var(--mono); color: var(--muted); }
+  #end .made b { color: var(--lime); font-weight: 400; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<!-- Chip (same style as nim.html; colors from --rim / --disc), the fox face and the goose. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chip" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="23.5" style="fill: var(--rim)"/>
+    <g fill="#F7F3EA">
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(45 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(90 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(135 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(180 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(225 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(270 24 24)"/>
+      <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" transform="rotate(315 24 24)"/>
+    </g>
+    <circle cx="24" cy="24" r="16.5" style="fill: var(--disc)"/>
+    <circle cx="24" cy="24" r="14" fill="none" stroke="#F7F3EA" stroke-width="1" stroke-dasharray="2.6 2.2" opacity="0.85"/>
+  </symbol>
+  <symbol id="fox-face" viewBox="0 0 48 48">
+    <path d="M14.5 20.5 L17.6 11.8 L21.4 17.6 H26.6 L30.4 11.8 L33.5 20.5 Q33.8 27.8 24 33 Q14.2 27.8 14.5 20.5 Z"
+          fill="#FF9F4D" stroke="#10141F" stroke-width="0.7" stroke-linejoin="round"/>
+    <path d="M16.9 18.4 L18 14.6 L19.9 17.6 Z M31.1 18.4 L30 14.6 L28.1 17.6 Z" fill="#10141F"/>
+    <path d="M16.8 23.4 Q20.4 24 24 27.2 Q27.6 24 31.2 23.4 Q30.2 28.6 24 32.2 Q17.8 28.6 16.8 23.4 Z" fill="#F7F3EA"/>
+    <circle cx="20.4" cy="21.6" r="1.45" fill="#10141F"/>
+    <circle cx="27.6" cy="21.6" r="1.45" fill="#10141F"/>
+    <ellipse cx="24" cy="29.3" rx="1.7" ry="1.25" fill="#10141F"/>
+  </symbol>
+  <symbol id="goose" viewBox="0 0 48 48">
+    <path d="M24.3 27 C26.4 22.2 24.2 19.4 27.4 16.6" fill="none" stroke="#10141F" stroke-width="4.6" stroke-linecap="round"/>
+    <circle cx="28.4" cy="16.2" r="3" fill="#F7F3EA" stroke="#10141F" stroke-width="0.8"/>
+    <path d="M13 26 L16.6 27 Q18 23.4 23 23.9 Q29.6 24.4 29.6 28.5 Q29.2 33 21 33 Q14.6 33 13 26 Z"
+          fill="#F7F3EA" stroke="#10141F" stroke-width="0.8" stroke-linejoin="round"/>
+    <path d="M24.3 27 C26.4 22.2 24.2 19.4 27.4 16.6" fill="none" stroke="#F7F3EA" stroke-width="3" stroke-linecap="round"/>
+    <path d="M16.4 27.4 Q21 25.4 25.2 28.6" fill="none" stroke="#10141F" stroke-width="0.6" stroke-linecap="round"/>
+    <path d="M31 15.4 L34.6 16.5 L31 17.7 Z" fill="#FF9F4D" stroke="#10141F" stroke-width="0.5" stroke-linejoin="round"/>
+    <circle cx="29.1" cy="15.5" r="0.75" fill="#10141F"/>
+  </symbol>
+</svg>
+
+<div id="cards"></div>
+<div id="info"><span id="left"></span><span>↓ geese move down or sideways</span></div>
+<div id="quiet" hidden></div>
+<div id="turn"></div>
+<div id="board"></div>
+<button id="stop" hidden>stop ✓</button>
+<div id="end" hidden></div>
+
+<script>
+"use strict";
+
+// Pure game rules: no DOM access. Points are [row, col] on a 7x7 grid without the 2x2
+// corners (the 33-point cross). Seat 0 is the fox, seat 1 the geese.
+const Logic = {
+  FOX: 0,
+  GEESE: 1,
+  DIRS: [[-1, 0], [1, 0], [0, -1], [0, 1]],
+  GOOSE_DIRS: [[1, 0], [0, -1], [0, 1]], // down or sideways, never back up
+
+  isPoint: (r, c) => r >= 0 && r < 7 && c >= 0 && c < 7 && (r >= 2 && r <= 4 || c >= 2 && c <= 4),
+  points() {
+    const all = [];
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) if (Logic.isPoint(r, c)) all.push([r, c]);
+    return all;
+  },
+  same: (a, b) => a[0] === b[0] && a[1] === b[1],
+
+  /** 13 geese on the 13 points nearest the top, the fox in the center. */
+  initialState() {
+    const geese = Logic.points().filter(([r]) => r <= 2);
+    return { fox: [3, 3], geese, captured: 0, last_move: null, jumping: false, quiet_moves: 0, draw: false, winner: null };
+  },
+
+  hasGoose: (state, r, c) => state.geese.some((g) => g[0] === r && g[1] === c),
+  isEmpty: (state, r, c) => Logic.isPoint(r, c) && !Logic.hasGoose(state, r, c) && !(state.fox[0] === r && state.fox[1] === c),
+
+  /** Fox moves: steps (unless `jumpsOnly`) and jumps over a goose to the empty point behind it. */
+  foxMoves(state, jumpsOnly = false) {
+    const [r, c] = state.fox, moves = [];
+    for (const [dr, dc] of Logic.DIRS) {
+      if (!jumpsOnly && Logic.isEmpty(state, r + dr, c + dc)) moves.push({ from: [r, c], to: [r + dr, c + dc], capture: null });
+      if (Logic.hasGoose(state, r + dr, c + dc) && Logic.isEmpty(state, r + 2 * dr, c + 2 * dc)) {
+        moves.push({ from: [r, c], to: [r + 2 * dr, c + 2 * dc], capture: [r + dr, c + dc] });
+      }
+    }
+    return moves;
+  },
+
+  geeseMoves(state) {
+    const moves = [];
+    for (const [r, c] of state.geese) {
+      for (const [dr, dc] of Logic.GOOSE_DIRS) {
+        if (Logic.isEmpty(state, r + dr, c + dc)) moves.push({ from: [r, c], to: [r + dr, c + dc], capture: null });
+      }
+    }
+    return moves;
+  },
+
+  legalMoves(state, seat) {
+    return seat === Logic.FOX ? Logic.foxMoves(state, state.jumping) : Logic.geeseMoves(state);
+  },
+
+  DRAW_AFTER: 60, // moves in a row without a capture
+
+  /** Applies a move ({from, to} from legalMoves, or {stop: true} to end a multi-jump). After
+   * 60 moves in a row without a capture the game is a draw (unless that move won). */
+  apply(state, seat, move) {
+    const result = Logic.applyMove(state, seat, move);
+    if (result.nextTurn !== null && result.state.quiet_moves >= Logic.DRAW_AFTER) {
+      return { state: { ...result.state, jumping: false, draw: true, winner: null }, nextTurn: null };
+    }
+    return result;
+  },
+
+  applyMove(state, seat, move) {
+    const end = (next, winner) => ({ state: { ...next, winner }, nextTurn: null });
+    // Before the geese move: if they have no legal move, the fox wins.
+    const toGeese = (next) => Logic.geeseMoves(next).length === 0 ? end(next, Logic.FOX) : { state: next, nextTurn: [Logic.GEESE] };
+
+    if (move.stop) {
+      if (seat !== Logic.FOX || !state.jumping) throw new Error("nothing to stop");
+      return toGeese({ ...state, jumping: false });
+    }
+    const legal = Logic.legalMoves(state, seat).find((m) => Logic.same(m.from, move.from) && Logic.same(m.to, move.to));
+    if (!legal) throw new Error("illegal move");
+    const last_move = { seat, from: legal.from, to: legal.to, captured: legal.capture };
+    const quiet_moves = legal.capture ? 0 : (state.quiet_moves ?? 0) + 1;
+
+    if (seat === Logic.GEESE) {
+      const geese = state.geese.map((g) => (Logic.same(g, legal.from) ? legal.to : g));
+      const next = { ...state, geese, last_move, quiet_moves, jumping: false };
+      if (Logic.foxMoves(next).length === 0) return end(next, Logic.GEESE);
+      return { state: next, nextTurn: [Logic.FOX] };
+    }
+    if (!legal.capture) return toGeese({ ...state, fox: legal.to, last_move, quiet_moves, jumping: false });
+    const geese = state.geese.filter((g) => !Logic.same(g, legal.capture));
+    const next = { ...state, fox: legal.to, geese, captured: state.captured + 1, last_move, quiet_moves, jumping: false };
+    if (geese.length <= 4) return end(next, Logic.FOX);
+    // Another jump available: the fox may keep jumping (or stop).
+    if (Logic.foxMoves(next, true).length > 0) return { state: { ...next, jumping: true }, nextTurn: [Logic.FOX] };
+    return toGeese(next);
+  },
+
+  /** How many points the fox can reach by stepping (its territory). */
+  foxArea(state) {
+    const seen = new Set([state.fox.join(",")]), todo = [state.fox];
+    while (todo.length) {
+      const [r, c] = todo.pop();
+      for (const [dr, dc] of Logic.DIRS) {
+        const k = `${r + dr},${c + dc}`;
+        if (!seen.has(k) && Logic.isEmpty(state, r + dr, c + dc)) { seen.add(k); todo.push([r + dr, c + dc]); }
+      }
+    }
+    return seen.size;
+  },
+
+  /** The most geese the fox can capture in a row from this position. */
+  longestChain(state) {
+    let best = 0;
+    for (const m of Logic.foxMoves(state, true)) {
+      const next = { ...state, fox: m.to, geese: state.geese.filter((g) => !Logic.same(g, m.capture)) };
+      best = Math.max(best, 1 + Logic.longestChain(next));
+    }
+    return best;
+  },
+
+  /** Computer move for `seat`: a move from legalMoves, or {stop: true}. */
+  computerMove(state, seat, random = Math.random) {
+    // The move with the smallest score (compared item by item); ties are broken at random.
+    const compare = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+    const pickBest = (moves, score) => {
+      let best = [], bestScore = null;
+      for (const m of moves) {
+        const s = score(m);
+        const c = bestScore === null ? -1 : compare(s, bestScore);
+        if (c < 0) { best = [m]; bestScore = s; } else if (c === 0) best.push(m);
+      }
+      return best[Math.floor(random() * best.length)];
+    };
+
+    if (seat === Logic.FOX) {
+      const jumps = Logic.foxMoves(state, true);
+      if (jumps.length) {
+        // Longest capture chain first.
+        return pickBest(jumps, (m) => {
+          const next = { ...state, fox: m.to, geese: state.geese.filter((g) => !Logic.same(g, m.capture)) };
+          return [-(1 + Logic.longestChain(next))];
+        });
+      }
+      if (state.jumping) return { stop: true };
+      // Otherwise go where the fox has the most moves next time.
+      return pickBest(Logic.foxMoves(state), (m) => [-Logic.foxMoves({ ...state, fox: m.to }).length]);
+    }
+
+    // Geese: stay safe, then shrink the fox's territory and moves, then prefer moving down,
+    // then keep together.
+    return pickBest(Logic.geeseMoves(state), (m) => {
+      const geese = state.geese.map((g) => (Logic.same(g, m.from) ? m.to : g));
+      const next = { ...state, geese };
+      const foxMoves = Logic.foxMoves(next);
+      const threats = foxMoves.filter((f) => f.capture).length;
+      let together = 0;
+      for (const [r, c] of geese) for (const [dr, dc] of Logic.DIRS) if (Logic.hasGoose(next, r + dr, c + dc)) together++;
+      const sideways = m.to[0] === m.from[0] ? 1 : 0;
+      return [threats, Logic.foxArea(next), foxMoves.length, sideways, -together];
+    });
+  },
+};
+
+// ---- UI ----
+
+const COLORS = ["#FF5FA2", "#FFD84D"]; // the app's seat colors: fox pink, geese yellow
+const FOX_CHIP = "--rim: #C93E7D; --disc: #FF5FA2";
+const GOOSE_CHIP = "--rim: #C9A422; --disc: #FFD84D";
+
+let latest = null;      // the last state_changed message
+let moveSent = false;   // at most one make_move per state_changed
+let selected = null;    // [row, col] of the selected piece
+let fadeShownFor = -1;  // move_count whose captured goose already faded out
+
+const $ = (id) => document.getElementById(id);
+const gameState = () => latest.state ?? Logic.initialState();
+const playerName = (seat) => latest.players[seat]?.name ?? (seat === 0 ? "Fox" : "Geese");
+
+const chipHTML = (kind, extra = "") =>
+  `<div class="piece ${kind} ${extra}"><svg viewBox="0 0 48 48" style="${kind === "fox" ? FOX_CHIP : GOOSE_CHIP}">` +
+  `<use href="#chip"/><use href="#${kind === "fox" ? "fox-face" : "goose"}"/></svg></div>`;
+
+function actingSeat() {
+  if (!latest || latest.status !== "ongoing") return null;
+  const seat = latest.acting_for_player_index;
+  return seat === 0 || seat === 1 ? seat : null;
+}
+
+function makeMove(newState, nextTurn) {
+  if (moveSent) return;
+  moveSent = true;
+  window.parent.postMessage({ type: "make_move", new_state: newState, next_turn_player_indices: nextTurn }, "*");
+}
+
+function play(seat, move) {
+  const { state, nextTurn } = Logic.apply(gameState(), seat, move);
+  selected = null;
+  makeMove(state, nextTurn);
+}
+
+function render() {
+  const state = gameState();
+  const acting = actingSeat();
+  const humanActing = acting !== null && latest.players[acting]?.kind === "human" && latest.state !== null;
+  const turnSeat = latest.status === "ongoing" ? (latest.turn_of_player_indices ?? [])[0] : undefined;
+  if (humanActing && acting === Logic.FOX) selected = state.fox; // the fox is the only piece
+  if (!humanActing) selected = null;
+
+  // Player cards.
+  const goals = ["capture the geese", "trap the fox"];
+  $("cards").replaceChildren(...[0, 1].map((seat) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    if (seat === turnSeat) card.style.borderColor = COLORS[seat];
+    card.innerHTML = `<div class="who"></div><div class="goal">${goals[seat]}</div>`;
+    card.querySelector(".who").textContent = `${seat === 0 ? "FOX" : "GEESE"} · ${playerName(seat)}`;
+    card.querySelector(".who").style.color = COLORS[seat];
+    return card;
+  }));
+  $("left").textContent = `// ${state.geese.length} geese left`;
+  const quiet = state.quiet_moves ?? 0;
+  $("quiet").hidden = !(quiet >= 40 && latest.status === "ongoing");
+  $("quiet").textContent = `// ${quiet} moves without a capture (draw at ${Logic.DRAW_AFTER})`;
+
+  // Whose turn.
+  if (turnSeat === undefined || turnSeat > 1) {
+    $("turn").replaceChildren();
+  } else {
+    const square = document.createElement("span");
+    square.className = "square";
+    square.style.background = COLORS[turnSeat];
+    const text = document.createElement("span");
+    text.textContent = humanActing ? (state.jumping ? "Your turn: keep jumping?" : "Your turn") : `${playerName(turnSeat)}'s turn`;
+    $("turn").replaceChildren(square, text);
+  }
+
+  // Targets for the selected piece.
+  const targets = selected && humanActing
+    ? Logic.legalMoves(state, acting).filter((m) => Logic.same(m.from, selected))
+    : [];
+  const targetAt = (r, c) => targets.find((m) => m.to[0] === r && m.to[1] === c);
+
+  // Board lines and the last move.
+  const center = (v) => v + 0.5;
+  let svg = `<svg viewBox="0 0 7 7" aria-hidden="true"><g stroke="#2A3247" stroke-width="0.045" stroke-linecap="round">`;
+  for (let i = 0; i < 7; i++) {
+    const [a, b] = i >= 2 && i <= 4 ? [0, 6] : [2, 4];
+    svg += `<line x1="${center(a)}" y1="${center(i)}" x2="${center(b)}" y2="${center(i)}"/>`;
+    svg += `<line x1="${center(i)}" y1="${center(a)}" x2="${center(i)}" y2="${center(b)}"/>`;
+  }
+  svg += `</g>`;
+  const last = state.last_move;
+  if (last) {
+    svg += `<line x1="${center(last.from[1])}" y1="${center(last.from[0])}" x2="${center(last.to[1])}" y2="${center(last.to[0])}"
+      stroke="#C6F432" stroke-width="0.06" stroke-dasharray="0.16 0.12" stroke-linecap="round"/>`;
+  }
+  svg += `</svg>`;
+
+  // Points: pieces, empty dots and move targets (all buttons, so they're easy to tap).
+  const fadeCapture = last && last.captured && fadeShownFor !== latest.move_count ? last.captured : null;
+  const buttons = Logic.points().map(([r, c]) => {
+    const button = document.createElement("button");
+    button.className = "point";
+    button.style.left = `${(c * 100) / 7}%`;
+    button.style.top = `${(r * 100) / 7}%`;
+    const isFox = Logic.same(state.fox, [r, c]);
+    const isGoose = Logic.hasGoose(state, r, c);
+    const target = targetAt(r, c);
+    const isSelected = selected && Logic.same(selected, [r, c]);
+    if (isFox) {
+      button.innerHTML = chipHTML("fox", isSelected ? "selected" : "");
+      button.setAttribute("aria-label", `fox ${r},${c}`);
+    } else if (isGoose) {
+      button.innerHTML = chipHTML("goose", isSelected ? "selected" : "");
+      button.setAttribute("aria-label", `goose ${r},${c}`);
+    } else if (target) {
+      button.innerHTML = `<div class="target ${target.capture ? "capture" : ""}"></div>`;
+      button.setAttribute("aria-label", `${target.capture ? "jump" : "move"} to ${r},${c}`);
+    } else {
+      button.innerHTML = `<div class="dot"></div>`;
+      button.setAttribute("aria-label", `empty ${r},${c}`);
+    }
+    if (fadeCapture && Logic.same(fadeCapture, [r, c])) button.insertAdjacentHTML("beforeend", chipHTML("goose", "gone"));
+    button.addEventListener("click", () => onPoint(r, c));
+    return button;
+  });
+  if (fadeCapture) fadeShownFor = latest.move_count;
+  $("board").innerHTML = svg;
+  $("board").append(...buttons);
+
+  // Stop button during a multi-jump.
+  $("stop").hidden = !(humanActing && acting === Logic.FOX && state.jumping);
+
+  // The end.
+  const end = $("end");
+  if (latest.status === "over") {
+    const w = state.winner;
+    const why = state.draw ? `${Logic.DRAW_AFTER} moves without a capture`
+      : w === Logic.GEESE ? "the fox is trapped"
+      : w === Logic.FOX ? (state.geese.length <= 4 ? "only 4 geese left" : "the geese can't move")
+      : latest.end_reason === "player_left" ? "a player left" : "";
+    const big = state.draw ? `<div class="big pair">${chipHTML("fox")}${chipHTML("goose")}</div>`
+      : w === 0 || w === 1 ? `<div class="big">${chipHTML(w === 0 ? "fox" : "goose")}</div>` : "";
+    end.innerHTML = big +
+      `<h2></h2><div class="why"></div><div class="made">made with g<b>/</b>b</div>`;
+    if (!state.draw) {
+      end.querySelector(".big .piece")?.style.setProperty("width", "100%");
+      end.querySelector(".big .piece")?.style.setProperty("height", "100%");
+    }
+    end.querySelector("h2").textContent = state.draw ? "Draw!" : w === 0 || w === 1
+      ? `${w === 0 ? "Fox" : "Geese"} · ${playerName(w)} wins!` : "The match is over";
+    end.querySelector(".why").textContent = why;
+    end.hidden = false;
+  } else {
+    end.hidden = true;
+  }
+}
+
+function onPoint(r, c) {
+  const acting = actingSeat();
+  if (acting === null || latest.players[acting]?.kind !== "human" || latest.state === null) return;
+  const state = gameState();
+  const target = selected && Logic.legalMoves(state, acting).find((m) => Logic.same(m.from, selected) && m.to[0] === r && m.to[1] === c);
+  if (target) return play(acting, target);
+  if (acting === Logic.GEESE && Logic.hasGoose(state, r, c)) {
+    selected = selected && Logic.same(selected, [r, c]) ? null : [r, c];
+  }
+  render();
+}
+
+$("stop").onclick = () => play(Logic.FOX, { stop: true });
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const message = event.data;
+  if (!message || message.type !== "state_changed") return;
+  latest = message;
+  moveSent = false;
+  selected = null;
+  render();
+
+  const acting = actingSeat();
+  if (acting === null) return;
+  if (latest.state === null) {
+    // The platform gives seat 0 (the fox) the first turn, but the geese start: the first
+    // move only sets up the board and passes the turn to the geese.
+    if (acting === Logic.FOX) makeMove(Logic.initialState(), [Logic.GEESE]);
+    return;
+  }
+  if (latest.players[acting]?.kind === "computer") {
+    const scheduledFor = latest;
+    setTimeout(() => {
+      if (latest !== scheduledFor) return;
+      play(acting, Logic.computerMove(gameState(), acting));
+    }, 700);
+  }
+});
+</script>
+</body>
+</html>

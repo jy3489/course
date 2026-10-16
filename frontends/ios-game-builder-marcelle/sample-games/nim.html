@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nim</title>
+<style>
+  :root {
+    --bg: #10141F; --text: #EEF0F5; --muted: #9AA3B8; --line: #2A3247;
+    --lime: #C6F432; --surface: #171C2A;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 16px; -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  #turn { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; min-height: 30px; }
+  #turn .square { width: 14px; height: 14px; border-radius: 2px; flex: none; }
+  #last { font: 13px var(--mono); color: var(--muted); min-height: 20px; margin: 4px 0 12px; }
+  .heap { border-top: 1px solid var(--line); padding: 12px 0; }
+  .heap .label { font: 12px var(--mono); color: var(--muted); margin-bottom: 8px; }
+  .heap .label b { color: var(--text); font-weight: 400; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 48px; }
+  .chip {
+    width: 48px; height: 48px; padding: 0; border: 0; background: none; border-radius: 50%;
+    cursor: pointer;
+  }
+  .chip:disabled { cursor: default; }
+  .chip svg { display: block; width: 48px; height: 48px; }
+  .chip.selected { box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px var(--lime); }
+  .empty { font: 12px var(--mono); color: var(--muted); line-height: 48px; }
+  #take {
+    display: block; width: 100%; margin-top: 12px; padding: 14px; border: 0; border-radius: 4px;
+    background: var(--lime); color: var(--bg); font: 700 16px var(--mono); cursor: pointer;
+  }
+  #take:disabled { opacity: 0.35; cursor: default; }
+  #winner {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 18px; background: rgba(16, 20, 31, 0.92); text-align: center; padding: 24px;
+  }
+  #winner svg { width: 140px; height: 140px; }
+  #winner h1 { margin: 0; font-size: 30px; }
+  #winner p { margin: 0; font: 13px var(--mono); color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<!-- One poker chip, reused everywhere. Each use sets --rim and --disc for its color. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chip" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="23.5" style="fill: var(--rim)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(0 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(45 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(90 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(135 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(180 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(225 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(270 24 24)"/>
+    <rect x="21.5" y="0.8" width="5" height="7" rx="1.2" fill="#F7F3EA" transform="rotate(315 24 24)"/>
+    <circle cx="24" cy="24" r="16.5" style="fill: var(--disc)"/>
+    <circle cx="24" cy="24" r="14" fill="none" stroke="#F7F3EA" stroke-width="1" stroke-dasharray="2.6 2.2" opacity="0.85"/>
+    <!-- 4-point star -->
+    <path fill="#10141F" d="M24 16.5 L26 22 L31.5 24 L26 26 L24 31.5 L22 26 L16.5 24 L22 22 Z"/>
+  </symbol>
+</svg>
+
+<div id="turn"></div>
+<div id="last"></div>
+<div id="heaps"></div>
+<button id="take" hidden></button>
+<div id="winner" hidden></div>
+
+<script>
+"use strict";
+
+// Pure game rules: no DOM access.
+const Logic = {
+  START: [3, 5, 7],
+
+  initialState() {
+    return { heaps: [...Logic.START], last_move: null, winner: null };
+  },
+
+  isOver(state) {
+    return state.heaps.every((h) => h === 0);
+  },
+
+  /** Seat `seat` takes `count` chips from heap `heap`. Whoever takes the last chip wins. */
+  play(state, seat, heap, count, numPlayers) {
+    const heaps = [...state.heaps];
+    if (!(count >= 1 && count <= heaps[heap])) throw new Error("illegal move");
+    heaps[heap] -= count;
+    const over = heaps.every((h) => h === 0);
+    return {
+      state: { heaps, last_move: { seat, heap, count }, winner: over ? seat : null },
+      nextTurn: over ? null : [(seat + 1) % numPlayers],
+    };
+  },
+
+  /** 2 players: perfect play with the nim-sum (XOR). 3-4 players: a random legal move. */
+  computerMove(state, numPlayers) {
+    const heaps = state.heaps;
+    if (numPlayers === 2) {
+      const nimSum = heaps.reduce((a, h) => a ^ h, 0);
+      if (nimSum !== 0) {
+        const heap = heaps.findIndex((h) => (h ^ nimSum) < h);
+        return { heap, count: heaps[heap] - (heaps[heap] ^ nimSum) };
+      }
+      // Losing position: take 1 from the largest heap and hope for a mistake.
+      const largest = heaps.indexOf(Math.max(...heaps));
+      return { heap: largest, count: 1 };
+    }
+    const nonEmpty = heaps.map((h, i) => i).filter((i) => heaps[i] > 0);
+    const heap = nonEmpty[Math.floor(Math.random() * nonEmpty.length)];
+    return { heap, count: 1 + Math.floor(Math.random() * heaps[heap]) };
+  },
+};
+
+// ---- UI ----
+
+// Chip colors per heap: [rim, disc].
+const HEAP_CHIPS = [["#C93E7D", "#FF5FA2"], ["#2E9CC8", "#5FD4FF"], ["#C9A422", "#FFD84D"], ["#1FA88C", "#3FE0C0"]];
+// Seat colors (as in the GameBuilder app) and a matching chip for the winner.
+const PLAYER_COLORS = ["#FF5FA2", "#FFD84D", "#5FD4FF", "#C6F432"];
+const PLAYER_CHIPS = [["#C93E7D", "#FF5FA2"], ["#C9A422", "#FFD84D"], ["#2E9CC8", "#5FD4FF"], ["#8FB21F", "#C6F432"]];
+
+let latest = null;     // the last state_changed message
+let moveSent = false;  // at most one make_move per state_changed
+let selection = null;  // { heap, from }: chip `from` and every chip after it
+
+const $ = (id) => document.getElementById(id);
+
+/** A chip in the given [rim, disc] colors (the shape is the #chip symbol). */
+function chipSVG([rim, disc]) {
+  return `<svg viewBox="0 0 48 48" style="--rim: ${rim}; --disc: ${disc}" aria-hidden="true"><use href="#chip"/></svg>`;
+}
+
+function makeMove(newState, nextTurn) {
+  if (moveSent) return;
+  moveSent = true;
+  window.parent.postMessage({ type: "make_move", new_state: newState, next_turn_player_indices: nextTurn }, "*");
+}
+
+function actingSeat() {
+  if (!latest || latest.status !== "ongoing") return null;
+  return latest.acting_for_player_index;
+}
+
+const playerName = (seat) => latest.players[seat]?.name ?? `Player ${seat + 1}`;
+const playerColor = (seat) => PLAYER_COLORS[seat % PLAYER_COLORS.length];
+
+function render() {
+  const state = latest.state ?? Logic.initialState();
+  const acting = actingSeat();
+  const humanActing = acting !== null && latest.players[acting]?.kind === "human";
+  if (!humanActing) selection = null;
+
+  // Whose turn.
+  const turn = $("turn");
+  const seat = latest.status === "ongoing" ? (latest.turn_of_player_indices ?? [])[0] : undefined;
+  if (seat === undefined) {
+    turn.replaceChildren();
+  } else {
+    const square = document.createElement("span");
+    square.className = "square";
+    square.style.background = playerColor(seat);
+    const text = document.createElement("span");
+    text.textContent = humanActing ? "Your turn" : `${playerName(seat)}'s turn`;
+    turn.replaceChildren(square, text);
+  }
+
+  // Last move.
+  const last = state.last_move;
+  $("last").textContent = last
+    ? `${playerName(last.seat)} took ${last.count} from heap ${last.heap + 1}`
+    : "Take the last chip to win.";
+
+  // Heaps.
+  $("heaps").replaceChildren(...state.heaps.map((count, heap) => {
+    const row = document.createElement("div");
+    row.className = "heap";
+    const label = document.createElement("div");
+    label.className = "label";
+    label.innerHTML = `heap ${heap + 1} · <b>${count}</b>`;
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    if (count === 0) {
+      const empty = document.createElement("span");
+      empty.className = "empty";
+      empty.textContent = "empty";
+      chips.append(empty);
+    }
+    for (let i = 0; i < count; i++) {
+      const chip = document.createElement("button");
+      chip.className = "chip";
+      chip.innerHTML = chipSVG(HEAP_CHIPS[heap % HEAP_CHIPS.length]);
+      chip.disabled = !humanActing;
+      chip.setAttribute("aria-label", `heap ${heap + 1} chip ${i + 1}`);
+      if (selection && selection.heap === heap && i >= selection.from) chip.classList.add("selected");
+      chip.addEventListener("click", () => {
+        // Tapping the first selected chip again clears the selection.
+        const same = selection && selection.heap === heap && selection.from === i;
+        selection = same ? null : { heap, from: i };
+        render();
+      });
+      chips.append(chip);
+    }
+    row.append(label, chips);
+    return row;
+  }));
+
+  // Take button.
+  const take = $("take");
+  take.hidden = !humanActing;
+  const n = selection ? state.heaps[selection.heap] - selection.from : 0;
+  take.disabled = n === 0;
+  take.textContent = n === 0 ? "tap a chip" : `take ${n} →`;
+  take.onclick = () => {
+    if (!selection || n === 0) return;
+    const { state: next, nextTurn } = Logic.play(state, acting, selection.heap, n, latest.players.length);
+    selection = null;
+    makeMove(next, nextTurn);
+  };
+
+  // Winner.
+  const winner = $("winner");
+  if (latest.status === "over") {
+    const w = state.winner;
+    winner.innerHTML = w !== null && w !== undefined
+      ? chipSVG(PLAYER_CHIPS[w % PLAYER_CHIPS.length]) + "<h1></h1><p>took the last chip</p>"
+      : chipSVG(HEAP_CHIPS[0]) + "<h1>The match is over</h1><p></p>";
+    if (w !== null && w !== undefined) winner.querySelector("h1").textContent = `${playerName(w)} wins!`;
+    if (latest.end_reason === "player_left") winner.querySelector("p").textContent = "a player left";
+    winner.hidden = false;
+  } else {
+    winner.hidden = true;
+  }
+
+  // A computer's turn: this game plays it, after a short pause.
+  if (acting !== null && latest.players[acting]?.kind === "computer") {
+    const scheduledFor = latest;
+    setTimeout(() => {
+      if (latest !== scheduledFor) return;
+      const move = Logic.computerMove(state, latest.players.length);
+      const { state: next, nextTurn } = Logic.play(state, acting, move.heap, move.count, latest.players.length);
+      makeMove(next, nextTurn);
+    }, 700);
+  }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const message = event.data;
+  if (!message || message.type !== "state_changed") return;
+  latest = message;
+  moveSent = false;
+  render();
+});
+</script>
+</body>
+</html>

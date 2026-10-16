@@ -22,12 +22,14 @@ interface PortalApi {
     @PATCH("matches/{id}") suspend fun computers(@Path("id") id: String, @Body body: Computers): Match
     @DELETE("matches/{id}") suspend fun delete(@Path("id") id: String)
     @POST("matches/{id}/moves") suspend fun move(@Path("id") id: String, @Body body: Move): Match
+    @POST("agent/chat") suspend fun agentChat(@Body body: AgentChatRequest): AgentChatResponse
+    @POST("games") suspend fun createGame(@Body body: NewGame): Game
 }
 
 fun makeApi(baseUrl: String, credentials: () -> Credentials?): PortalApi {
     val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
-        .callTimeout(20, TimeUnit.SECONDS).retryOnConnectionFailure(false)
+        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(130, TimeUnit.SECONDS).retryOnConnectionFailure(false)
         .followRedirects(false).followSslRedirects(false)
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()

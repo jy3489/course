@@ -1,4 +1,5 @@
 // Portal: list your matches, create, join, start, leave and delete them, and play them.
+
 // The selected match's game runs in a sandboxed iframe; the page polls the server and
 // sends the game state_changed whenever the match changes.
 // Identity comes from Auth (the account menu); data comes from the public and
@@ -343,21 +344,25 @@ function renderLists() {
   const key = JSON.stringify(games.map((game) => [game.id, game.version]));
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    select.replaceChildren(
-      ...games.map((game) =>
-        el("option", {
-          value: game.id,
-          textContent: `${game.name} (${game.allowed_player_counts.join(", ")} players)`,
-        }),
-      ),
-    );
-    if (games.some((game) => game.id === previous)) select.value = previous;
+    select.replaceChildren(...games.map((game)=>el("option",{value:game.id,textContent:`${game.name} (${game.allowed_player_counts.join(", ")} players)`})));
+    const requested=new URLSearchParams(location.hash.slice(1)).get("game");
+    const chosen=requested||previous;
+    if(games.some(game=>game.id===chosen))select.value=chosen;
   }
-  $("create").disabled = !user || games.length === 0 || !navigator.onLine;
-  $("practice").disabled = !user || games.length === 0;
+  updateComputerLimit();
+  $("create").disabled=!user||games.length===0||!navigator.onLine;
+  $("practice").disabled=!user||games.length===0;
 }
 
 // The selected match
+
+function updateComputerLimit() {
+  const game = state.games.find((game) => game.id === $("new-game").value);
+  const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
+  $("computers").max = String(maximum);
+  $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
+  $("computers").disabled = maximum === 0;
+}
 
 function selectMatch(id) {
   if (id === state.selectedId) return;
@@ -757,6 +762,7 @@ async function main() {
     state.lastSent = null;
     refresh();
   });
+  $("new-game").addEventListener("change", updateComputerLimit);
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);
   if (!location.hash && offline.read().selectedId)

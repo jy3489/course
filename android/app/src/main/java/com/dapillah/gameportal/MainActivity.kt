@@ -5,6 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -30,6 +34,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -149,13 +154,16 @@ fun PortalApp(vm: PortalViewModel = viewModel()) {
         OutlinedButton({ showJoin = true }, shape = RoundedCornerShape(12.dp)) { Text("Join by link") }
     }
     TabRow(selectedTabIndex = tab, containerColor = Ink) {
-        listOf("Games", "My matches", "Open lobbies").forEachIndexed { index, title ->
+        listOf("Games", "My matches", "Open lobbies", "Builder").forEachIndexed { index, title ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title, maxLines = 1) })
         }
     }
     if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (tab == 0) {
+    if (tab == 3) {
+        BuilderTab()
+    } else {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (tab == 0) {
             if (state.games.isEmpty()) item { EmptyState("The table is being set", "Games will appear here when the server is ready.") }
             items(state.games, key = { it.id }) { game ->
                 Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF20293D))) {
@@ -190,6 +198,147 @@ fun PortalApp(vm: PortalViewModel = viewModel()) {
                         Text(if (match.actingFor(state.account?.id) != null) "Your move →" else statusLabel(match.status), color = Mint, fontSize = 12.sp)
                     }
                 }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+fun BuilderTab(vm: BuilderViewModel = viewModel()) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    var message by rememberSaveable { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var builderTab by rememberSaveable { mutableIntStateOf(0) }
+
+    Column(Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = builderTab, containerColor = Ink) {
+            listOf("Chat & Edit", "Preview").forEachIndexed { index, title ->
+                Tab(selected = builderTab == index, onClick = { builderTab = index }, text = { Text(title) })
+            }
+        }
+        
+        if (builderTab == 0) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                if (state.published) {
+                    AlertDialog(
+                        onDismissRequest = vm::dismissSuccess,
+                        title = { Text("Success") },
+                        text = { Text("Game published successfully!") },
+                        confirmButton = { TextButton(vm::dismissSuccess) { Text("OK") } }
+                    )
+                }
+                
+                state.error?.let { 
+                    ErrorBanner(it, vm::dismissError) 
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = vm::updateName,
+                    label = { Text("Game Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.description,
+                    onValueChange = vm::updateDescription,
+                    label = { Text("Game Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    maxLines = 3
+                )
+                
+                Spacer(Modifier.height(16.dp))
+                LazyColumn(Modifier.weight(1f)) {
+                    items(state.messages) { msg ->
+                        val align = if (msg.role == "user") Alignment.End else Alignment.Start
+                        val color = if (msg.role == "user") Violet else Color(0xFF20293D)
+                        val textColor = if (msg.role == "user") Color(0xFF271A46) else Color.White
+                        
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = align) {
+                            Surface(
+                                color = color,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = msg.content,
+                                    color = textColor,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (state.busy) {
+                        item {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                if (state.countdown > 0) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Generating... this can take up to ${state.countdown} seconds", color = Muted, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = message,
+                        onValueChange = { message = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Message AI Agent") },
+                        shape = RoundedCornerShape(24.dp),
+                        enabled = !state.busy
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { 
+                            keyboard?.hide()
+                            vm.sendMessage(message)
+                            message = ""
+                        },
+                        enabled = message.isNotBlank() && !state.busy,
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text("Send")
+                    }
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = vm::publish,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.busy && state.name.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Publish Game")
+                }
+            }
+        } else {
+            // Preview Tab
+            if (state.code.isBlank()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No code to preview yet. Send a message to the AI agent to build your game!", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                }
+            } else {
+                AndroidView(
+                    factory = { context ->
+                        WebView(context).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webViewClient = WebViewClient()
+                            webChromeClient = WebChromeClient()
+                        }
+                    },
+                    update = { webView ->
+                        webView.loadDataWithBaseURL("https://buildplay.fun", state.code, "text/html", "UTF-8", null)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }

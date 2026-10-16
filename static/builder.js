@@ -4,7 +4,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const PLAYER_COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+const PLAYER_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // A minimal game showing the game API, used as the starting point for new games.
 const TEMPLATE_CODE = [
@@ -67,6 +67,13 @@ const state = {
   deleteArmed: false,
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
+  activeTab: "agent",
+  agentRequest: null,
+  starters: [],
+  draftUndo: [],
+  restoring: false,
+  saving: false,
+  agentSending: false,
   agentDebug: false, // show the agent's thinking and raw replies in the chat
 };
 
@@ -85,6 +92,8 @@ function me() {
 async function onUserChanged() {
   state.selectedId = null;
   state.baseline = null;
+  resetAgent();
+  state.draftUndo = [];
   stopTest();
   await loadGames();
   render();
@@ -152,7 +161,7 @@ function fillEditor(values) {
         checked: values.allowed_player_counts.includes(count),
         onchange: renderTestSetup,
       }),
-      String(count)),
+      count === 1 ? "1 (solo)" : String(count)),
   ));
   $("allows-leave").checked = values.allows_leave_mid_match;
   $("allows-join").checked = values.allows_join_mid_match;
@@ -163,24 +172,28 @@ function fillEditor(values) {
 const isDirty = () => state.baseline !== null && JSON.stringify(editorValues()) !== state.baseline;
 
 function select(id) {
-  if (id !== state.selectedId && isDirty() && state.pendingSwitch !== id) {
+  if (id === state.selectedId || state.saving) return;
+  if (id !== state.selectedId && (isDirty() || state.agent?.pending) && state.pendingSwitch !== id) {
     state.pendingSwitch = id;
-    setMessage("edit-message", "You have unsaved changes. Click again to discard them.", "error");
+    saveMessage("You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
+    setMessage("test-status", "You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
     return;
   }
   state.pendingSwitch = null;
   state.selectedId = id;
   state.deleteArmed = false;
-  state.agent = null;
-  $("agent-log").replaceChildren();
-  $("agent-proposal").hidden = true;
-  $("agent-input").value = "";
-  setMessage("agent-message", "");
+  resetAgent();
+  state.draftUndo = [];
   const game = selectedGame();
   fillEditor(game ?? NEW_GAME);
-  setMessage("edit-message", "");
   stopTest();
+  showTab(id === "new" ? "agent" : "edit");
+  setMessage("edit-message", "");
   render();
+  if (game) {
+    setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
+    startTest();
+  }
 }
 
 function setMessage(id, text, kind = "") {
@@ -188,28 +201,58 @@ function setMessage(id, text, kind = "") {
   $(id).className = `message ${kind}`;
 }
 
+function saveMessage(text, kind = "") {
+  setMessage("edit-message", text, kind);
+  setMessage("agent-message", text, kind);
+}
+
+function updateSaveControls() {
+  for (const id of ["save", "agent-publish", "delete", "revert", "new-game"]) {
+    $(id).disabled = state.saving;
+  }
+  renderDraftControls();
+}
+
 async function save() {
+  if (state.saving || state.restoring) return;
+  if (state.agent?.pending || state.agentSending) {
+    saveMessage("Wait for the agent, then apply or discard its proposal before publishing.", "error");
+    return;
+  }
   const user = me();
+  const selectedId = state.selectedId;
+  if (!user || !selectedId) return;
   const values = editorValues();
+  const baseline = JSON.stringify(values);
+  state.saving = true;
+  updateSaveControls();
+  saveMessage("Saving…");
   try {
-    let game;
-    if (state.selectedId === "new") {
-      game = await apiRequest("POST", "/games", { body: values, user });
-    } else {
-      game = await apiRequest("PATCH", `/games/${state.selectedId}`, { body: values, user });
-    }
-    await loadGames();
+    const game = await apiRequest(selectedId === "new" ? "POST" : "PATCH",
+      selectedId === "new" ? "/games" : `/games/${selectedId}`, { body: values, user });
+    if (me()?.id !== user.id || state.selectedId !== selectedId) return;
+    state.games = [game, ...state.games.filter((item) => item.id !== game.id)];
     state.selectedId = game.id;
-    fillEditor(game);
-    setMessage("edit-message", `Saved version ${game.version}.`, "ok");
+    // Keep edits typed while the request was in flight.
+    if (JSON.stringify(editorValues()) === baseline) fillEditor(game);
+    else state.baseline = baseline;
+    saveMessage(`Published version ${game.version}.`, "ok");
     render();
   } catch (error) {
-    setMessage("edit-message", `Couldn't save: ${error.message}`, "error");
+    if (me()?.id === user.id && state.selectedId === selectedId) {
+      saveMessage(`Couldn't save: ${error.message}`, "error");
+    }
+  } finally {
+    state.saving = false;
+    updateSaveControls();
+    render();
   }
 }
 
 async function deleteGame() {
+  if (state.saving) return;
   if (state.selectedId === "new") {
+    stopTest();
     state.selectedId = null;
     state.baseline = null;
     render();
@@ -223,6 +266,7 @@ async function deleteGame() {
   }
   try {
     await apiRequest("DELETE", `/games/${state.selectedId}`, { user: me() });
+    stopTest();
     state.selectedId = null;
     state.baseline = null;
     state.deleteArmed = false;
@@ -238,7 +282,7 @@ function renderEditorMeta() {
   $("game-meta").textContent = game
     ? `Version ${game.version} · created ${formatTime(game.created_at)} · updated ${formatTime(game.updated_at)} · id ${game.id}`
     : "A new game. Save to create it.";
-  $("save").textContent = state.selectedId === "new" ? "Create" : "Save";
+  $("save").textContent = state.selectedId === "new" ? "Publish game" : "Publish new version";
   $("delete").textContent = state.selectedId === "new" ? "Discard" : "Delete";
 }
 
@@ -247,11 +291,86 @@ function renderEditorMeta() {
 const TABS = ["edit", "test", "agent"];
 
 function showTab(name) {
+  state.activeTab = name;
   for (const tab of TABS) {
     $(`tab-${tab}`).setAttribute("aria-selected", String(name === tab));
     $(`${tab}-panel`).hidden = name !== tab;
   }
-  if (name === "test") renderTestSetup();
+  const chatHost = $(name === "edit" ? "edit-chat-host" : "agent-home");
+  if ($("agent-tools").parentNode !== chatHost) chatHost.append($("agent-tools"));
+  const testHost = $(name === "edit" ? "edit-test-host" : "test-home");
+  if ($("test-tools").parentNode !== testHost) {
+    testHost.append($("test-tools"));
+    // Moving an iframe reloads its document in some browsers. Re-send the
+    // stored match snapshot rather than losing the current test's progress.
+    if (state.test) {
+      frame.load(state.test.code ?? $("code").value);
+      sendTestState();
+    }
+  }
+  $("agent-send").textContent = name === "edit" ? "Update game ↗" : "Let’s build ↗";
+  if (name === "test" || name === "edit") renderTestSetup();
+  renderDraftControls();
+}
+
+function renderDraftControls() {
+  $("undo-ai-change").disabled = state.draftUndo.length === 0 || state.agentSending || Boolean(state.agent?.pending) || state.saving || state.restoring;
+  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Draft changes — not published" : selectedGame() ? "Published version loaded" : "New game — not published";
+  const game = selectedGame();
+  const versions = game ? Array.from({length: Math.min(game.version, 6)}, (_, i) => game.version - i) : [];
+  $("published-versions").replaceChildren(...versions.map((version) => el("button", {
+    type: "button", textContent: `Load v${version}${version === game.version ? " (latest)" : ""}`,
+    disabled: state.saving || state.agentSending || state.restoring || Boolean(state.agent?.pending),
+    onclick: () => restorePublishedVersion(version),
+  })));
+  if (!game) $("published-versions").textContent = "Publish your first version to keep its history.";
+}
+
+function replaceDraft(values) {
+  const baseline = state.baseline;
+  state.draftUndo.push(editorValues());
+  fillEditor(values);
+  state.baseline = baseline;
+  stopTest();
+  renderTestSetup();
+  renderDraftControls();
+}
+
+function undoAppliedChange() {
+  if (state.saving || state.agentSending || state.agent?.pending || state.restoring || !state.draftUndo.length) return;
+  const baseline = state.baseline;
+  fillEditor(state.draftUndo.pop());
+  state.baseline = baseline;
+  stopTest();
+  renderTestSetup();
+  renderDraftControls();
+  if (state.activeTab === "edit" || state.activeTab === "test") startTest();
+  saveMessage("Restored the previous draft. Publish to save it.", "ok");
+}
+
+async function restorePublishedVersion(version) {
+  const user = me();
+  const id = state.selectedId;
+  if (!user || !selectedGame() || state.saving || state.agentSending || state.agent?.pending || state.restoring) return;
+  const snapshot = JSON.stringify(editorValues());
+  state.restoring = true;
+  renderDraftControls();
+  try {
+    const game = await apiRequest("GET", `/games/${encodeURIComponent(id)}/versions/${version}`, {user});
+    if (state.selectedId !== id || me()?.id !== user.id) return;
+    if (JSON.stringify(editorValues()) !== snapshot) {
+      saveMessage("The draft changed while the version loaded. Click Load again to try again.", "error");
+      return;
+    }
+    replaceDraft(game);
+    if (state.activeTab === "edit" || state.activeTab === "test") startTest();
+    saveMessage(`Loaded version ${version} as a draft. Publish to use it for new matches.`, "ok");
+  } catch (error) {
+    if (state.selectedId === id && me()?.id === user.id) saveMessage(`Couldn't load version: ${error.message}`, "error");
+  } finally {
+    state.restoring = false;
+    renderDraftControls();
+  }
 }
 
 // Pass-and-play test
@@ -267,6 +386,20 @@ function renderTestSetup() {
   select.replaceChildren(...counts.map((count) => el("option", { value: count, textContent: count })));
   if (counts.includes(previous)) select.value = String(previous);
   renderSeatKinds();
+  $("test-mode-solo").disabled = !counts.includes(1);
+  $("test-mode-computer").disabled = !counts.some((count) => count >= 2);
+  $("test-mode-human").disabled = !counts.some((count) => count >= 2);
+}
+
+function setTestMode(mode) {
+  const counts = PLAYER_COUNTS.filter((count) => $(`count-${count}`)?.checked);
+  const count = mode === "solo" ? (counts.includes(1) ? 1 : null) : counts.find((count) => count >= 2);
+  if (!count) return;
+  $("test-count").value = String(count);
+  renderSeatKinds();
+  [...$("test-seats").querySelectorAll("select")].forEach((select, seat) => {
+    select.value = mode === "computer" && seat > 0 ? "computer" : "human";
+  });
 }
 
 function renderSeatKinds() {
@@ -284,7 +417,7 @@ function renderSeatKinds() {
 function startTest() {
   const kinds = [...$("test-seats").querySelectorAll("select")].map((s) => s.value);
   if (kinds.length === 0) {
-    setMessage("test-status", "Choose at least one player count in the editor first.", "error");
+    setMessage("test-status", "Choose at least one player count first.", "error");
     return;
   }
   const players = kinds.map((kind, seat) => ({
@@ -292,7 +425,7 @@ function startTest() {
     kind,
     name: kind === "human" ? `Player ${seat + 1}` : `Computer ${seat + 1}`,
   }));
-  state.test = { players, moves: [], state: null, turn: [0], status: "ongoing", awaiting: false };
+  state.test = { code: $("code").value, players, moves: [], state: null, turn: [0], status: "ongoing", awaiting: false };
   $("test-log").replaceChildren();
   frame.load($("code").value);
   testLog(`Started a test with ${players.length} players.`);
@@ -339,7 +472,8 @@ function onTestMove(move) {
   }
   const next = move.next_turn_player_indices;
   const valid = next === null ||
-    (Array.isArray(next) && next.length > 0 && next.every((seat) => seat >= 0 && seat < test.players.length));
+    (Array.isArray(next) && next.length > 0 && new Set(next).size === next.length &&
+      next.every((seat) => Number.isInteger(seat) && seat >= 0 && seat < test.players.length));
   if (!valid) {
     testLog(`rejected make_move: next_turn_player_indices ${JSON.stringify(next)} is not a set of seats`, true);
     sendTestState();
@@ -367,6 +501,24 @@ function undoTestMove() {
 }
 
 // Game-building agent: iterative chat that proposes code for the editor.
+
+function resetAgent() {
+  if (state.agentRequest) {
+    state.agentRequest.cancelled = true;
+    state.agentRequest.controller.abort();
+  }
+  state.agentRequest = null;
+  $("agent-activity").hidden = true;
+  $("agent-stop").hidden = true;
+  state.agent = null;
+  state.agentSending = false;
+  $("agent-send").disabled = false;
+  $("agent-log").replaceChildren();
+  $("agent-proposal").hidden = true;
+  $("agent-input").value = "";
+  $("agent-proposed-code").textContent = "";
+  setMessage("agent-message", "");
+}
 
 function agentLog(role, text) {
   $("agent-log").append(el("div", { class: `msg ${role}`, textContent: text }));
@@ -415,60 +567,156 @@ function agentHistory() {
   return state.agent;
 }
 
+function generationActivity(phase, started) {
+  $("agent-activity").hidden = false;
+  if ($("agent-phase").textContent !== phase) $("agent-phase").textContent = phase;
+  const seconds = Math.floor((Date.now() - started) / 1000);
+  $("agent-elapsed").textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed`;
+  $("agent-wait-note").textContent = seconds >= 60
+    ? "The live server has not returned game code. Its model progress is unavailable. You can keep waiting or stop waiting."
+    : "Waiting for the live course server to return a proposal. This indicator is not model progress.";
+}
+
+function stopAgentWaiting() {
+  const request = state.agentRequest;
+  if (!request) return;
+  request.cancelled = true;
+  request.controller.abort();
+  setMessage("agent-message", "Stopping this browser's wait…");
+}
+
+async function requestAgentReply(user, body, isCurrent, request) {
+  const started = Date.now();
+  const options = {user, signal: request.controller.signal};
+  let phase = "Sending request to the course server";
+  generationActivity(phase, started);
+  const ticker = setInterval(() => {
+    if (isCurrent() && !request.cancelled) generationActivity(phase, started);
+  }, 1000);
+  try {
+    let reply = await apiRequest("POST", "/agent/chat", {...options, body});
+    const deadline = started + 16 * 60 * 1000;
+    while (reply?.preview_job_id) {
+      if (!isCurrent() || request.cancelled) throw new Error("Waiting stopped.");
+      if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
+      phase = "Request accepted — waiting for the backend response";
+      generationActivity(phase, started);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (request.cancelled) throw new Error("Waiting stopped.");
+      reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, options);
+    }
+    if (request.cancelled) throw new Error("Waiting stopped.");
+    return reply;
+  } finally {
+    clearInterval(ticker);
+  }
+}
+
+async function loadStarters() {
+  $("load-starters").disabled = true;
+  try {
+    state.starters = await apiRequest("GET", "/games");
+    $("starter-game").replaceChildren(...state.starters.map((game) => el("option", {value: game.id, textContent: `${game.name} · v${game.version}`})));
+    $("use-starter").disabled = state.starters.length === 0;
+  } catch (error) {
+    setMessage("agent-message", `Couldn't load the catalog: ${error.message}`, "error");
+  } finally {
+    $("load-starters").disabled = false;
+  }
+}
+
+function useStarter() {
+  if (state.selectedId !== "new" || state.saving || state.agentSending || state.agent?.pending || state.restoring) {
+    setMessage("agent-message", "Stop waiting and apply or discard any proposal before loading a starting game.", "error");
+    return;
+  }
+  const game = state.starters.find((game) => game.id === $("starter-game").value);
+  if (!game) return;
+  resetAgent();
+  replaceDraft({...game, name: `${game.name} (copy)`, description: `${game.description || game.name} · Based on ${game.name} v${game.version}.`});
+  showTab("edit");
+  setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
+  startTest();
+  agentLog("system", `Loaded a copy of published ${game.name} v${game.version}. No AI generation was performed. Describe a change to customize it.`);
+  saveMessage("Loaded an unpublished copy. Customize it and test before publishing.", "ok");
+}
+
 async function sendAgentMessage() {
   const user = me();
   const input = $("agent-input").value.trim();
-  if (!input) return;
+  if (!input || !user || state.agentSending || state.saving || state.restoring) return;
   const history = agentHistory();
   if (history.pending) {
     setMessage("agent-message", "Apply or discard the pending proposal first.", "error");
     return;
   }
   const values = editorValues();
+  const request = {cancelled: false, controller: new AbortController()};
+  state.agentRequest = request;
+  const isCurrent = () => state.agent === history && me()?.id === user.id && state.agentRequest === request;
   const messages = [...history.messages, { role: "user", content: input }];
   $("agent-input").value = "";
   agentLog("user", input);
-  setMessage("agent-message", "The agent is thinking…");
+  setMessage("agent-message", "");
+  $("agent-stop").hidden = false;
+  state.agentSending = true;
+  renderDraftControls();
   $("agent-send").disabled = true;
   try {
-    const reply = await apiRequest("POST", "/agent/chat", {
-      user,
-      body: {
+    const reply = await requestAgentReply(user, {
         game_name: values.name,
         game_description: values.description,
         allowed_player_counts: values.allowed_player_counts,
         code: values.code,
         messages,
-      },
-    });
+    }, isCurrent, request);
+    if (!isCurrent() || request.cancelled) return;
     history.messages.push({ role: "user", content: input });
     history.messages.push({ role: "assistant", content: reply.message });
     agentLogReply(reply);
     if (reply.code) {
-      history.pending = { code: reply.code, name: reply.name, description: reply.description };
+      history.pending = { code: reply.code, name: reply.name, description: reply.description, base: JSON.stringify(values) };
+      $("agent-proposed-code").textContent = reply.code;
       $("agent-proposal").hidden = false;
-      agentLog("system", "The agent proposed new code. Review it with Apply to editor, or Discard it.");
+      agentLog("system", "The agent proposed new code. Review it with Apply, or Discard it.");
     }
     setMessage("agent-message", "");
   } catch (error) {
-    setMessage("agent-message", `The agent couldn't reply: ${error.message}`, "error");
-    $("agent-input").value = input;
+    if (!isCurrent()) return;
+    setMessage("agent-message", request.cancelled
+      ? "Stopped waiting. The live server may still finish the original request. Your prompt is preserved."
+      : `The agent couldn't reply: ${error.message}`, request.cancelled ? "" : "error");
+    if (!$("agent-input").value.trim()) $("agent-input").value = input;
   } finally {
-    $("agent-send").disabled = false;
+    if (isCurrent()) {
+      state.agentSending = false;
+      state.agentRequest = null;
+      $("agent-activity").hidden = true;
+      $("agent-stop").hidden = true;
+      $("agent-send").disabled = false;
+      renderDraftControls();
+    }
   }
 }
 
 function applyAgentProposal() {
   const history = agentHistory();
   const pending = history.pending;
-  if (!pending) return;
-  if (pending.name && !$("name").value.trim()) $("name").value = pending.name;
-  if (pending.description && !$("description").value.trim()) $("description").value = pending.description;
-  $("code").value = pending.code;
+  if (!pending || state.saving || state.restoring) return;
+  if (pending.base && JSON.stringify(editorValues()) !== pending.base) {
+    setMessage("agent-message", "The draft changed while Muse was working. Discard this proposal and request a fresh change to keep your edits.", "error");
+    return;
+  }
+  replaceDraft({...editorValues(), code: pending.code,
+    name: pending.name || $("name").value, description: pending.description || $("description").value});
   history.pending = null;
   $("agent-proposal").hidden = true;
-  agentLog("system", "Applied the proposal to the editor. Test it in the Test tab, then keep chatting or publish.");
-  setMessage("agent-message", "Applied. The editor has unsaved changes.", "ok");
+  $("agent-proposed-code").textContent = "";
+  showTab("edit");
+  startTest();
+  agentLog("system", "Applied to the draft and restarted the preview. Ask for another change or publish when ready.");
+  saveMessage("Applied to draft. Test the game, then publish the new version.", "ok");
+  renderDraftControls();
 }
 
 function discardAgentProposal() {
@@ -476,6 +724,8 @@ function discardAgentProposal() {
   history.pending = null;
   $("agent-proposal").hidden = true;
   agentLog("system", "Discarded the proposal.");
+  $("agent-proposed-code").textContent = "";
+  renderDraftControls();
 }
 
 // Rendering
@@ -491,17 +741,38 @@ function render() {
       el("button", { type: "button", class: "link", textContent: "Log in", onclick: () => Auth.openDialog("login") })
     );
   } else {
-    $("no-user").textContent = "Select a game on the left, or create one with New game.";
+    $("no-user").replaceChildren(
+      "Ready to make your next favorite game? ",
+      el("button", { type: "button", textContent: "Create a game ↗", onclick: () => select("new") })
+    );
   }
-  $("new-game").disabled = !me();
-  if (showWorkspace) renderEditorMeta();
+  $("new-game").disabled = !me() || state.saving;
+  $("starter-options").hidden = state.selectedId !== "new";
+  if (showWorkspace) { renderEditorMeta(); renderDraftControls(); }
+  $("play-game").hidden = !selectedGame();
+  if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
+}
+
+function protectUnsavedChanges(event) {
+  if (isDirty() || state.agent?.pending || state.agentSending || state.saving) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
 }
 
 async function main() {
+  window.addEventListener("beforeunload", protectUnsavedChanges);
   $("new-game").addEventListener("click", () => select("new"));
   $("save").addEventListener("click", save);
+  $("undo-ai-change").addEventListener("click", undoAppliedChange);
+  for (const id of ["name", "description", "code", "allows-leave", "allows-join"]) {
+    $(id).addEventListener("input", renderDraftControls);
+  }
   $("revert").addEventListener("click", () => {
     fillEditor(selectedGame() ?? NEW_GAME);
+    stopTest();
+    renderTestSetup();
+    renderDraftControls();
     setMessage("edit-message", "Reverted.");
   });
   $("delete").addEventListener("click", deleteGame);
@@ -509,6 +780,9 @@ async function main() {
   $("tab-test").addEventListener("click", () => showTab("test"));
   $("tab-agent").addEventListener("click", () => showTab("agent"));
   $("agent-send").addEventListener("click", sendAgentMessage);
+  $("agent-stop").addEventListener("click", stopAgentWaiting);
+  $("load-starters").addEventListener("click", loadStarters);
+  $("use-starter").addEventListener("click", useStarter);
   $("agent-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendAgentMessage();
   });
@@ -516,6 +790,9 @@ async function main() {
   $("agent-discard").addEventListener("click", discardAgentProposal);
   $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
   $("agent-publish").addEventListener("click", save);
+  for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
+    $(id).addEventListener("click", () => setTestMode(mode));
+  }
   $("test-count").addEventListener("change", renderSeatKinds);
   $("test-start").addEventListener("click", startTest);
   $("test-undo").addEventListener("click", undoTestMove);

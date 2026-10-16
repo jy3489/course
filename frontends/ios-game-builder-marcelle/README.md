@@ -1,0 +1,158 @@
+# GameBuilder (iOS) — Marcelle
+
+A native SwiftUI app for the buildplay.fun game platform (iOS 17+). One package: Google's official
+[GoogleSignIn-iOS](https://github.com/google/GoogleSignIn-iOS) (Swift Package Manager), for
+Google login. Xcode downloads it on the first build.
+
+## What works so far
+- **Google login**: "sign in with google" opens Google's sheet. The app asks Google for an ID
+  token made for the *website's* client ID (`GIDServerClientID` in `Info.plist`, the value
+  `GET /auth/config` returns), because that's the audience the server's `oauth.py` accepts.
+  The token goes to `POST /auth/google`, which returns the account's id and password; they
+  are saved in the iOS Keychain, so the app stays logged in after restarts. It's the same
+  account as on the website. Tap your avatar (top right) → **Log out** to switch accounts.
+- **Games screen**: loads `GET /games` from buildplay.fun and saves the list (including each
+  game's HTML `code`) on the phone. Offline, the saved list is shown with an "Offline" banner.
+  Pull down to refresh. Tap a game to see its details.
+- **Test play** (game page → "▶ test play"): pick the number of players (from the game's
+  `allowed_player_counts`) and which seats are computers, then play. The game's HTML runs in a
+  sandboxed iframe inside a WKWebView, using the `state_changed` / `make_move` messages from
+  "Game API" in the root README. Computer seats are played by the game itself. With 2+ humans
+  it's pass-and-play: a "Pass the phone to Player N" screen covers the game between human turns.
+  Moves stay on the phone (nothing is sent to the server). **Undo** takes back moves until it's
+  a human's turn again; **restart** starts over. Works offline, since each game's code is saved
+  in the games list on the phone.
+- **My games**: the list is split into "// my games" (`owner_user_id` = me) and
+  "// class games". **+ new game** opens the editor: name, description, player counts
+  (multi-select chips 2–10, at least one) and the code. New games start with a tiny working
+  game ("Race to 10") so they can be test-played right away. My games have **✎ edit game**,
+  and the editor has **delete game** (with a confirmation). Saved with `POST`, `PATCH` and
+  `DELETE /games`.
+- **Offline edits**: every edit shows at once and goes into a queue saved on the phone
+  ("N changes waiting to upload", "not uploaded yet" on the game). The queue is uploaded in
+  order as soon as the network is back (also on pull-to-refresh and when the app opens).
+  Editing a game that was created offline just changes what will be uploaded; deleting it
+  removes it from the queue. If the server refuses a change for good (e.g. the game was
+  deleted elsewhere), it's dropped with a message so the queue can't get stuck.
+- **Online matches** (Matches tab, and "▶ play online" on a game's page): create a match with
+  0+ computer opponents; friends join the open seats with the **share link** or **QR code**
+  (the web portal link `buildplay.fun/portal#match=…`, which works in any browser) or by
+  pasting it under "join by link". **Open matches** from others can be joined from the list.
+  The owner sets the computers and taps **start** when the number of seats is allowed. The
+  match screen refreshes every 2 seconds and plays the exact game version of the match; my
+  app also plays computer seats (as the README asks). Moves are sent with
+  `expected_move_count`.
+- **Matches offline**: my matches, their game versions and player names are saved on the
+  phone, so any match opens offline and I can move. The move shows at once and waits in a
+  queue ("1 move waiting to upload"); it's sent when the network is back. If the server
+  rejects it (someone moved first, or the match changed), that match's queued moves are
+  dropped, a message says so, and the match is reloaded. A stale computer move is dropped
+  silently (another player's app sent it first, which is normal).
+
+## Run
+1. Open `GameBuilder.xcodeproj` in Xcode.
+2. Pick the **GameBuilder** scheme and an iPhone simulator, then press **⌘R**.
+3. On a real iPhone: select the GameBuilder target → Signing & Capabilities → choose your
+   Team (a free Apple ID works), plug in the phone, pick it as the destination, press ⌘R.
+
+Command line build:
+```sh
+xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+## Test
+1. Tap **sign in with google**, pick your Google account → the Games list appears, with your
+   initials in the pink avatar.
+2. Quit the app (swipe it away) and reopen it → still logged in (Keychain).
+3. Turn on airplane mode (on the simulator: turn off the Mac's Wi-Fi), reopen the app →
+   the same games are shown with the Offline banner.
+4. Tic-tac-toe → **▶ test play** → **start →**: tap a square; the computer answers. Try
+   **undo** and **restart**.
+5. Same, but set seat 2 to **human**: after each move a "Pass the phone" screen appears.
+6. Poker → 3 players → start: betting buttons appear on your turn; computers bet by themselves.
+7. In airplane mode, step 4 still works for any game listed.
+8. **+ new game** → name it, pick player counts → **+ create game**: it's under "// my games".
+   Open it → **✎ edit game** → rename → save: the version goes up. **delete game** removes it.
+9. In airplane mode, create and edit a game: "waiting to upload" appears. Turn airplane mode
+   off: the note disappears, and the game is on buildplay.fun.
+10. Tic-tac-toe → **▶ play online** → 1 computer → **+ create match** → **▶ start match** →
+    move: the computer answers. Open the link in a browser: the same match is on the web portal.
+11. Create a match with 0 computers; a friend opens the link (or scans the QR code) and joins
+    on the web portal; start; take turns. Moves show up within 2 seconds.
+12. Airplane mode: Matches tab → open the match → move ("Offline: your move is saved…").
+    Airplane mode off: the move is sent.
+
+## Files (`GameBuilder/`)
+- `GameBuilderApp.swift`: app entry; shows Login or Games.
+- `AppModel.swift`: shared app state (account, games, offline flag) and the queue of edits
+  waiting to upload.
+- `API.swift`: buildplay.fun requests and the `Account` / `Game` / `GameFields` data types.
+- `Keychain.swift`: save/load the account (id + password) in the Keychain.
+- `GameCache.swift`: files on the phone: the games list and the queue of edits.
+- `LoginView.swift`: Google sign-in (and the debug guest login).
+- `Assets.xcassets/GoogleLogo`: the Google "G" for the sign-in button, cropped from Google's
+  official Sign in with Google branding assets.
+- `GamesView.swift`: the Games list and the game page.
+- `GameEditorView.swift`: create / edit / delete a game; the player-count chips.
+- `GameTemplate.swift`: the starter code for new games.
+- `MatchesModel.swift`: online matches: loading, saving on the phone, whose turn it is,
+  the queue of moves and what happens when one is rejected.
+- `MatchesView.swift`: the Matches tab (my matches, open matches, join by link).
+- `MatchView.swift`: one match (waiting room with share link + QR, then the game), the
+  "new online match" sheet, and the QR code.
+- `PlayView.swift`: test play: the setup screen (players, seats) and the play screen.
+- `LocalMatch.swift`: the platform's side of the Game API on the phone: builds `state_changed`,
+  checks and applies `make_move`, undo, restart, whose turn it is and when to hand the phone over.
+- `GameWebView.swift`: the WKWebView bridge (host page + sandboxed iframe + message relay).
+- `JSONValue.swift`: holds any JSON (a game's state can be anything).
+- `Theme.swift`: the "game night" look: colors, fonts, buttons, cards, step bar, wordmark.
+- `Fonts/`: Bricolage Grotesque and Space Mono (Google Fonts, OFL license, license files included),
+  registered in `Info.plist`.
+
+New Swift files dropped into `GameBuilder/` are picked up by Xcode automatically.
+
+## Automated tests
+- `GameBuilderUITests/LoginUITests.swift`: guest login is hidden, and "sign in with google"
+  opens Google's real sign-in page with no error (proves the client IDs and URL scheme).
+  It can't finish the login, which needs a real Google account; test that on the phone.
+- `GameBuilderUITests/PlayUITests.swift` taps through test play with the real Tic-tac-toe and
+  Poker from buildplay.fun: vs computer, undo, game over, restart, pass-and-play handoff, Poker
+  with 3 players, and offline play. It only reads from buildplay.fun.
+- `GameBuilderUITests/MyGamesUITests.swift`: guest login, create / edit / test-play / delete,
+  and offline edits uploaded later.
+- `GameBuilderUITests/MatchesUITests.swift`: a match vs a computer; a match with a second
+  person (the test plays "Friend" through the REST API) including an offline move sent later;
+  and an offline move rejected as stale.
+- The last two **write** games and matches, so they use the course backend
+  running on the Mac (`http://localhost:8000`), never buildplay.fun. Start it first, from a
+  folder outside the repo (the root README's "Running" section explains the steps):
+  ```sh
+  mkdir -p ~/gb-server && cd ~/gb-server
+  ln -s <path-to>/course game_platform        # the directory name matters
+  python3 -m venv .venv && .venv/bin/pip install -r game_platform/requirements.txt
+  cp game_platform/data.example.json data.json
+  # config.json = game_platform/config.example.json with data_file.path set to data.json
+  .venv/bin/python -m game_platform.main --config config.json
+  ```
+
+Run them with **⌘U** in Xcode, or:
+```sh
+xcodebuild test -project GameBuilder.xcodeproj -scheme GameBuilder \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
+```
+
+## Debug-only launch arguments
+- `-screenshotMode`: shows the Games screen with a placeholder account (never saved or sent
+  to the server), so you don't have to log in.
+- `-openGame tictactoe`: opens that game's page.
+- `-simulateOffline`: every server request fails, like airplane mode (the simulator uses the
+  Mac's network, so this is how to test offline there).
+- `-server http://localhost:8000`: use another server. Its account, games and queue are kept
+  apart from buildplay.fun's.
+- `-guestLogin`: also show a guest login (name → `POST /users`) on the login screen. The UI
+  tests use it, so they never need a Google account.
+- `-resetLocalData`: forget this server's account, saved games and queue (fresh start).
+```sh
+xcrun simctl launch booted edu.columbia.gamebuilder.marcelle -screenshotMode -openGame tictactoe
+```

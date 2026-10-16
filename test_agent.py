@@ -350,3 +350,127 @@ def test_chat_still_returns_plain_string(
     client = ModelApiClient(api_key="k")
     monkeypatch.setattr(client, "_client", lambda: _sdk_client_for(message))
     assert client.chat([{"role": "user", "content": "hi"}]) == "hello"
+
+
+class _Stream:
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.closed = False
+    def __iter__(self):
+        return iter(self.chunks)
+    def close(self):
+        self.closed = True
+
+
+def _chunk(content=None, finish=None):
+    from types import SimpleNamespace as NS
+    return NS(choices=[NS(delta=NS(content=content), finish_reason=finish)])
+
+
+def test_stream_is_collected_and_closed(monkeypatch):
+    stream = _Stream([_chunk('hel'), _chunk('lo', 'stop')])
+    client = ModelApiClient(api_key='k')
+    monkeypatch.setattr(client, '_completions', lambda *args, **kwargs: stream)
+    assert client.chat_with_reasoning([], stream=True).content == 'hello'
+    assert stream.closed
+
+
+def test_partial_or_truncated_streams_are_not_retried(monkeypatch):
+    for finish in (None, 'length'):
+        stream = _Stream([_chunk('<html>partial', finish)])
+        client = ModelApiClient(api_key='k')
+        monkeypatch.setattr(client, '_completions', lambda *args, **kwargs: stream)
+        with pytest.raises(ModelApiError) as failure:
+            client.chat_with_reasoning([], stream=True)
+        assert not failure.value.retryable
+        assert stream.closed
+
+
+def test_builder_controls_reasoning_and_streaming():
+    class Client(_FakeClient):
+        def chat_with_reasoning(self, messages, **kwargs):
+            self.options = kwargs
+            return super().chat_with_reasoning(messages, **kwargs)
+    client = Client(_ok_reply())
+    chat_with_agent(client, _request())
+    assert client.options['reasoning_effort'] == 'low'
+    assert client.options['stream'] is True
+    assert client.options['temperature'] == 1.0
+    assert 0 < client.options['timeout'] <= 120
+
+
+def test_nonretryable_errors_do_not_start_another_paid_call():
+    client = _SequencedClient([ModelApiError('timeout', retryable=False)])
+    with pytest.raises(AgentError, match='timeout'):
+        chat_with_agent(client, _request())
+    assert client.calls == 1
+
+
+def test_retries_share_one_generation_budget(monkeypatch):
+    from game_platform import agent
+    now = [0.0]
+    monkeypatch.setattr(agent.time, 'monotonic', lambda: now[0])
+    class Client(_FakeClient):
+        def chat_with_reasoning(self, messages, **kwargs):
+            now[0] += 65
+            self.calls += 1
+            return ChatResult(content='')
+    client = Client('')
+    client.calls = 0
+    with pytest.raises(AgentError, match='two-minute'):
+        chat_with_agent(client, _request())
+    assert client.calls == 2
+
+
+def test_sdk_does_not_multiply_retries(monkeypatch):
+    import openai
+    seen = {}
+    def sdk(**kwargs):
+        seen.update(kwargs)
+        return object()
+    monkeypatch.setattr(openai, 'OpenAI', sdk)
+    ModelApiClient(api_key='k')._client()
+    assert seen['max_retries'] == 0
+    assert seen['timeout'] == 120
+
+
+def test_chat_endpoint_returns_504_at_its_wall_clock_limit(api, monkeypatch):
+    from game_platform import api as routes
+    async def expire(awaitable, *, timeout):
+        assert timeout == 120
+        awaitable.close()
+        raise TimeoutError()
+    monkeypatch.setattr(routes.asyncio, 'wait_for', expire)
+    api.client.app.state.model_api_config = ModelApiConfig(api_key='k')
+    alice = api.new_user('alice')
+    response = api.request('POST', '/agent/chat', as_user=alice, json=_request().model_dump())
+    assert response.status_code == 504
+    assert 'two minutes' in response.json()['detail']
+
+
+def test_real_endpoint_deadline_does_not_wait_for_a_blocked_model(api, monkeypatch):
+    """Exercise the actual threadpool and asyncio timeout, not a mocked timer."""
+    import threading
+    import time
+    from game_platform import api as routes
+
+    release = threading.Event()
+    calls = []
+
+    def blocked_model(*args):
+        calls.append(1)
+        release.wait(timeout=3)
+        return routes.AgentChatResponse(message='late response')
+
+    monkeypatch.setattr(routes, 'GENERATION_BUDGET_SECONDS', 0.05)
+    monkeypatch.setattr(routes, 'chat_with_agent', blocked_model)
+    api.client.app.state.model_api_config = ModelApiConfig(api_key='k')
+    user = api.new_user('deadline check')
+    started = time.monotonic()
+    try:
+        response = api.request('POST', '/agent/chat', as_user=user, json=_request().model_dump())
+        assert response.status_code == 504
+        assert time.monotonic() - started < 1
+        assert len(calls) == 1
+    finally:
+        release.set()

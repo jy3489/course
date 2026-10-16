@@ -10,6 +10,7 @@ Get a key at https://dev.meta.ai (developer console, API keys).
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 ENV_VAR = "MUSE_SPARK_API_KEY"
@@ -19,6 +20,10 @@ DEFAULT_MODEL = "muse-spark-1.3"
 
 class ModelApiError(Exception):
     """The model call failed or the reply was unusable."""
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass
@@ -58,7 +63,10 @@ class ModelApiClient:
             )
         from openai import OpenAI
 
-        return OpenAI(api_key=self.api_key, base_url=self.base_url)
+        # The agent owns retries and its time budget. SDK retries underneath it
+        # multiply model calls and can hide many minutes of waiting.
+        return OpenAI(api_key=self.api_key, base_url=self.base_url,
+                      max_retries=0, timeout=120)
 
     def _completions(self, messages, *, max_tokens, temperature, **kwargs):  # type: ignore[no-untyped-def]
         client = self._client()
@@ -71,7 +79,12 @@ class ModelApiClient:
                 **kwargs,
             )
         except Exception as exc:
-            raise ModelApiError(f"The model call failed: {exc}") from exc
+            from openai import APITimeoutError
+            if isinstance(exc, APITimeoutError):
+                raise ModelApiError("Muse timed out. Please try again with a smaller change.", retryable=False) from exc
+            status = getattr(exc, "status_code", None)
+            retryable = status is None or status >= 500
+            raise ModelApiError(f"The model call failed: {exc}", retryable=retryable) from exc
 
     def chat(
         self,
@@ -95,6 +108,7 @@ class ModelApiClient:
         *,
         max_tokens: int = 1024,
         temperature: float = 0.7,
+        deadline: float | None = None,
         **kwargs,  # type: ignore[no-untyped-def]
     ) -> ChatResult:
         """Send chat messages, return the reply plus the reasoning trace.
@@ -106,6 +120,8 @@ class ModelApiClient:
         response = self._completions(
             messages, max_tokens=max_tokens, temperature=temperature, **kwargs
         )
+        if kwargs.get("stream"):
+            return self._read_stream(response, deadline=deadline)
         choice = response.choices[0] if response.choices else None
         message = getattr(choice, "message", None)
         content = getattr(message, "content", None)
@@ -123,3 +139,44 @@ class ModelApiClient:
             if reasoning is not None:
                 break
         return ChatResult(content=content, reasoning=reasoning)
+
+
+    @staticmethod
+    def _read_stream(response, *, deadline: float | None) -> ChatResult:
+        """Consume visible output while avoiding Meta's non-streaming time limit."""
+        parts: list[str] = []
+        reasoning: list[str] = []
+        finished = False
+        try:
+            for chunk in response:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise ModelApiError("Muse exceeded the generation time budget. Try a smaller change.", retryable=False)
+                choices = getattr(chunk, "choices", [])
+                if not choices:
+                    continue
+                choice = choices[0]
+                delta = getattr(choice, "delta", None)
+                content = getattr(delta, "content", None)
+                if isinstance(content, str):
+                    parts.append(content)
+                thinking = getattr(delta, "reasoning_content", None)
+                if isinstance(thinking, str):
+                    reasoning.append(thinking)
+                finish = getattr(choice, "finish_reason", None)
+                if finish == "length":
+                    raise ModelApiError("Muse reached the output limit before finishing the game. Ask for a smaller game or change.", retryable=False)
+                if finish == "content_filter":
+                    raise ModelApiError("Muse could not complete this request.", retryable=False)
+                finished = finished or finish == "stop"
+        except ModelApiError:
+            raise
+        except Exception as exc:
+            raise ModelApiError("The Muse stream was interrupted. Please retry; no partial code was applied.", retryable=False) from exc
+        finally:
+            response.close()
+        if not finished:
+            raise ModelApiError("Muse closed the stream before completing the reply.", retryable=False)
+        content = "".join(parts)
+        if not content.strip():
+            raise ModelApiError("The model returned an empty reply.")
+        return ChatResult(content=content, reasoning="".join(reasoning) or None)

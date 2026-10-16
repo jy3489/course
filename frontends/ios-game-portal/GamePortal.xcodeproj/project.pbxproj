@@ -1,5 +1,7 @@
 // !$*UTF8*$!
 { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+000000000000000000000170 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineCache.swift; sourceTree = "<group>"; };
+000000000000000000000171 = { isa = PBXBuildFile; fileRef = 000000000000000000000170; };
 00000000000000000000012C = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePortalTests/PortalUITests.swift; sourceTree = "<group>"; };
 00000000000000000000012D = { isa = PBXBuildFile; fileRef = 00000000000000000000012C; };
 00000000000000000000012E = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = GamePortalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -23,10 +25,10 @@
 00000000000000000000006F = { isa = PBXFileReference; explicitFileType = wrapper.application; path = GamePortal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 000000000000000000000001 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2600; }; buildConfigurationList = 000000000000000000000014; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); mainGroup = 000000000000000000000002; productRefGroup = 000000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (000000000000000000000005,00000000000000000000012F); };
 000000000000000000000002 = { isa = PBXGroup; children = (000000000000000000000003,000000000000000000000004,00000000000000000000012C); sourceTree = "<group>"; };
-000000000000000000000003 = { isa = PBXGroup; children = (000000000000000000000064,000000000000000000000065,000000000000000000000066,000000000000000000000067,00000000000000000000006E); path = GamePortal; sourceTree = "<group>"; };
+000000000000000000000003 = { isa = PBXGroup; children = (000000000000000000000170,000000000000000000000064,000000000000000000000065,000000000000000000000066,000000000000000000000067,00000000000000000000006E); path = GamePortal; sourceTree = "<group>"; };
 000000000000000000000004 = { isa = PBXGroup; children = (00000000000000000000006F,00000000000000000000012E); name = Products; sourceTree = "<group>"; };
 000000000000000000000005 = { isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000015; buildPhases = (000000000000000000000006,000000000000000000000007,000000000000000000000008); buildRules = (); dependencies = (); name = GamePortal; productName = GamePortal; productReference = 00000000000000000000006F; productType = "com.apple.product-type.application"; };
-000000000000000000000006 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000C8,0000000000000000000000C9,0000000000000000000000CA,0000000000000000000000CB); runOnlyForDeploymentPostprocessing = 0; };
+000000000000000000000006 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000171,0000000000000000000000C8,0000000000000000000000C9,0000000000000000000000CA,0000000000000000000000CB); runOnlyForDeploymentPostprocessing = 0; };
 000000000000000000000007 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 000000000000000000000008 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (0000000000000000000000D2); runOnlyForDeploymentPostprocessing = 0; };
 00000000000000000000001E = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; };
