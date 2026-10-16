@@ -633,3 +633,24 @@ the result. This avoids relying on one long browser HTTP request for large games
 The preview process must stay running; jobs remain in its memory until completion.
 It returns the real backend response and does not retry paid generation requests
 automatically. Refreshing the page still clears the current editor/chat session.
+
+### Builder generation latency
+
+The builder now requests Muse with `reasoning_effort="low"`, temperature 1.0,
+and `stream=True`. Streaming is collected on the server, preserving the existing
+`/agent/chat` response format while avoiding Meta's non-streaming generation limit.
+The SDK's automatic retries are disabled; the agent owns retries under one
+120-second budget. Timeouts and truncated/interrupted streams do not trigger
+another hidden paid call. The HTTP endpoint also returns 504 after 120 seconds.
+Attempt timings are logged without game code, credentials, or model reasoning.
+
+These changes must be deployed on the course backend to change live generation
+behavior. Running the local connected preview alone cannot change the remote
+server's reasoning effort or retry policy. Verify after deployment with an actual
+generation and the server's `Builder generation` timing logs. Tests with simulated
+model responses check request options and failure handling; they do not measure
+live Muse latency.
+
+References: https://dev.meta.ai/docs/reasoning and
+https://dev.meta.ai/docs/protocols/chat-completions (reasoning effort, sampling,
+and the non-streaming time limit).

@@ -1,6 +1,7 @@
 """FastAPI routes for the game platform."""
 
 import secrets
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import JsonValue
 
 from game_platform.models import GameRules, MatchStatus
@@ -567,7 +569,7 @@ def admin_delete_match(platform: Platform, match_id: str) -> None:
 
 
 @debug_router.post("/agent/chat")
-def agent_chat(
+async def agent_chat(
     request: Request, caller_id: CallerId, body: AgentChatRequest
 ) -> AgentChatResponse:
     """One turn of conversation with the game-building agent (backs the builder's
@@ -584,7 +586,11 @@ def agent_chat(
             "configured on the server.",
         )
     try:
-        return chat_with_agent(client, body)
+        return await asyncio.wait_for(
+            run_in_threadpool(chat_with_agent, client, body), timeout=120
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Muse did not finish within two minutes. Try a smaller game or change.") from exc
     except AgentError as exc:
         raise HTTPException(
             status_code=HTTPStatus.BAD_GATEWAY, detail=str(exc)

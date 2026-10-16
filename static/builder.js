@@ -468,7 +468,7 @@ async function requestAgentReply(user, body, isCurrent) {
     if (!isCurrent()) throw new Error("Conversation changed.");
     if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
     const seconds = Math.floor((Date.now() - started) / 1000);
-    setMessage("agent-message", `Muse is generating your game… ${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed. Larger games can take several minutes.`);
+    setMessage("agent-message", `Waiting for the course server… ${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed. Generation progress is not available.`);
     await new Promise((resolve) => setTimeout(resolve, 1500));
     reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, { user });
   }
