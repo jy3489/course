@@ -8,10 +8,18 @@ the service or the HTTP layer.
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from game_platform.models import Game, Match, User
+from game_platform.models import Game, GameDraft, Match, User
 
 
 class Store(Protocol):
+    def put_game_draft(self, draft: GameDraft) -> None: ...
+
+    def get_game_draft(self, draft_id: str) -> GameDraft | None: ...
+
+    def list_game_drafts(self, *, owner_user_id: str) -> list[GameDraft]: ...
+
+    def delete_game_draft(self, draft_id: str) -> None: ...
+
     def put_user(self, user: User) -> None: ...
 
     def get_user(self, user_id: str) -> User | None: ...
@@ -74,6 +82,8 @@ class Snapshot:
     game_versions: tuple[Game, ...]
     deleted_game_ids: tuple[str, ...]
     matches: tuple[Match, ...]
+    # Optional so existing data files load without a migration. Never public games.
+    game_drafts: tuple[GameDraft, ...] = ()
 
 
 class InMemoryStore:
@@ -86,6 +96,7 @@ class InMemoryStore:
         self._game_versions: dict[str, list[Game]] = {}
         self._deleted_game_ids: set[str] = set()
         self._matches: dict[str, Match] = {}
+        self._game_drafts: dict[str, GameDraft] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -97,6 +108,8 @@ class InMemoryStore:
         store._deleted_game_ids.update(snapshot.deleted_game_ids)
         for match in snapshot.matches:
             store.put_match(match)
+        for draft in snapshot.game_drafts:
+            store.put_game_draft(draft)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -108,10 +121,23 @@ class InMemoryStore:
             ),
             deleted_game_ids=tuple(sorted(self._deleted_game_ids)),
             matches=tuple(self._matches.values()),
+            game_drafts=tuple(self._game_drafts.values()),
         )
 
     def put_user(self, user: User) -> None:
         self._users[user.id] = user
+
+    def put_game_draft(self, draft: GameDraft) -> None:
+        self._game_drafts[draft.id] = draft
+
+    def get_game_draft(self, draft_id: str) -> GameDraft | None:
+        return self._game_drafts.get(draft_id)
+
+    def list_game_drafts(self, *, owner_user_id: str) -> list[GameDraft]:
+        return [d for d in self._game_drafts.values() if d.owner_user_id == owner_user_id]
+
+    def delete_game_draft(self, draft_id: str) -> None:
+        self._game_drafts.pop(draft_id, None)
 
     def get_user(self, user_id: str) -> User | None:
         return self._users.get(user_id)

@@ -83,6 +83,22 @@ class Game:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GameDraft:
+    """Owner-only working copy. Its id becomes the public game id on publication."""
+
+    id: str
+    owner_user_id: str
+    name: str
+    description: str
+    rules: GameRules
+    code: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    base_version: int = 0
+    revision: int = 1
+
+
+@dataclass(frozen=True, kw_only=True)
 class Seat:
     player_index: int
     kind: SeatKind

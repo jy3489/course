@@ -61,10 +61,12 @@ const NEW_GAME = {
 
 const state = {
   games: [], // the acting user's games (latest versions)
+  drafts: [], // private working copies, visible only to this user
   selectedId: null, // a game id, "new", or null
   baseline: null, // the editor values when last loaded or saved
   pendingSwitch: null, // a selection waiting for a second click to discard edits
   deleteArmed: false,
+  discardDraftArmed: false,
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
   activeTab: "agent",
@@ -92,22 +94,31 @@ function me() {
 async function onUserChanged() {
   state.selectedId = null;
   state.baseline = null;
+  state.games = [];
+  state.drafts = [];
   resetAgent();
   state.draftUndo = [];
   stopTest();
+  render();
   await loadGames();
   render();
 }
 
 async function loadGames() {
   const user = me();
-  state.games = user
-    ? await apiRequest("GET", `/games?owner_user_id=${encodeURIComponent(user.id)}`)
-    : [];
+  const [games, drafts] = user ? await Promise.all([
+    apiRequest("GET", `/games?owner_user_id=${encodeURIComponent(user.id)}`),
+    apiRequest("GET", "/game-drafts", {user}),
+  ]) : [[], []];
+  if (me()?.id !== user?.id) return;
+  state.games = games;
+  state.drafts = drafts;
 }
 
 function renderGames() {
-  const items = state.games.map((game) =>
+  const library = new Map(state.games.map((game) => [game.id, game]));
+  for (const draft of state.drafts) library.set(draft.id, draft);
+  const items = [...library.values()].map((game) =>
     el(
       "button",
       {
@@ -116,7 +127,7 @@ function renderGames() {
         "aria-selected": String(game.id === state.selectedId),
         onclick: () => select(game.id),
       },
-      el("div", { class: "title" }, game.name, el("span", { class: "badge", textContent: `v${game.version}` })),
+      el("div", { class: "title" }, game.name || "Untitled game", el("span", { class: "badge", textContent: game.version ? `Public · v${game.version}` : game.base_version ? `Private draft · public v${game.base_version}` : "Private draft" })),
       el("div", {
         class: "sub",
         textContent: `${game.allowed_player_counts.join(", ")} players · updated ${formatTime(game.updated_at)}`,
@@ -137,6 +148,10 @@ function renderGames() {
 
 function selectedGame() {
   return state.games.find((game) => game.id === state.selectedId) ?? null;
+}
+
+function selectedDraft() {
+  return state.drafts.find((draft) => draft.id === state.selectedId) ?? null;
 }
 
 function editorValues() {
@@ -182,17 +197,19 @@ function select(id) {
   state.pendingSwitch = null;
   state.selectedId = id;
   state.deleteArmed = false;
+  state.discardDraftArmed = false;
   resetAgent();
   state.draftUndo = [];
   const game = selectedGame();
-  fillEditor(game ?? NEW_GAME);
+  fillEditor(selectedDraft() ?? game ?? NEW_GAME);
   $("generation-player-mode").value = "auto";
   stopTest();
   showTab(id === "new" ? "agent" : "edit");
   setMessage("edit-message", "");
   render();
-  if (game) {
-    setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
+  const working = selectedDraft() ?? game;
+  if (working) {
+    setTestMode(working.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
     startTest();
   }
 }
@@ -208,16 +225,16 @@ function saveMessage(text, kind = "") {
 }
 
 function updateSaveControls() {
-  for (const id of ["save", "agent-publish", "delete", "revert", "new-game"]) {
+  for (const id of ["save", "agent-save", "publish", "agent-publish", "discard-draft", "delete", "revert", "new-game"]) {
     $(id).disabled = state.saving;
   }
   renderDraftControls();
 }
 
-async function save() {
+async function save(publishing = false) {
   if (state.saving || state.restoring) return;
   if (state.agent?.pending || state.agentSending) {
-    saveMessage("Wait for the agent, then apply or discard its proposal before publishing.", "error");
+    saveMessage("Wait for the agent, then apply or discard its proposal before saving or publishing.", "error");
     return;
   }
   const user = me();
@@ -225,24 +242,69 @@ async function save() {
   if (!user || !selectedId) return;
   const values = editorValues();
   const baseline = JSON.stringify(values);
+  const existingDraft = selectedDraft();
   state.saving = true;
   updateSaveControls();
-  saveMessage("Saving…");
+  saveMessage(publishing ? "Saving privately, then publishing…" : "Saving private draft…");
   try {
-    const game = await apiRequest(selectedId === "new" ? "POST" : "PATCH",
-      selectedId === "new" ? "/games" : `/games/${selectedId}`, { body: values, user });
+    const draft = await apiRequest(selectedId === "new" ? "POST" : "PUT",
+      selectedId === "new" ? "/game-drafts" : `/game-drafts/${encodeURIComponent(selectedId)}`,
+      {body: {...values, expected_revision: existingDraft?.revision ?? null}, user});
     if (me()?.id !== user.id || state.selectedId !== selectedId) return;
-    state.games = [game, ...state.games.filter((item) => item.id !== game.id)];
-    state.selectedId = game.id;
+    state.drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)];
+    state.selectedId = draft.id;
     // Keep edits typed while the request was in flight.
-    if (JSON.stringify(editorValues()) === baseline) fillEditor(game);
+    if (JSON.stringify(editorValues()) === baseline) fillEditor(draft);
     else state.baseline = baseline;
-    saveMessage(`Published version ${game.version}.`, "ok");
+    saveMessage("Saved privately. Only you can access this draft; Publish makes it public.", "ok");
     render();
+    if (publishing) {
+      try {
+        const game = await apiRequest("POST", `/game-drafts/${encodeURIComponent(draft.id)}/publish`,
+          {body: {expected_revision: draft.revision}, user});
+        if (me()?.id !== user.id || state.selectedId !== draft.id) return;
+        state.games = [game, ...state.games.filter((item) => item.id !== game.id)];
+        state.drafts = state.drafts.map((item) => item.id === draft.id ? {...item, base_version: game.version} : item);
+        saveMessage(`Published version ${game.version}. Everyone can now play this version.`, "ok");
+      } catch (error) {
+        if (me()?.id === user.id && state.selectedId === draft.id) {
+          saveMessage(`Draft saved privately, but publishing failed: ${error.message}`, "error");
+        }
+      }
+    }
   } catch (error) {
     if (me()?.id === user.id && state.selectedId === selectedId) {
       saveMessage(`Couldn't save: ${error.message}`, "error");
     }
+  } finally {
+    state.saving = false;
+    updateSaveControls();
+    render();
+  }
+}
+
+async function discardSavedDraft() {
+  if (!selectedDraft() || state.saving || state.restoring || state.agentSending || state.agent?.pending) return;
+  const user = me(), id = state.selectedId;
+  if (!state.discardDraftArmed) {
+    state.discardDraftArmed = true;
+    saveMessage("Click Discard private draft again to remove your saved draft. The public version stays available.", "error");
+    return;
+  }
+  state.saving = true;
+  updateSaveControls();
+  try {
+    await apiRequest("DELETE", `/game-drafts/${encodeURIComponent(id)}`, {user});
+    if (me()?.id !== user.id || state.selectedId !== id) return;
+    state.drafts = state.drafts.filter((item) => item.id !== id);
+    fillEditor(selectedGame() ?? NEW_GAME);
+    state.discardDraftArmed = false;
+    resetAgent();
+    state.draftUndo = [];
+    stopTest();
+    saveMessage("Private draft discarded. Public version loaded.", "ok");
+  } catch (error) {
+    saveMessage(`Couldn't discard draft: ${error.message}`, "error");
   } finally {
     state.saving = false;
     updateSaveControls();
@@ -261,12 +323,13 @@ async function deleteGame() {
   }
   if (!state.deleteArmed) {
     state.deleteArmed = true;
-    setMessage("edit-message",
-      "Click Delete again to delete this game. Existing matches keep working; new ones can't be created.", "error");
+    setMessage("edit-message", selectedGame()
+      ? "Click Delete again to delete the public game and your draft. Existing matches keep working; new ones can't be created."
+      : "Click Delete again to delete this private draft. It has never been published.", "error");
     return;
   }
   try {
-    await apiRequest("DELETE", `/games/${state.selectedId}`, { user: me() });
+    await apiRequest("DELETE", `${selectedGame() ? "/games" : "/game-drafts"}/${encodeURIComponent(state.selectedId)}`, { user: me() });
     stopTest();
     state.selectedId = null;
     state.baseline = null;
@@ -280,10 +343,15 @@ async function deleteGame() {
 
 function renderEditorMeta() {
   const game = selectedGame();
+  const draft = selectedDraft();
   $("game-meta").textContent = game
-    ? `Version ${game.version} · created ${formatTime(game.created_at)} · updated ${formatTime(game.updated_at)} · id ${game.id}`
-    : "A new game. Save to create it.";
-  $("save").textContent = state.selectedId === "new" ? "Publish game" : "Publish new version";
+    ? `Public version ${game.version}${draft ? " · private working copy" : ""} · id ${game.id}`
+    : draft ? "Private draft · visible only to your account" : "Unsaved draft · Save keeps it private, Publish makes it public";
+  $("save").textContent = "Save draft";
+  $("publish").textContent = game ? "Publish new version" : "Publish game";
+  $("agent-publish").textContent = $("publish").textContent;
+  $("revert").textContent = draft ? "Revert to saved draft" : "Revert to published";
+  $("discard-draft").hidden = !draft || !game;
   $("delete").textContent = state.selectedId === "new" ? "Discard" : "Delete";
 }
 
@@ -328,8 +396,10 @@ function showTab(name) {
 
 function renderDraftControls() {
   $("undo-ai-change").disabled = state.draftUndo.length === 0 || state.agentSending || Boolean(state.agent?.pending) || state.saving || state.restoring;
-  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Draft changes — not published" : selectedGame() ? "Published version loaded" : "New game — not published";
   const game = selectedGame();
+  const draft = selectedDraft();
+  const sameAsPublic = game && draft && Object.keys(editorValues()).every((key) => JSON.stringify(game[key]) === JSON.stringify(draft[key]));
+  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Unsaved changes — Save keeps them private" : sameAsPublic ? `Published v${game.version} — draft also saved` : draft ? "Draft saved privately — Publish shares it with everyone" : game ? "Published version loaded" : "New game — not saved or published";
   const versions = game ? Array.from({length: Math.min(game.version, 6)}, (_, i) => game.version - i) : [];
   $("published-versions").replaceChildren(...versions.map((version) => el("button", {
     type: "button", textContent: `Load v${version}${version === game.version ? " (latest)" : ""}`,
@@ -358,7 +428,7 @@ function undoAppliedChange() {
   renderTestSetup();
   renderDraftControls();
   if (state.activeTab === "edit" || state.activeTab === "test") startTest();
-  saveMessage("Restored the previous draft. Publish to save it.", "ok");
+  saveMessage("Restored the previous draft. Save privately or Publish to share it.", "ok");
 }
 
 async function restorePublishedVersion(version) {
@@ -742,8 +812,8 @@ function applyAgentProposal() {
   showTab("edit");
   if (editorValues().allowed_player_counts.length === 1 && editorValues().allowed_player_counts[0] === 1) setTestMode("solo");
   startTest();
-  agentLog("system", "Applied to the draft and restarted the preview. Ask for another change or publish when ready.");
-  saveMessage("Applied to draft. Test the game, then publish the new version.", "ok");
+  agentLog("system", "Applied to the draft and restarted the preview. Save privately, ask for another change, or publish when ready.");
+  saveMessage("Applied to draft. Save to keep it private, or Publish to share it.", "ok");
   renderDraftControls();
 }
 
@@ -791,13 +861,16 @@ function protectUnsavedChanges(event) {
 async function main() {
   window.addEventListener("beforeunload", protectUnsavedChanges);
   $("new-game").addEventListener("click", () => select("new"));
-  $("save").addEventListener("click", save);
+  $("save").addEventListener("click", () => save());
+  $("agent-save").addEventListener("click", () => save());
+  $("publish").addEventListener("click", () => save(true));
+  $("discard-draft").addEventListener("click", discardSavedDraft);
   $("undo-ai-change").addEventListener("click", undoAppliedChange);
   for (const id of ["name", "description", "code", "allows-leave", "allows-join"]) {
     $(id).addEventListener("input", renderDraftControls);
   }
   $("revert").addEventListener("click", () => {
-    fillEditor(selectedGame() ?? NEW_GAME);
+    fillEditor(selectedDraft() ?? selectedGame() ?? NEW_GAME);
     stopTest();
     renderTestSetup();
     renderDraftControls();
@@ -818,7 +891,7 @@ async function main() {
   $("agent-discard").addEventListener("click", discardAgentProposal);
   $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
   $("generation-player-mode").addEventListener("change", changeGenerationMode);
-  $("agent-publish").addEventListener("click", save);
+  $("agent-publish").addEventListener("click", () => save(true));
   for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
     $(id).addEventListener("click", () => setTestMode(mode));
   }

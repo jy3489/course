@@ -24,6 +24,9 @@ from game_platform.schemas import (
     AuthResponse,
     EmailStart,
     GameCreate,
+    GameDraftSave,
+    GameDraftPublish,
+    GameDraftOut,
     GameOut,
     GameUpdate,
     GoogleLogin,
@@ -296,6 +299,53 @@ def email_verify(
         as_user_id=caller_id,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
+
+
+# Private drafts: every route requires authentication and owner checks.
+
+
+@router.get("/game-drafts")
+def list_game_drafts(platform: Platform, caller_id: CallerId) -> list[GameDraftOut]:
+    return [GameDraftOut.of(d) for d in platform.list_game_drafts(caller_id=caller_id)]
+
+
+@router.get("/game-drafts/{draft_id}")
+def get_game_draft(platform: Platform, caller_id: CallerId, draft_id: str) -> GameDraftOut:
+    return GameDraftOut.of(platform.get_game_draft(caller_id=caller_id, draft_id=draft_id))
+
+
+def _save_draft(platform: GamePlatform, caller_id: str, draft_id: str | None, body: GameDraftSave) -> GameDraftOut:
+    return GameDraftOut.of(platform.save_game_draft(
+        caller_id=caller_id, draft_id=draft_id, name=body.name,
+        description=body.description, code=body.code, expected_revision=body.expected_revision,
+        rules=GameRules(
+            allowed_player_counts=tuple(body.allowed_player_counts),
+            allows_leave_mid_match=body.allows_leave_mid_match,
+            allows_join_mid_match=body.allows_join_mid_match,
+        ),
+    ))
+
+
+@router.post("/game-drafts", status_code=HTTPStatus.CREATED)
+def create_game_draft(platform: Platform, caller_id: CallerId, body: GameDraftSave) -> GameDraftOut:
+    return _save_draft(platform, caller_id, None, body)
+
+
+@router.put("/game-drafts/{draft_id}")
+def save_game_draft(platform: Platform, caller_id: CallerId, draft_id: str, body: GameDraftSave) -> GameDraftOut:
+    return _save_draft(platform, caller_id, draft_id, body)
+
+
+@router.delete("/game-drafts/{draft_id}", status_code=HTTPStatus.NO_CONTENT)
+def delete_game_draft(platform: Platform, caller_id: CallerId, draft_id: str) -> None:
+    platform.delete_game_draft(caller_id=caller_id, draft_id=draft_id)
+
+
+@router.post("/game-drafts/{draft_id}/publish")
+def publish_game_draft(platform: Platform, caller_id: CallerId, draft_id: str, body: GameDraftPublish) -> GameOut:
+    return GameOut.of(platform.publish_game_draft(
+        caller_id=caller_id, draft_id=draft_id, expected_revision=body.expected_revision,
+    ))
 
 
 # Games
@@ -611,7 +661,9 @@ async def _revalidate_pages(
     """Makes browsers check for newer pages and scripts on every load. Otherwise they
     may keep using a cached old script with a new page, which breaks it."""
     response = await call_next(request)
-    if request.method == "GET" and not response.headers.get(
+    if request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
+        response.headers["Cache-Control"] = "private, no-store"
+    elif request.method == "GET" and not response.headers.get(
         "content-type", ""
     ).startswith("application/json"):
         response.headers["Cache-Control"] = "no-cache"

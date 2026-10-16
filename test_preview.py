@@ -53,6 +53,20 @@ def test_preview_reports_unreachable_backend():
         assert client.get('/auth/config').status_code == 502
 
 
+def test_preview_forwards_private_draft_put_and_credentials():
+    def backend(request):
+        assert request.method == 'PUT'
+        assert request.url.path == '/game-drafts/my-draft'
+        assert request.headers['x-user-id'] == 'owner'
+        assert request.headers['x-user-password'] == 'secret'
+        return httpx.Response(200, json={'id': 'my-draft'})
+    with TestClient(preview.create_preview('https://buildplay.fun', transport=httpx.MockTransport(backend))) as client:
+        response = client.put('/game-drafts/my-draft', json={'code': 'private'},
+                              headers={'X-User-Id': 'owner', 'X-User-Password': 'secret'})
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == 'private, no-store'
+
+
 def test_slow_generation_returns_a_job_and_remains_pollable():
     import asyncio
     import time
