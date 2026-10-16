@@ -22,6 +22,21 @@ untouched archive of main at `6d3bac2`: two config tests assume Unix path string
 and the example-data snapshot does not match its generator. Browser smoke checks
 confirmed tab visibility, the saved-game preview, and expandable source settings.
 
+## Live generation observations
+
+Diagnostics against the existing course backend returned a discussion reply in
+1.8 seconds and Tic Tac Toe code in 74.5 seconds. A fresh Backgammon request was
+still pending after 180.8 seconds and a later poll, then eventually returned
+8,978 characters of game code on attempt 2. The response's `parse_note` records:
+`attempt 1: model call failed (The model returned an empty reply.)`.
+
+That confirms a failed call and automatic retry prolonged this particular
+request. The exact completion time and provider's reason for the empty reply
+were not captured. The returned Backgammon code has not been playtested. These
+calls used the existing backend, not this branch's new model settings. The
+Backgammon shown in the earlier workspace screenshot was a published copy whose
+code matches the existing catalog game; it was not this fresh generation.
+
 ## What is confirmed
 
 - The application is Python/FastAPI served by Uvicorn. Static builder and portal
