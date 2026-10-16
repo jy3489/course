@@ -5,37 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=4" />
-    <style>
-      .new-match {
-        padding: 0 var(--space-md) var(--space-md);
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-sm);
-      }
-
-      .new-match select {
-        width: 100%;
-      }
-
-      #computers {
-        width: 64px;
-      }
-
-      .match-header h2 {
-        margin: 0;
-        font-size: var(--font-size-md);
-        display: flex;
-        gap: var(--space-sm);
-        align-items: baseline;
-      }
-
-      .waiting-note {
-        padding: var(--space-lg);
-        border: 1px dashed var(--color-border-3);
-        border-radius: var(--radius-sm);
-        color: var(--color-text-secondary);
-      }
-    </style>
+    <link rel="stylesheet" href="/static/portal.css?v=1" />
   </head>
   <body>
     <header class="topbar">
@@ -51,38 +21,59 @@
       <span class="spacer"></span>
       <span id="account-menu"></span>
     </header>
-    <div class="app">
-      <aside class="sidebar">
-        <div class="section-title">New match</div>
-        <div class="new-match">
-          <select id="new-game" aria-label="Game"></select>
-          <div class="inline-row">
-            <label class="inline">Computer opponents <input id="computers" type="number" min="0" max="9" value="0" /></label>
-            <button id="create" type="button" class="primary">Create</button>
-          </div>
-          <div id="create-message" class="message"></div>
+    <div class="app portal-shell">
+      <aside class="sidebar portal-sidebar">
+        <div class="portal-brand"><span aria-hidden="true">✳</span> Game Portal</div>
+        <button id="show-creator" type="button" class="primary">+ New match</button>
+        <div id="portal-login-note" class="muted" hidden>Log in to see your matches.</div>
+        <div id="my-matches">
+          <details id="group-turn" class="match-group" open hidden><summary title="Matches where it is your turn to play">Your turn <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
+          <details id="group-ongoing" class="match-group"><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
+          <details id="group-waiting" class="match-group"><summary>Waiting for players <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
+          <details id="group-over" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
         </div>
-        <div id="my-matches"></div>
-        <div class="section-title">Open matches you can join</div>
-        <div id="open-matches"></div>
+        <details id="group-open" class="match-group open-group"><summary>Open matches you can join <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
+        <a class="builder-link" href="/builder">Build or edit a game ↗</a>
       </aside>
-      <main class="work">
-        <div id="placeholder" class="muted">Log in at the top right, then pick or create a match.</div>
-        <div id="match" hidden>
+      <main class="work portal-main">
+        <details id="match-creator" class="match-creator" open>
+          <summary><span class="creator-title">New match</span><span class="creator-toggle" aria-hidden="true">+</span></summary>
+          <div class="creator-content">
+            <p class="creator-description">Choose a game. Play solo, add computers, or invite friends.</p>
+            <label class="game-label" for="game-search">Choose your game</label>
+            <div id="game-chooser" class="game-chooser">
+              <input id="new-game" type="hidden" />
+              <input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Type a game name…" />
+              <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
+            </div>
+            <div id="selected-game-card" class="selected-game-card">
+              <div class="game-symbol" aria-hidden="true">✳</div>
+              <div><h2 id="selected-game-name">Choose a game</h2><p id="selected-game-description"></p><span id="selected-game-mode" class="mode-label"></span></div>
+            </div>
+            <div class="create-controls">
+              <label id="computer-setting" class="computer-setting" for="computers">Computer opponents <input id="computers" type="number" min="0" max="9" value="0" /></label>
+              <button id="create" type="button" class="primary">Create match ↗</button>
+            </div>
+            <p id="create-hint" class="muted"></p>
+            <div id="create-message" class="message" role="status"></div>
+          </div>
+        </details>
+        <div id="placeholder" class="muted">Your match will open here. You can also select a match from the sidebar.</div>
+        <section id="match" class="match-stage" hidden>
           <div class="match-header">
             <h2><span id="match-title"></span> <span id="match-status" class="badge"></span></h2>
             <div id="match-meta" class="muted"></div>
           </div>
-          <div id="seats" class="seats" style="margin: var(--space-sm) 0"></div>
+          <div id="seats" class="seats"></div>
           <div id="actions" class="inline-row"></div>
-          <div id="match-message" class="message"></div>
+          <div id="match-message" class="message" role="status"></div>
           <div id="waiting" class="waiting-note" hidden></div>
           <div id="game-box" class="frame-box" hidden></div>
-        </div>
+        </section>
       </main>
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/portal.js?v=5"></script>
+    <script src="/static/portal.js?v=7"></script>
   </body>
 </html>

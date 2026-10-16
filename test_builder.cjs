@@ -257,20 +257,35 @@ test('undoing a solo proposal restores the previous player counts too',async()=>
   assert.equal(node('count-1').checked,false);assert.equal(node('count-2').checked,true);
 });
 
-test('visible solo override configures one seat and sends a manual constraint',async()=>{
+test('advanced player-count lock sends the selected count as a manual constraint',async()=>{
   let body;
   const {node,run}=setup(async(method,path,opts)=>{body=opts.body;return {message:'done'};});
-  node('generation-player-mode').value='solo';run('changeGenerationMode()');
+  node('lock-player-counts').checked=true;node('count-1').checked=true;node('count-2').checked=false;
   assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
   node('agent-input').value='Hanoi';await run('sendAgentMessage()');
   assert.equal(body.player_count_mode,'manual');assert.deepEqual(Array.from(body.allowed_player_counts),[1]);
 });
 
-test('changing player mode during generation invalidates its proposal',async()=>{
+test('changing player-count lock during generation invalidates its proposal',async()=>{
   const wait=deferred();const {node,run}=setup(()=>wait.promise);
   node('agent-input').value='Hanoi';const request=run('sendAgentMessage()');
-  node('generation-player-mode').value='custom';
+  node('lock-player-counts').checked=true;
   wait.resolve({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]});await request;
   run('applyAgentProposal()');assert.notEqual(node('code').value,'<html>solo</html>');
-  assert.match(node('agent-message').textContent,/player mode changed/);
+  assert.match(node('agent-message').textContent,/player count lock changed/);
+});
+
+test('Unpublish preserves unsaved edits and removes the public play link',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path)=>{
+    calls.push([method,path]);
+    if(path==='/builder/games')return [{id:'saved',version:1,name:'Game',allowed_player_counts:[2],published:false}];
+    if(path==='/game-drafts')return [];
+    return {id:'saved',published:false};
+  });
+  run('state.games=[{id:"saved",version:1,name:"Game",published:true}];state.selectedId="saved"');
+  node('code').value='unsaved source';await run('unpublishGame()');
+  assert.equal(node('code').value,'unsaved source');assert.equal(node('play-game').hidden,true);
+  assert.equal(run('selectedGame().published'),false);
+  assert.deepEqual(calls[0],['POST','/games/saved/unpublish']);
 });

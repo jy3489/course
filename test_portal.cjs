@@ -35,7 +35,7 @@ test('creating a solo-only game starts one human immediately',async()=>{
   assert.equal(calls[1][1],'/matches/match/start');
   assert.deepEqual(Array.from(calls[1][2].first_turn_player_indices),[0]);
   assert.equal(run('state.selectedId'),'match');
-  assert.equal(node('computers').disabled,true);assert.equal(node('create').textContent,'Play solo');
+  assert.equal(node('computers').disabled,true);assert.equal(node('create').textContent,'Play solo ↗');
 });
 
 test('multiplayer and mixed-mode games retain their lobby',async()=>{
@@ -61,4 +61,45 @@ test('a valid one-seat lobby says ready instead of waiting for another player',(
   run('renderMatch()');assert.equal(node('match-status').textContent,'ready to start');
   assert.match(node('waiting').textContent,/Ready to start with 1 player/);
   assert.doesNotMatch(node('waiting').textContent,/wait for others/i);
+});
+
+test('polling preserves collapsed groups and unchanged match buttons',()=>{
+  const {node,run}=setup();run('renderLists()');
+  const original=node('list-over').children;
+  node('group-open').open=false;node('group-over').open=false;
+  run('renderLists()');
+  assert.equal(node('group-open').open,false);assert.equal(node('group-over').open,false);
+  assert.equal(node('list-over').children,original);
+});
+
+test('typed search finds a game in a large catalog and Enter selects it',()=>{
+  const {node,run}=setup();
+  run('state.games=Array.from({length:100},(_,i)=>({id:"game-"+i,name:"Puzzle "+i,version:1,allowed_player_counts:[2]}));state.gameSearchOriginal="game-0"');
+  node('game-search').value='PUZZLE 83';run('onGameSearchInput()');
+  assert.equal(run('state.filteredGames.length'),1);
+  assert.equal(node('create').disabled,true);
+  run('onGameSearchKey({key:"Enter",preventDefault(){}})');
+  assert.equal(node('new-game').value,'game-83');assert.equal(node('game-search').value,'Puzzle 83');
+  assert.equal(node('create').disabled,false);assert.equal(node('game-search-popup').hidden,true);
+});
+
+test('unmatched search cannot create the previously selected game on blur',async()=>{
+  let calls=0;const {node,run}=setup(async()=>{calls++;});
+  run('state.gameSearchOriginal="game"');
+  node('game-search').value='does not exist';run('onGameSearchInput();closeGameSearch()');
+  assert.equal(node('new-game').value,'');assert.equal(node('create').disabled,true);
+  await run('createMatch()');assert.equal(calls,0);
+  assert.match(node('game-results-note').textContent,/No matching games/);
+});
+
+test('Your turn is absent when no human turn needs attention',()=>{
+  const {node,run}=setup();run('renderLists()');assert.equal(node('group-turn').hidden,true);
+  run('state.myMatches=[{id:"m",game_id:"game",game_version:2,players:[{player_index:0,kind:"human",user_id:"owner"}],status:"ongoing",turn_of_player_indices:[0]}];renderLists()');
+  assert.equal(node('group-turn').hidden,false);assert.equal(node('count-turn').textContent,'1');
+});
+
+test('catalog updates preserve a searched choice instead of restoring an old URL choice',()=>{
+  const {node,run}=setup();
+  run('location.hash="#game=game";state.games.push({id:"other",version:1,name:"Other",allowed_player_counts:[2]});renderLists();chooseGame("other");state.games[0].version++;renderLists()');
+  assert.equal(node('new-game').value,'other');assert.equal(node('game-search').value,'Other');
 });

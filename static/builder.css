@@ -156,7 +156,9 @@
 .version-section { border-top:1px solid #343e55; padding-top:18px; }
 .version-section button { font:12px var(--font-mono); }
 #advanced-editor { border:1px solid #343e55; border-radius:6px; padding:16px; }
-#advanced-editor > summary { cursor:pointer; font-weight:600; color:#a5aec2; }
+#advanced-editor > summary { cursor:pointer; font-weight:600; color:#5fd4ff; }
+#open-player-settings { margin:10px 0; border-color:#5fd4ff; color:#5fd4ff; }
+.edit-chat #open-player-settings { border-color:#334018; color:#10141f; background:transparent; }
 #advanced-editor[open] > summary { margin-bottom:20px; }
 #advanced-editor #code { margin-top:10px; min-height:260px; }
 #advanced-editor > label { display:block; margin-top:18px; }

@@ -24,10 +24,11 @@ from game_platform.store import InMemoryStore, Snapshot
 logger = logging.getLogger(__name__)
 
 # Bump when the file layout changes incompatibly.
-FORMAT_VERSION: Final = 3
+FORMAT_VERSION: Final = 4
 # Version 1 stored each turn as a single player index; version 2 stores a set of
-# them. Version 3 adds private drafts; old servers must reject it rather than
-# silently drop drafts when rewriting a file. Versions 1 and 2 still load.
+# them. Version 3 adds private drafts; version 4 adds publication state. Older
+# servers must reject new formats rather than lose drafts or re-expose unpublished
+# games. Versions 1, 2 and 3 still load with all existing public games unchanged.
 _V1_FORMAT_VERSION: Final = 1
 
 
@@ -201,9 +202,14 @@ class JsonFileStore:
         with self._lock:
             return self._inner.get_game_version(game_id, version)
 
-    def list_games(self, *, owner_user_id: str | None) -> list[Game]:
+    def list_games(self, *, owner_user_id: str | None, include_unpublished: bool = False) -> list[Game]:
         with self._lock:
-            return self._inner.list_games(owner_user_id=owner_user_id)
+            return self._inner.list_games(owner_user_id=owner_user_id, include_unpublished=include_unpublished)
+
+    def set_game_published(self, game_id: str, published: bool) -> None:
+        with self._lock:
+            self._inner.set_game_published(game_id, published)
+            self._set_dirty()
 
     def delete_game(self, game_id: str) -> None:
         with self._lock:
@@ -246,7 +252,7 @@ def read_snapshot(path: Path) -> Snapshot:
             contents = _migrate_v1_to_v2(contents)
         except (KeyError, TypeError):
             pass  # fall through; validation below reports the real problem
-    elif format_version not in (2, FORMAT_VERSION):
+    elif format_version not in (2, 3, FORMAT_VERSION):
         raise ValueError(
             f"{path} has format version {format_version}, expected {FORMAT_VERSION}"
         )

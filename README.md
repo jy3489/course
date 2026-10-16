@@ -674,11 +674,13 @@ and other supported counts. One human playing against a computer still uses at
 least two seats. In Playtest, the Solo, Vs computer, and Local multiplayer buttons
 configure seat types for supported counts. Online human matches use the portal.
 
-The visible **Player mode** selector defaults to **Auto — from your prompt**.
-Muse proposes player counts alongside the complete code: applying a solo proposal
+Muse normally infers player counts from your prompt and proposes them alongside
+the complete code. Applying a solo proposal
 also selects **1 (solo)**, instead of leaving the new-game default at two seats.
-Choose **Solo — 1 player** to require a solo game, or use selected counts for a
-manual constraint. Proposals without valid counts are retried; counts and code
+Ask for a specific number directly in your prompt. A manual **Lock the player
+counts below for AI generation** checkbox is available with the counts under
+**Game settings & source code**; no player-mode dropdown appears in the main flow.
+Proposals without valid counts are retried; counts and code
 are reviewed, applied, undone and published together. Existing mobile clients
 retain manual-count behavior unless they opt into Auto.
 
@@ -726,7 +728,31 @@ Private drafts use authenticated `/game-drafts` routes with ownership checks and
 revision checks against stale browser tabs. They are stored separately from public
 games and excluded from public versions, matches, catalog, and debug data responses.
 The existing `/games` POST/PATCH API still publishes for compatibility with other clients.
-Data format 3 adds drafts and loads formats 1/2 automatically. Older server code
-rejects format 3 rather than silently losing drafts: rollback requires code that
-understands drafts or an explicit, reviewed data migration. Keep private backups
+Data format 4 adds publication state and private drafts, loading formats 1/2/3
+automatically. Older server code rejects format 4 rather than losing drafts or
+re-exposing unpublished games: rollback requires compatible code or an explicit,
+reviewed data migration. Keep private backups
 before deployment; never restore an older backup over newer user data by default.
+
+### Unpublish a game
+
+**Unpublish game** removes the game from the public catalog and prevents new
+matches or new participants. Its editable draft stays in your authenticated
+builder library. Existing participants can still load their pinned source and
+finish matches; unrelated users and anonymous visitors cannot read unpublished
+game URLs, versions, match details or move histories. Publish again to restore
+public availability, or Delete to remove the game from your library. Deletion
+retains history needed by existing participants.
+
+### Portal
+
+The portal uses the builder's navy, lime, cyan and pink palette below the shared
+navigation. New match is a large central card with a searchable game combobox,
+game details and a direct solo start button. Type a name to filter the catalog;
+use arrow keys/Enter or click a result. The sidebar contains collapsible Your turn, Ongoing, Waiting,
+Finished and Open matches sections. Native disclosure nodes and unchanged list
+buttons stay stable while polling, preserving collapse state and keyboard focus.
+Creating or selecting a match folds the creator to leave room for the game;
+the sidebar New match button opens it again. Player counts normally follow prompts;
+manual generation overrides remain in the builder's collapsed advanced settings.
+Your turn appears only when the signed-in human has a turn to take.

@@ -259,6 +259,7 @@ class GameOut(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     deleted: bool
+    published: bool
 
     @classmethod
     def of(cls, game: Game) -> "GameOut":
@@ -275,6 +276,7 @@ class GameOut(BaseModel):
             created_at=game.created_at,
             updated_at=game.updated_at,
             deleted=game.deleted,
+            published=game.published,
         )
 
 

@@ -62,7 +62,7 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
             if not job["task"].done():
                 return JSONResponse({"preview_job_id": job["id"]}, status_code=202)
             return job["task"].result()
-        if path.split("/", 1)[0] not in {"auth", "users", "games", "game-drafts", "matches", "agent"}:
+        if path.split("/", 1)[0] not in {"auth", "users", "games", "game-drafts", "matches", "agent", "builder"}:
             return Response("This page is not available in the local preview.", status_code=404)
         # Forward only product API headers; the model key never enters the browser.
         headers = {key: request.headers[key] for key in ("content-type", "x-user-id", "x-user-password") if key in request.headers}
@@ -80,7 +80,7 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
                 return JSONResponse({"detail": "The course backend connection failed. Your prompt is preserved; try again."}, status_code=502)
             return Response(upstream.content, status_code=upstream.status_code,
                             headers={"content-type": upstream.headers.get("content-type", "application/json"),
-                                     **({"cache-control": "private, no-store"} if path.split("/", 1)[0] == "game-drafts" else {})})
+                                     "cache-control": upstream.headers.get("cache-control", "private, no-store")})
 
         if path == "agent/chat" and request.method == "POST":
             owner = (headers.get("x-user-id", ""), headers.get("x-user-password", ""))
