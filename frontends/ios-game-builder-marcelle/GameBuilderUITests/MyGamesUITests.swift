@@ -179,12 +179,13 @@ final class MyGamesUITests: XCTestCase {
 
         // It can't be played online: a clear message instead of "Server error 404".
         row.tap()
-        tap(app.buttons["play-online"])
-        tap(app.buttons["create-match"])
+        tap(app.buttons["test-play"])
+        tap(app.buttons["seat1-friend"])
+        tap(app.buttons["invite-friends"])
         let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'isn\u{2019}t published' OR label CONTAINS \"isn't published\"")).firstMatch
         XCTAssertTrue(message.waitForExistence(timeout: 10), "no clear message")
         screenshot("unpublished-play-online")
-        app.buttons["cancel"].tap()
+        app.goBack()
 
         // Editing is done in the web builder; the app says so and doesn't offer saving.
         tap(app.buttons["edit-game"])
@@ -205,7 +206,8 @@ final class MyGamesUITests: XCTestCase {
 
         app.row("Solo Race").tap()
         tap(app.buttons["test-play"])
-        XCTAssertTrue(app.staticTexts["solo-seat"].waitForExistence(timeout: 5) || app.staticTexts["you (solo)"].exists)
+        XCTAssertTrue(app.staticTexts["seat0-you"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["seat0-you"].label, "you (solo)")
         XCTAssertFalse(app.buttons["seat0-computer"].exists, "a solo game has no computer seat")
         screenshot("solo-setup")
         tap(app.buttons["start"])

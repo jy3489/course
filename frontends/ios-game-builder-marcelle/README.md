@@ -15,8 +15,14 @@ Google login. Xcode downloads it on the first build.
   plus my own games (`GET /builder/games` with my login, which includes my unpublished ones)
   from buildplay.fun and saves the list (including each game's HTML `code`) on the phone. Offline, the saved list is shown with an "Offline" banner.
   Pull down to refresh. Tap a game to see its details.
-- **Test play** (game page → "▶ test play"): pick the number of players (from the game's
-  `allowed_player_counts`) and which seats are computers, then play. The game's HTML runs in a
+- **Play** (game page → "▶ play"): one setup screen for every way to play. Pick the number of
+  players (from the game's `allowed_player_counts`); seat 1 is always **you**, and every other
+  seat is **human** (takes turns on this phone), **friend** (plays on their own phone, invited
+  with a link) or **computer**. With no friends, **start →** plays on the phone (below). With
+  a friend it's an online match (see "Online matches"), so the other seats can only be friends
+  or computers: the server can't mix pass-and-play with online friends (one phone = one
+  account), so human seats switch to computer, with a note saying why.
+- **Playing on the phone**: the game's HTML runs in a
   sandboxed iframe inside a WKWebView, using the `state_changed` / `make_move` messages from
   "Game API" in the root README. Computer seats are played by the game itself. A solo game
   (1 player) is just me: no computer seats and no handoff screen. With 2+ humans
@@ -41,11 +47,17 @@ Google login. Xcode downloads it on the first build.
   Editing a game that was created offline just changes what will be uploaded; deleting it
   removes it from the queue. If the server refuses a change for good (e.g. the game was
   deleted elsewhere), it's dropped with a message so the queue can't get stuck.
-- **Online matches** (Matches tab, and "▶ play online" on a game's page): create a match with
-  0+ computer opponents; friends join the open seats with the **share link** or **QR code**
-  (the web portal link `buildplay.fun/portal#match=…`, which works in any browser) or by
-  pasting it under "join by link". **Open matches** from others can be joined from the list.
-  The owner sets the computers and taps **start** when the number of seats is allowed. The
+- **Online matches**: on the play setup screen, with one or more **friend** seats the button
+  becomes **invite friends →**: it creates the match (`POST /matches` with
+  `num_computer_opponents` = the computer seats) and opens the waiting room. Seats show in the
+  server's real order: people in the order they join (me first), then the open friend seats
+  ("waiting for friend…" with **share link**, **copy** and a **QR code** of the web portal link
+  `buildplay.fun/portal#match=…`, which works in any browser), then the computers. A friend who
+  joins shows with their name and a lime check; **start match →** turns on when every friend
+  seat is filled. (The phone remembers how many friend seats I planned; the server doesn't.)
+  Others can join by pasting a link under "join by link", and **open matches** from others can
+  be joined from the list. "// my matches" says who each match is with ("you vs Ana",
+  "you + 2 computers"). The
   match screen refreshes every 2 seconds and plays the exact game version of the match; my
   app also plays computer seats (as the README asks). Moves are sent with
   `expected_move_count`.
@@ -86,7 +98,7 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
 2. Quit the app (swipe it away) and reopen it → still logged in (Keychain).
 3. Turn on airplane mode (on the simulator: turn off the Mac's Wi-Fi), reopen the app →
    the same games are shown with the Offline banner.
-4. Tic-tac-toe → **▶ test play** → **start →**: tap a square; the computer answers. Try
+4. Tic-tac-toe → **▶ play** → **start →**: tap a square; the computer answers. Try
    **undo** and **restart**.
 5. Same, but set seat 2 to **human**: after each move a "Pass the phone" screen appears.
 6. Poker → 3 players → start: betting buttons appear on your turn; computers bet by themselves.
@@ -95,10 +107,10 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
    Open it → **✎ edit game** → rename → save: the version goes up. **delete game** removes it.
 9. In airplane mode, create and edit a game: "waiting to upload" appears. Turn airplane mode
    off: the note disappears, and the game is on buildplay.fun.
-10. Tic-tac-toe → **▶ play online** → 1 computer → **+ create match** → **▶ start match** →
-    move: the computer answers. Open the link in a browser: the same match is on the web portal.
-11. Create a match with 0 computers; a friend opens the link (or scans the QR code) and joins
-    on the web portal; start; take turns. Moves show up within 2 seconds.
+10. Tic-tac-toe → **▶ play** → seat 2 **friend** (the button becomes **invite friends →**) →
+    the waiting room shows "waiting for friend…" with share link, copy and QR code.
+11. A friend opens the link (or scans the QR code) and joins on the web portal: their name and
+    a lime check appear; **start match →**; take turns. Moves show up within 2 seconds.
 12. Airplane mode: Matches tab → open the match → move ("Offline: your move is saved…").
     Airplane mode off: the move is sent.
 13. Matches tab: swipe left on a match I created → **delete** → confirm: it's gone (also from
@@ -125,7 +137,8 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
 - `TabNavigation.swift`: a tab's navigation: a stack on iPhone, list + detail on iPad.
 - `MatchView.swift`: one match (waiting room with share link + QR, then the game), the
   "new online match" sheet, and the QR code.
-- `PlayView.swift`: test play: the setup screen (players, seats) and the play screen.
+- `PlayView.swift`: the play setup screen (players; seats: you, human, friend, computer) and
+  the play screen on the phone.
 - `LocalMatch.swift`: the platform's side of the Game API on the phone: builds `state_changed`,
   checks and applies `make_move`, undo, restart, whose turn it is and when to hand the phone over.
 - `GameWebView.swift`: the WKWebView bridge (host page + sandboxed iframe + message relay).
@@ -146,8 +159,9 @@ New Swift files dropped into `GameBuilder/` are picked up by Xcode automatically
 - `GameBuilderUITests/MyGamesUITests.swift`: guest login, create / edit / test-play / delete,
   offline edits uploaded later, an unpublished game (tag, clear "can't play online" message,
   editor note), and a solo game (1-player chip, test play without handoff).
-- `GameBuilderUITests/MatchesUITests.swift`: a match vs a computer; a match with a second
-  person (the test plays "Friend" through the REST API) including an offline move sent later;
+- `GameBuilderUITests/MatchesUITests.swift`: the play setup with friend seats (human seats
+  switch to computer); online with 1 friend + 1 computer (waiting room, join, start); a match
+  with 1 friend (the test plays "Friend" through the REST API) including an offline move sent later;
   an offline move rejected as stale; the status chip colors; deleting my match (swipe),
   hiding a finished match (swipe), leaving an ongoing Poker match ("⋯"; a computer takes the
   seat), and "needs internet" offline.

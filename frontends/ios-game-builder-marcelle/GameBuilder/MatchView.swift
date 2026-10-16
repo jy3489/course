@@ -11,6 +11,7 @@ struct MatchView: View {
     @State private var error: String?
     @State private var busy = false
     @State private var actionRequest: Match?
+    @State private var copied = false
 
     var body: some View {
         Group {
@@ -118,7 +119,128 @@ struct MatchView: View {
 
     // MARK: Waiting for players
 
-    private func waitingRoom(_ match: Match) -> some View {
+    /// Before the start. A match I created from the play setup screen knows how many friend
+    /// seats I planned, so it shows them one by one; any other match shows the general room.
+    @ViewBuilder private func waitingRoom(_ match: Match) -> some View {
+        if match.ownerUserId == app.account?.id, let planned = model.plannedFriendSeats(match) {
+            friendsWaitingRoom(match, planned: planned)
+        } else {
+            openWaitingRoom(match)
+        }
+    }
+
+    /// Seats in the server's real order: people in the order they joined (me first), then
+    /// the friend seats still open, then the computers.
+    private func friendsWaitingRoom(_ match: Match, planned: Int) -> some View {
+        let game = model.game(for: match)
+        let me = app.account?.id
+        let people = match.players.filter { $0.kind == "human" }
+        let friendsIn = people.filter { $0.userId != me }.count
+        let open = max(0, planned - friendsIn)
+        let computers = match.players.filter { $0.kind == "computer" }
+        let counts = game?.allowedPlayerCounts ?? []
+        let ready = open == 0 && counts.contains(match.players.count)
+        let url = API.shareURL(matchId: match.id)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(open == 0 ? "Everyone's here" : "Waiting for friends")
+                        .font(Theme.font(28, .extraBold)).kerning(-0.8).foregroundStyle(Theme.text)
+                    Text("\(game?.name ?? "Game") · \(people.count + open + computers.count) seats")
+                        .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                }
+                notices(match)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionLabel(title: "seats")
+                    ForEach(Array(people.enumerated()), id: \.offset) { i, seat in
+                        seatLine(i) {
+                            Text(model.name(of: seat)).font(Theme.font(16, .semibold)).foregroundStyle(Theme.text)
+                            Spacer()
+                            if seat.userId == me {
+                                Text("you").font(Theme.mono(12, bold: true)).foregroundStyle(Theme.accent)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+                                    .accessibilityLabel("joined")
+                                    .accessibilityIdentifier("friend-joined")
+                            }
+                        }
+                    }
+                    ForEach(0..<open, id: \.self) { k in
+                        waitingFriend(index: people.count + k, url: url)
+                    }
+                    ForEach(computers.indices, id: \.self) { j in
+                        seatLine(people.count + open + j) {
+                            // No number: a computer's seat number moves up as friends join.
+                            Text("Computer").font(Theme.font(16, .semibold)).foregroundStyle(Theme.text)
+                            Spacer()
+                            Text("the game plays it").font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                    Text("The server seats people in the order they join, then the computers.")
+                        .font(Theme.font(12)).foregroundStyle(Theme.muted)
+                }
+                .themeCard()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Friends open the link in any browser or the iPhone app, then tap Join.")
+                        .font(Theme.font(14)).foregroundStyle(Theme.muted)
+                    Text(url.absoluteString)
+                        .font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("match-link")
+                }
+
+                Button("start match →") { run { try await model.start(matchId: match.id) } }
+                    .buttonStyle(.primary)
+                    .disabled(!ready || busy || app.isOffline)
+                    .accessibilityIdentifier("start-match")
+                if open > 0 {
+                    Text("Starts when \(open == 1 ? "your friend joins" : "\(open) more friends join").")
+                        .font(Theme.font(13)).foregroundStyle(Theme.muted)
+                }
+                Text("Online: moves are shared with your friends.")
+                    .font(Theme.font(14)).foregroundStyle(Theme.muted)
+            }
+            .padding(20)
+            .readableWidth()
+        }
+    }
+
+    /// One seat line: the seat's color, then its content.
+    private func seatLine<Content: View>(_ index: Int, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(Theme.playerColor(index)).frame(width: 10, height: 10)
+            content()
+        }
+    }
+
+    /// An open friend seat: the invitation (QR code, share sheet, copy).
+    private func waitingFriend(index: Int, url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            seatLine(index) {
+                Text("waiting for friend…").font(Theme.font(16, .semibold)).foregroundStyle(Theme.muted)
+                    .accessibilityIdentifier("friend-waiting")
+                Spacer()
+            }
+            HStack(alignment: .center, spacing: 12) {
+                QRCode(text: url.absoluteString)
+                    .frame(width: 84, height: 84)
+                    .accessibilityLabel("QR code for the match link")
+                VStack(spacing: 8) {
+                    ShareLink(item: url) { Text("share link") }.buttonStyle(.outline)
+                    Button(copied ? "copied ✓" : "copy") {
+                        UIPasteboard.general.string = url.absoluteString
+                        copied = true
+                    }
+                    .buttonStyle(.outline)
+                }
+            }
+            .padding(.leading, 20)
+        }
+    }
+
+    private func openWaitingRoom(_ match: Match) -> some View {
         let game = model.game(for: match)
         let isOwner = match.ownerUserId == app.account?.id
         let computers = match.players.filter { $0.kind == "computer" }.count
@@ -163,7 +285,7 @@ struct MatchView: View {
                 shareCard(match)
 
                 if isOwner {
-                    Button("▶ start match") { run { try await model.start(matchId: match.id) } }
+                    Button("start match →") { run { try await model.start(matchId: match.id) } }
                         .buttonStyle(.primary)
                         .disabled(!canStart || busy || app.isOffline)
                         .accessibilityIdentifier("start-match")
@@ -218,82 +340,6 @@ struct MatchView: View {
         busy = true
         Task {
             do { try await action(); error = nil } catch { self.error = error.localizedDescription }
-            busy = false
-        }
-    }
-}
-
-/// Start an online match for a game: me + some computers + open seats for friends.
-struct CreateMatchView: View {
-    @Environment(AppModel.self) private var app
-    @Environment(MatchesModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let game: Game
-    let onCreated: (Match) -> Void
-    @State private var computers = 0
-    @State private var busy = false
-    @State private var error: String?
-
-    private var maxComputers: Int { max(0, (game.allowedPlayerCounts.max() ?? 2) - 1) }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(game.name).font(Theme.font(28, .extraBold)).kerning(-0.8).foregroundStyle(Theme.text)
-                    Text("You take seat 1. Add computer opponents, and friends can join the open seats with the link or QR code. You start the match when everyone's in.")
-                        .font(Theme.font(15)).foregroundStyle(Theme.muted)
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: "computer opponents")
-                        HStack(spacing: 6) {
-                            ForEach(0...maxComputers, id: \.self) { n in
-                                let on = n == computers
-                                Button("\(n)") { computers = n }
-                                    .font(Theme.mono(15, bold: on))
-                                    .foregroundStyle(on ? Theme.accentText : Theme.text)
-                                    .frame(width: 40, height: 40)
-                                    .background(on ? Theme.accent : Theme.background, in: RoundedRectangle(cornerRadius: Theme.radius))
-                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(on ? Theme.accent : Theme.line))
-                                    .accessibilityIdentifier("computers-\(n)")
-                            }
-                        }
-                        Text(computers == 0 ? "Only people: friends join the open seats." : "You + \(computers) computer\(computers == 1 ? "" : "s"), plus friends who join.")
-                            .font(Theme.font(13)).foregroundStyle(Theme.muted)
-                    }
-                    .themeCard()
-                    if app.isOffline { Notice(text: "You're offline. Creating a match needs the internet.", systemImage: "wifi.slash") }
-                    if let error { Text(error).font(Theme.font(14)).foregroundStyle(Theme.danger) }
-                    Button("+ create match", action: create)
-                        .buttonStyle(.primary)
-                        .disabled(busy || game.version == 0)
-                        .accessibilityIdentifier("create-match")
-                    if game.version == 0 {
-                        Text("Upload the game first (it's waiting to upload).").font(Theme.font(13)).foregroundStyle(Theme.muted)
-                    }
-                }
-                .padding(20)
-            }
-            .background(Theme.background)
-            .navigationTitle("New online match")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("cancel") { dismiss() }.font(Theme.mono(14)) }
-            }
-        }
-    }
-
-    private func create() {
-        busy = true
-        Task {
-            do {
-                let m = try await model.create(game: game, computers: computers)
-                dismiss()
-                onCreated(m)
-            } catch {
-                self.error = error.localizedDescription
-            }
             busy = false
         }
     }

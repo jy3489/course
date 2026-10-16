@@ -32,12 +32,15 @@ final class MatchesUITests: XCTestCase {
         element.tap()
     }
 
-    /// Games tab → Tic-tac-toe → play online → create; returns the match id.
-    private func createTicTacToeMatch(computers: Int) -> String {
-        tap(app.row("Tic-tac-toe"))
-        tap(app.buttons["play-online"])
-        tap(app.buttons["computers-\(computers)"])
-        tap(app.buttons["create-match"])
+    /// Games tab → game → ▶ play → choose seats → invite friends; returns the match id.
+    /// `seats` maps seat numbers (0-based; seat 0 is me) to "friend", "computer" or "human".
+    private func inviteFriends(game: String = "Tic-tac-toe", players: Int? = nil,
+                               seats: [Int: String] = [1: "friend"]) -> String {
+        tap(app.row(game))
+        tap(app.buttons["test-play"])
+        if let players { tap(app.buttons["\(players) players"]) }
+        for seat in seats.keys.sorted() { tap(app.buttons["seat\(seat)-\(seats[seat]!)"]) }
+        tap(app.buttons["invite-friends"])
         let link = app.staticTexts["match-link"]
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         return link.label.components(separatedBy: "match=").last!
@@ -47,8 +50,10 @@ final class MatchesUITests: XCTestCase {
 
     private func openMatchesTab() { tap(app.tab("Matches")) }
 
-    /// From a match screen back to the Games list.
+    /// From a match screen back to the Games list (match → play setup → game page → list;
+    /// on iPad the list stays on the left, so the last step does nothing).
     private func backToGames() {
+        app.goBack()
         app.goBack()
         app.goBack()
     }
@@ -149,7 +154,7 @@ final class MatchesUITests: XCTestCase {
 
     /// Creates a Tic-tac-toe match with no computers, Friend joins, the app starts it.
     private func startMatchWithFriend() async throws -> (String, [String: Any]) {
-        let id = createTicTacToeMatch(computers: 0)
+        let id = inviteFriends()
         let friend = try await newFriend()
         _ = try await request("POST", "/matches/\(id)/join", as: friend)
         XCTAssertTrue(app.staticTexts["Friend"].waitForExistence(timeout: 10), "the app didn't see Friend join")
@@ -162,17 +167,61 @@ final class MatchesUITests: XCTestCase {
     // MARK: Tests
 
 
-    func testMatchVsComputer() async throws {
+    /// The setup screen: picking a friend makes it an online match, so pass-and-play seats
+    /// become computers, and the button and note change.
+    func testSetupFriendSeats() {
         launchLoggedIn()
-        let id = createTicTacToeMatch(computers: 1)
+        tap(app.row("Poker"))
+        tap(app.buttons["test-play"])
+        tap(app.buttons["3 players"])
+        XCTAssertTrue(app.staticTexts["seat0-you"].exists, "seat 1 is always me")
+        tap(app.buttons["seat1-human"])
+        tap(app.buttons["seat2-human"])
+        XCTAssertTrue(app.buttons["start"].exists)
+        XCTAssertTrue(app.staticTexts["Moves stay on this phone. Nothing is sent to the server."].exists)
+
+        tap(app.buttons["seat1-friend"])
+        XCTAssertTrue(app.buttons["seat2-computer"].isSelected, "the human seat should become a computer")
+        XCTAssertFalse(app.buttons["seat2-human"].isEnabled, "no pass-and-play with friends online")
+        XCTAssertTrue(app.staticTexts["friend-rule-note"].exists)
+        XCTAssertTrue(app.staticTexts["Online: moves are shared with your friends."].exists)
+        XCTAssertTrue(app.buttons["invite-friends"].exists)
+        XCTAssertFalse(app.buttons["start"].exists)
+        screenshot("setup-friend-seat")
+
+        // Back to local play: the friend seat becomes a computer again.
+        tap(app.buttons["seat1-computer"])
+        XCTAssertTrue(app.buttons["start"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["seat2-human"].isEnabled)
+    }
+
+    /// Online with 1 friend + 1 computer: the waiting room shows the open friend seat with the
+    /// invitation, the friend's name and a check once they join, then the match starts.
+    func testFriendAndComputer() async throws {
+        launchLoggedIn()
+        let id = inviteFriends(game: "Poker", players: 3, seats: [1: "friend", 2: "computer"])
+        XCTAssertTrue(app.staticTexts["friend-waiting"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.images["QR code for the match link"].exists)
+        XCTAssertTrue(app.buttons["share link"].exists && app.buttons["copy"].exists)
+        XCTAssertTrue(app.staticTexts["Computer"].exists)
+        XCTAssertFalse(app.buttons["start-match"].isEnabled, "can't start before the friend joins")
+        screenshot("waiting-room-friend")
+
+        let friend = try await newFriend()
+        _ = try await request("POST", "/matches/\(id)/join", as: friend)
+        XCTAssertTrue(app.staticTexts["Friend"].waitForExistence(timeout: 10), "the app didn't see Friend join")
+        XCTAssertTrue(app.images["friend-joined"].exists || app.otherElements["friend-joined"].exists || app.images["joined"].exists)
+        XCTAssertFalse(app.staticTexts["friend-waiting"].exists)
+        XCTAssertTrue(app.buttons["start-match"].isEnabled)
+        screenshot("waiting-room-joined")
+
+        // The server's order: people in join order, then the computer.
+        let waiting = try await match(id)
+        XCTAssertEqual((waiting["players"] as! [[String: Any]]).map { $0["kind"] as! String }, ["human", "human", "computer"])
         tap(app.buttons["start-match"])
-        XCTAssertTrue(cells.element(boundBy: 8).waitForExistence(timeout: 15))
-        cells.element(boundBy: 4).tap()
-        // My app also plays the computer's move and sends it.
-        XCTAssertTrue(cells["O"].waitForExistence(timeout: 10), "the computer didn't move")
-        try await waitForMoveCount(id, 2)
-        screenshot("online-vs-computer")
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 15), "the game didn't load")
+        let started = try await match(id)
+        XCTAssertEqual(started["status"] as? String, "ongoing")
     }
 
 
@@ -264,7 +313,7 @@ final class MatchesUITests: XCTestCase {
         _ = try await startMatchWithFriend()
         backToGames()
         // waiting for players: created, not started.
-        _ = createTicTacToeMatch(computers: 0)
+        _ = inviteFriends()
         backToGames()
 
         // ongoing: Friend plays Poker (joinable mid-match) with a computer; I'm not in it.
@@ -286,7 +335,7 @@ final class MatchesUITests: XCTestCase {
 
     func testDeleteOwnMatch() async throws {
         launchLoggedIn()
-        let id = createTicTacToeMatch(computers: 1)
+        let id = inviteFriends()
         backToGames()
         openMatchesTab()
         let row = app.staticTexts["Tic-tac-toe"].firstMatch
@@ -348,7 +397,7 @@ final class MatchesUITests: XCTestCase {
         // since Poker lets people join mid-match). On the server a computer has my seat.
         XCTAssertTrue(app.tab("Matches").waitForExistence(timeout: 10))
         scrollToMyMatches()
-        XCTAssertTrue(app.staticTexts["Friend · Marcelle"].waitForNonExistence(timeout: 10), "still listed as my match")
+        XCTAssertTrue(app.staticTexts["you vs Friend"].waitForNonExistence(timeout: 10), "still listed as my match")
         let m = try await match(id)
         XCTAssertEqual(m["status"] as? String, "ongoing")
         let seats = m["players"] as! [[String: Any]]
@@ -358,7 +407,7 @@ final class MatchesUITests: XCTestCase {
 
     func testActionsNeedInternet() async throws {
         launchLoggedIn()
-        _ = createTicTacToeMatch(computers: 1)
+        _ = inviteFriends()
         app.terminate()
         launch(["-simulateOffline"])
         openMatchesTab()

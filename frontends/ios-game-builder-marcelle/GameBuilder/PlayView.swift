@@ -1,22 +1,40 @@
 import SwiftUI
 
-/// Before a test match: pick the number of players and which seats are computers.
+/// Before playing: how many players, and who sits in each seat. Seat 1 is always me; every
+/// other seat is a person on this phone ("human", pass-and-play), a friend on their own
+/// phone ("friend", invited with a link), or a computer. With no friends the match plays on
+/// this phone; with friends it's an online match on the server.
 struct PlaySetupView: View {
+    @Environment(AppModel.self) private var app
+    @Environment(MatchesModel.self) private var matches
+    @Environment(\.navigate) private var navigate
     let game: Game
     @State private var count: Int
-    @State private var kinds: [LocalMatch.Kind] = []
+    /// Seats 2, 3, … (seat 1 is me).
+    @State private var others: [SeatChoice] = []
+    @State private var switchedToComputer = false
+    @State private var busy = false
+    @State private var error: String?
+
+    enum SeatChoice: String, CaseIterable {
+        case human, friend, computer
+    }
 
     init(game: Game) {
         self.game = game
         _count = State(initialValue: game.allowedPlayerCounts.first ?? 2)
     }
 
+    private var friends: Int { others.filter { $0 == .friend }.count }
+    private var computers: Int { others.filter { $0 == .computer }.count }
+    private var online: Bool { friends > 0 }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 StepBar(active: .play)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Test play").font(Theme.font(32, .extraBold, relativeTo: .largeTitle)).kerning(-0.9)
+                    Text("Play").font(Theme.font(32, .extraBold, relativeTo: .largeTitle)).kerning(-0.9)
                     Text(game.name).font(Theme.font(17)).foregroundStyle(Theme.muted)
                 }
                 .foregroundStyle(Theme.text)
@@ -25,17 +43,47 @@ struct PlaySetupView: View {
                     SectionLabel(title: "players")
                     countPicker
                 }
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(title: "seats")
-                    ForEach(kinds.indices, id: \.self) { seat in seatRow(seat) }
+                    youRow
+                    ForEach(others.indices, id: \.self) { i in seatRow(i) }
+                    if !others.isEmpty {
+                        Text("human: takes turns on this phone · friend: plays on their own phone, invited by link · computer: the game plays it")
+                            .font(Theme.font(12)).foregroundStyle(Theme.muted)
+                    }
+                    if online && others.count > 1 {
+                        Text(switchedToComputer
+                             ? "Friends play online on their own phones, so pass-and-play seats became computers."
+                             : "With friends online, the other seats can be friends or computers (no pass-and-play).")
+                            .font(Theme.font(12)).foregroundStyle(Theme.warningText)
+                            .accessibilityIdentifier("friend-rule-note")
+                    }
                 }
                 .themeCard()
 
-                Text("Moves stay on this phone. Nothing is sent to the server.")
+                Text(online ? "Online: moves are shared with your friends." : "Moves stay on this phone. Nothing is sent to the server.")
                     .font(Theme.font(14)).foregroundStyle(Theme.muted)
-                NavigationLink("start →", value: Route.play(game, kinds))
+                    .accessibilityIdentifier("play-mode-note")
+                if online && app.isOffline {
+                    Notice(text: "Inviting friends needs the internet.", systemImage: "wifi.slash")
+                }
+                if online && game.version == 0 {
+                    Text("Upload the game first (it's waiting to upload).").font(Theme.font(13)).foregroundStyle(Theme.muted)
+                }
+                if let error { Text(error).font(Theme.font(14)).foregroundStyle(Theme.danger) }
+
+                if online {
+                    Button(action: invite) {
+                        if busy { ProgressView().tint(Theme.accentText) } else { Text("invite friends →") }
+                    }
                     .buttonStyle(.primary)
-                    .accessibilityIdentifier("start")
+                    .disabled(busy || app.isOffline || game.version == 0)
+                    .accessibilityIdentifier("invite-friends")
+                } else {
+                    NavigationLink("start →", value: Route.play(game, [.human] + others.map { $0 == .human ? .human : .computer }))
+                        .buttonStyle(.primary)
+                        .accessibilityIdentifier("start")
+                }
             }
             .padding(20)
             .readableWidth()
@@ -44,7 +92,7 @@ struct PlaySetupView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .onAppear { if kinds.isEmpty { resize(to: count) } }
+        .onAppear { if others.isEmpty { resize(to: count) } }
         .onChange(of: count) { resize(to: count) }
     }
 
@@ -64,43 +112,76 @@ struct PlaySetupView: View {
         }
     }
 
-    private func seatRow(_ seat: Int) -> some View {
+    /// Seat 1: always me.
+    private var youRow: some View {
         HStack(spacing: 10) {
+            Rectangle().fill(Theme.playerColor(0)).frame(width: 10, height: 10)
+            Text("Seat 1").font(Theme.font(16, .semibold)).foregroundStyle(Theme.text)
+            Spacer()
+            Text(others.isEmpty ? "you (solo)" : "you")
+                .font(Theme.mono(13, bold: true)).foregroundStyle(Theme.accent)
+                .accessibilityIdentifier("seat0-you")
+        }
+    }
+
+    private func seatRow(_ i: Int) -> some View {
+        let seat = i + 1
+        return HStack(spacing: 10) {
             Rectangle().fill(Theme.playerColor(seat)).frame(width: 10, height: 10)
             Text("Seat \(seat + 1)").font(Theme.font(16, .semibold)).foregroundStyle(Theme.text)
-            Spacer()
-            if kinds.count == 1 {
-                // Solo: just me, no computer seat and no handing the phone over.
-                Text("you (solo)").font(Theme.mono(13)).foregroundStyle(Theme.muted)
-                    .accessibilityIdentifier("solo-seat")
-            } else {
-                seatKindPicker(seat)
+                .lineLimit(1).fixedSize()
+            Spacer(minLength: 4)
+            HStack(spacing: 0) {
+                ForEach(SeatChoice.allCases, id: \.self) { choice in
+                    let selected = others[i] == choice
+                    // With a friend online in another seat, nobody else can play on this phone.
+                    let blocked = choice == .human && others.indices.contains { $0 != i && others[$0] == .friend }
+                    Button(choice.rawValue) { choose(choice, for: i) }
+                        .font(Theme.mono(13, bold: selected))
+                        .foregroundStyle(selected ? Theme.accentText : Theme.muted)
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 36)
+                        .background(selected ? Theme.accent : .clear)
+                        .opacity(blocked ? 0.35 : 1)
+                        .disabled(blocked)
+                        .accessibilityIdentifier("seat\(seat)-\(choice.rawValue)")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                }
             }
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.line))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
         }
     }
 
-    private func seatKindPicker(_ seat: Int) -> some View {
-        HStack(spacing: 0) {
-            ForEach([LocalMatch.Kind.human, .computer], id: \.self) { kind in
-                let selected = kinds[seat] == kind
-                Button(kind.rawValue) { kinds[seat] = kind }
-                    .font(Theme.mono(13, bold: selected))
-                    .foregroundStyle(selected ? Theme.accentText : Theme.muted)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 34)
-                    .background(selected ? Theme.accent : .clear)
-                    .accessibilityIdentifier("seat\(seat)-\(kind.rawValue)")
-            }
+    /// Picking a friend makes it an online match: pass-and-play seats become computers.
+    private func choose(_ choice: SeatChoice, for i: Int) {
+        others[i] = choice
+        if choice == .friend, others.contains(.human) {
+            others = others.map { $0 == .human ? .computer : $0 }
+            switchedToComputer = true
         }
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.line))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        if !online { switchedToComputer = false }
+        error = nil
     }
 
-    /// Keeps choices already made; new seats default to: seat 1 human, others computer.
-    /// A single seat is always human.
+    /// Keeps choices already made; new seats start as computers.
     private func resize(to n: Int) {
-        kinds = (0..<n).map { seat in seat < kinds.count ? kinds[seat] : (seat == 0 ? .human : .computer) }
-        if n == 1 { kinds = [.human] }
+        others = (1..<max(n, 1)).map { seat in seat - 1 < others.count ? others[seat - 1] : .computer }
+    }
+
+    /// Creates the online match and opens its waiting room.
+    private func invite() {
+        busy = true
+        error = nil
+        Task {
+            do {
+                let m = try await matches.create(game: game, friends: friends, computers: computers)
+                navigate(.match(m.id))
+            } catch {
+                self.error = error.localizedDescription
+            }
+            busy = false
+        }
     }
 }
 

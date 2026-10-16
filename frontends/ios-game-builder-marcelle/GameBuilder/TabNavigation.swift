@@ -23,10 +23,14 @@ struct TabNavigation<ListContent: View>: View {
                     Group {
                         if let first = path.first { first.destination } else { Placeholder(text: placeholder) }
                     }
-                    .navigationDestination(for: Route.self) { $0.destination }
+                    .environment(\.navigate) { path.append($0) }
+                    // Screens pushed on the right get it directly: in a split view they don't
+                    // inherit it from the stack.
+                    .navigationDestination(for: Route.self) { route in
+                        route.destination.environment(\.navigate) { path.append($0) }
+                    }
                 }
                 .id(path.first?.key) // a new pick starts a fresh stack on the right
-                .environment(\.navigate) { path.append($0) }
             }
             .navigationSplitViewStyle(.balanced)
             .environment(\.closeScreen) { if !path.isEmpty { path.removeLast() } }

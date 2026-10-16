@@ -153,8 +153,6 @@ struct GameDetailView: View {
     let initial: Game
     @State private var tab = Tab.details
     @State private var editing = false
-    @State private var creatingMatch = false
-    @Environment(\.navigate) private var navigate
 
     init(game: Game) { initial = game }
 
@@ -182,12 +180,11 @@ struct GameDetailView: View {
                     .padding(.top, 4)
                 }
 
-                NavigationLink("▶ test play", value: Route.playSetup(game))
+                // One setup screen for every way to play: alone, pass-and-play, computers,
+                // or friends online.
+                NavigationLink("▶ play", value: Route.playSetup(game))
                     .buttonStyle(.primary)
                     .accessibilityIdentifier("test-play")
-                Button("▶ play online") { creatingMatch = true }
-                    .buttonStyle(.outline)
-                    .accessibilityIdentifier("play-online")
                 if model.isMine(game) {
                     Button("✎ edit game") { editing = true }
                         .buttonStyle(.outline)
@@ -213,7 +210,6 @@ struct GameDetailView: View {
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .sheet(isPresented: $editing) { GameEditorView(game: game, onDelete: { closeScreen() }) }
-        .sheet(isPresented: $creatingMatch) { CreateMatchView(game: game) { navigate(.match($0.id)) } }
     }
 
     private var tabs: some View {

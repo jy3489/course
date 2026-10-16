@@ -116,7 +116,7 @@ private struct MatchRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.game(for: match)?.name ?? match.gameId).font(Theme.font(17, .semibold)).foregroundStyle(Theme.text)
-                Text(match.players.map { model.name(of: $0) }.joined(separator: " · "))
+                Text(model.withWhom(match))
                     .font(Theme.font(13)).foregroundStyle(Theme.muted).lineLimit(1)
                 HStack(spacing: 6) {
                     statusChip

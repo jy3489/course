@@ -28,6 +28,9 @@ final class MatchesModel {
     /// The exact game version each match plays, by "gameId@version".
     private var versions: [String: Game] = GameCache.load("game-versions", as: [String: Game].self) ?? [:]
     private var names: [String: String] = GameCache.load("user-names", as: [String: String].self) ?? [:]
+    /// How many friend seats I planned for each match I created (the server doesn't keep this;
+    /// it only knows the seats taken so far).
+    private var plannedFriends: [String: Int] = GameCache.load("planned-friends", as: [String: Int].self) ?? [:]
     /// Matches deleted, hidden or left in this session: late refreshes must not bring them back.
     private var removed: Set<String> = []
     /// A message to show, e.g. "your offline move was rejected".
@@ -63,6 +66,24 @@ final class MatchesModel {
         versions["\(match.gameId)@\(match.gameVersion)"]
             ?? app.games.first { $0.id == match.gameId && $0.version == match.gameVersion }
     }
+
+    /// Who the match is with, from my side: "you vs Ana", "you + 2 computers",
+    /// "you vs Ana + 1 computer". For a match I'm not in: everyone's names.
+    func withWhom(_ match: Match) -> String {
+        guard mySeat(match) != nil else { return match.players.map(name(of:)).joined(separator: " · ") }
+        let people = match.players.filter { $0.kind == "human" && $0.userId != me }.map(name(of:))
+        let computers = match.players.filter { $0.kind == "computer" }.count
+        let bots = "\(computers) computer\(computers == 1 ? "" : "s")"
+        switch (people.isEmpty, computers) {
+        case (true, 0): return match.isWaiting ? "just you so far" : "solo"
+        case (true, _): return "you + \(bots)"
+        case (false, 0): return "you vs \(people.joined(separator: " & "))"
+        default: return "you vs \(people.joined(separator: " & ")) + \(bots)"
+        }
+    }
+
+    /// Friend seats I planned when creating this match, or nil (created elsewhere).
+    func plannedFriendSeats(_ match: Match) -> Int? { plannedFriends[match.id] }
 
     func name(of seat: Match.Seat) -> String {
         guard let userId = seat.userId else { return "Computer \(seat.playerIndex + 1)" }
@@ -207,6 +228,15 @@ final class MatchesModel {
                 "This match's game was unpublished by its creator, so nobody can join it now."
             }
         }
+    }
+
+    /// Creates an online match: me, `computers` computer seats, and `friends` seats that
+    /// friends fill by joining with the link.
+    func create(game: Game, friends: Int, computers: Int) async throws -> Match {
+        let m = try await create(game: game, computers: computers)
+        plannedFriends[m.id] = friends
+        GameCache.save(plannedFriends, as: "planned-friends")
+        return m
     }
 
     func create(game: Game, computers: Int) async throws -> Match {
