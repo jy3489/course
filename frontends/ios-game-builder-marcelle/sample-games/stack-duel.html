@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stack Duel</title>
+<style>
+  :root {
+    --bg: #10141F; --text: #EEF0F5; --muted: #9AA3B8; --line: #2A3247; --empty: #1C2233;
+    --lime: #C6F432; --surface: #171C2A;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --cell: 28px; --gap: 2px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+  body {
+    font: 15px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  .mono { font-family: var(--mono); }
+  .label { font: 12px var(--mono); color: var(--muted); }
+  #top { display: flex; align-items: baseline; justify-content: space-between; }
+  #top h1 { margin: 0; font-size: 20px; font-weight: 800; }
+  #turn { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; min-height: 22px; }
+  #turn .square { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+  #scores { display: flex; gap: 6px; }
+  .score {
+    flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface);
+  }
+  .score .who { display: flex; align-items: center; gap: 5px; font: 11px var(--mono); color: var(--muted); }
+  .score .who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .score .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .score .pts { font-size: 22px; font-weight: 800; line-height: 1.1; }
+  #main { flex: 1; min-height: 0; display: flex; gap: 10px; }
+  #boardWrap { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: flex-start; justify-content: center; }
+  .grid { display: grid; gap: var(--gap); }
+  #board { grid-template-columns: repeat(8, var(--cell)); grid-template-rows: repeat(10, var(--cell)); }
+  .cell { border-radius: 3px; background: var(--empty); border: 1px solid var(--line); }
+  .block { border: 0; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.38); }
+  .active { border: 0; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.38); opacity: 0.9; }
+  .ghost { border: 2px dashed; }
+  #side { width: 74px; flex: none; display: flex; flex-direction: column; gap: 6px; }
+  #next { grid-template-columns: repeat(4, 13px); grid-template-rows: repeat(4, 13px); gap: 2px; margin-bottom: 8px; }
+  #next .cell { border-radius: 2px; }
+  #next .off { background: transparent; border-color: transparent; }
+  #lines { font-size: 22px; font-weight: 800; }
+  #controls { display: grid; grid-template-columns: 1fr 1fr 1fr 2fr; gap: 8px; }
+  #controls button {
+    height: 48px; border-radius: 4px; font: 700 18px var(--mono); cursor: pointer;
+    border: 1.5px solid var(--lime); background: transparent; color: var(--lime);
+  }
+  #controls #drop { background: var(--lime); color: var(--bg); font-size: 16px; }
+  #controls button:disabled { opacity: 0.35; cursor: default; }
+  #hint { font: 11px var(--mono); color: var(--muted); }
+  #end {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; background: rgba(16, 20, 31, 0.93);
+  }
+  #end h2 { margin: 0; font-size: 28px; }
+  #end .pts { font: 13px var(--mono); color: var(--muted); }
+  #end .made { font: 12px var(--mono); color: var(--muted); }
+  #end .made b { color: var(--lime); font-weight: 400; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="top"><h1>Stack Duel</h1><span id="moves" class="label"></span></div>
+<div id="turn"></div>
+<div id="scores"></div>
+<div id="main">
+  <div id="boardWrap"><div id="board" class="grid"></div></div>
+  <div id="side">
+    <div class="label">// next</div>
+    <div id="next" class="grid"></div>
+    <div class="label">// lines</div>
+    <div id="lines">0</div>
+  </div>
+</div>
+<div id="controls">
+  <button id="left" aria-label="left">◀</button>
+  <button id="rotate" aria-label="rotate">⟳</button>
+  <button id="right" aria-label="right">▶</button>
+  <button id="drop" aria-label="drop">drop ↓</button>
+</div>
+<div id="hint">// fill a row to clear it: +1 point per line</div>
+<div id="end" hidden></div>
+
+<script>
+"use strict";
+
+// Pure game rules: no DOM access. The board is ROWS arrays of COLS cells: -1 = empty,
+// otherwise the seat whose piece left that block.
+const Logic = {
+  ROWS: 10,
+  COLS: 8,
+  PIECES: {
+    I: [[0, 0], [0, 1], [0, 2], [0, 3]],
+    O: [[0, 0], [0, 1], [1, 0], [1, 1]],
+    T: [[0, 0], [0, 1], [0, 2], [1, 1]],
+    S: [[0, 1], [0, 2], [1, 0], [1, 1]],
+    Z: [[0, 0], [0, 1], [1, 1], [1, 2]],
+    J: [[0, 0], [1, 0], [1, 1], [1, 2]],
+    L: [[0, 2], [1, 0], [1, 1], [1, 2]],
+  },
+
+  /** The 4 rotations of a piece (clockwise), each as [row, col] cells starting at 0, 0. */
+  rotations(piece) {
+    const normalize = (cells) => {
+      const r0 = Math.min(...cells.map((c) => c[0])), c0 = Math.min(...cells.map((c) => c[1]));
+      return cells.map(([r, c]) => [r - r0, c - c0]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    };
+    const result = [normalize(Logic.PIECES[piece])];
+    for (let i = 1; i < 4; i++) result.push(normalize(result[i - 1].map(([r, c]) => [c, -r])));
+    return result;
+  },
+
+  width: (cells) => Math.max(...cells.map((c) => c[1])) + 1,
+  spawnCol: (cells) => Math.floor((Logic.COLS - Logic.width(cells)) / 2),
+
+  randomPiece(random = Math.random) {
+    const names = Object.keys(Logic.PIECES);
+    return names[Math.floor(random() * names.length)];
+  },
+
+  /** Fixed first pieces, so every viewer sees the same ones; random picks start in move 1. */
+  initialState() {
+    return {
+      board: Array.from({ length: Logic.ROWS }, () => Array(Logic.COLS).fill(-1)),
+      current: "T",
+      next: "L",
+      scores: [],
+      lines: 0,
+      last_move: null,
+      winners: null,
+    };
+  },
+
+  fits(board, cells, row, col) {
+    return cells.every(([r, c]) => {
+      const y = r + row, x = c + col;
+      return y >= 0 && y < Logic.ROWS && x >= 0 && x < Logic.COLS && board[y][x] === -1;
+    });
+  },
+
+  /** The row the piece lands on when dropped from the top in column `col`, or -1. */
+  landingRow(board, cells, col) {
+    if (!Logic.fits(board, cells, 0, col)) return -1;
+    let row = 0;
+    while (Logic.fits(board, cells, row + 1, col)) row++;
+    return row;
+  },
+
+  /** Places the piece and clears full rows. Returns the new board and the rows cleared. */
+  place(board, cells, row, col, seat) {
+    const next = board.map((r) => [...r]);
+    for (const [r, c] of cells) next[r + row][c + col] = seat;
+    const kept = next.filter((r) => r.some((cell) => cell === -1));
+    const cleared = Logic.ROWS - kept.length;
+    const empty = Array.from({ length: cleared }, () => Array(Logic.COLS).fill(-1));
+    return { board: [...empty, ...kept], cleared };
+  },
+
+  /** `seat` drops the current piece in rotation `rot` at column `col`. */
+  drop(state, seat, rot, col, numPlayers, random = Math.random) {
+    const cells = Logic.rotations(state.current)[rot];
+    const row = Logic.landingRow(state.board, cells, col);
+    if (row < 0) throw new Error("illegal move");
+    const { board, cleared } = Logic.place(state.board, cells, row, col, seat);
+    const scores = Array.from({ length: Math.max(numPlayers, state.scores.length) }, (_, i) => state.scores[i] ?? 0);
+    scores[seat] += cleared;
+    const current = state.next;
+    const spawn = Logic.rotations(current)[0];
+    const over = !Logic.fits(board, spawn, 0, Logic.spawnCol(spawn));
+    const best = Math.max(...scores);
+    return {
+      state: {
+        board, current, next: Logic.randomPiece(random), scores,
+        lines: state.lines + cleared,
+        last_move: { seat, piece: state.current, cleared },
+        winners: over ? scores.map((s, i) => i).filter((i) => scores[i] === best) : null,
+      },
+      nextTurn: over ? null : [(seat + 1) % numPlayers],
+    };
+  },
+
+  holes(board) {
+    let holes = 0;
+    for (let c = 0; c < Logic.COLS; c++) {
+      let roof = false;
+      for (let r = 0; r < Logic.ROWS; r++) {
+        if (board[r][c] !== -1) roof = true;
+        else if (roof) holes++;
+      }
+    }
+    return holes;
+  },
+
+  /** Computer: most rows cleared, then lowest landing, then fewest holes. */
+  bestPlacement(state) {
+    let best = null;
+    const seen = new Set();
+    Logic.rotations(state.current).forEach((cells, rot) => {
+      const key = JSON.stringify(cells);
+      if (seen.has(key)) return;
+      seen.add(key);
+      for (let col = 0; col + Logic.width(cells) <= Logic.COLS; col++) {
+        const row = Logic.landingRow(state.board, cells, col);
+        if (row < 0) continue;
+        const { board, cleared } = Logic.place(state.board, cells, row, col, 0);
+        const score = [cleared, -(Logic.ROWS - row), -Logic.holes(board)];
+        if (!best || score[0] > best.score[0] || (score[0] === best.score[0] &&
+            (score[1] > best.score[1] || (score[1] === best.score[1] && score[2] > best.score[2])))) {
+          best = { rot, col, score };
+        }
+      }
+    });
+    return best && { rot: best.rot, col: best.col };
+  },
+};
+
+// ---- UI ----
+
+// Seat colors in the GameBuilder app's order (Theme.swift): pink, yellow, cyan, lime.
+const SEAT_COLORS = ["#FF5FA2", "#FFD84D", "#5FD4FF", "#C6F432"];
+const seatColor = (seat) => SEAT_COLORS[seat % SEAT_COLORS.length];
+
+let latest = null;       // the last state_changed message
+let moveSent = false;    // at most one make_move per state_changed
+let pos = null;          // { rot, col } of the piece being placed
+
+const $ = (id) => document.getElementById(id);
+const gameState = () => latest.state ?? Logic.initialState();
+const playerName = (seat) => latest.players[seat]?.name ?? `Player ${seat + 1}`;
+
+function actingSeat() {
+  if (!latest || latest.status !== "ongoing") return null;
+  return latest.acting_for_player_index;
+}
+
+function makeMove(newState, nextTurn) {
+  if (moveSent) return;
+  moveSent = true;
+  window.parent.postMessage({ type: "make_move", new_state: newState, next_turn_player_indices: nextTurn }, "*");
+}
+
+function cellsOf(rot) { return Logic.rotations(gameState().current)[rot]; }
+
+/** Move or rotate the piece if it still fits at the top. */
+function tryPos(rot, col) {
+  const cells = cellsOf(rot);
+  col = Math.max(0, Math.min(col, Logic.COLS - Logic.width(cells)));
+  if (!Logic.fits(gameState().board, cells, 0, col)) return;
+  pos = { rot, col };
+  render();
+}
+
+function sizeBoard() {
+  const wrap = $("boardWrap");
+  const gap = 2;
+  const cell = Math.floor(Math.min((wrap.clientWidth - 7 * gap) / Logic.COLS, (wrap.clientHeight - 9 * gap) / Logic.ROWS));
+  document.documentElement.style.setProperty("--cell", `${Math.max(14, Math.min(cell, 40))}px`);
+}
+
+function render() {
+  const state = gameState();
+  const acting = actingSeat();
+  const humanActing = acting !== null && latest.players[acting]?.kind === "human";
+  const turnSeat = latest.status === "ongoing" ? (latest.turn_of_player_indices ?? [])[0] : undefined;
+  const numPlayers = latest.players.length;
+
+  $("moves").textContent = `move ${latest.move_count}`;
+
+  // Whose turn.
+  if (turnSeat === undefined) {
+    $("turn").replaceChildren();
+  } else {
+    const square = document.createElement("span");
+    square.className = "square";
+    square.style.background = seatColor(turnSeat);
+    const text = document.createElement("span");
+    text.textContent = humanActing ? "Your turn" : `${playerName(turnSeat)}'s turn`;
+    $("turn").replaceChildren(square, text);
+  }
+
+  // Score cards.
+  $("scores").replaceChildren(...latest.players.map((p, seat) => {
+    const card = document.createElement("div");
+    card.className = "score";
+    if (seat === turnSeat) card.style.borderColor = seatColor(seat);
+    card.innerHTML = `<div class="who"><span class="dot"></span><span></span></div><div class="pts"></div>`;
+    card.querySelector(".dot").style.background = seatColor(seat);
+    card.querySelector(".who span:last-child").textContent = playerName(seat);
+    card.querySelector(".pts").textContent = state.scores[seat] ?? 0;
+    return card;
+  }));
+
+  // Board, with the piece at the top and a dashed outline where it will land.
+  sizeBoard();
+  const color = turnSeat === undefined ? null : seatColor(turnSeat);
+  const piece = {}, ghost = {};
+  if (pos && color) {
+    const cells = cellsOf(pos.rot);
+    const row = Logic.landingRow(state.board, cells, pos.col);
+    for (const [r, c] of cells) {
+      piece[`${r},${c + pos.col}`] = true;
+      if (row >= 0) ghost[`${r + row},${c + pos.col}`] = true;
+    }
+  }
+  const board = [];
+  for (let r = 0; r < Logic.ROWS; r++) {
+    for (let c = 0; c < Logic.COLS; c++) {
+      const div = document.createElement("div");
+      div.className = "cell";
+      const owner = state.board[r][c];
+      if (owner !== -1) {
+        div.classList.add("block");
+        div.style.background = seatColor(owner);
+      } else if (piece[`${r},${c}`]) {
+        div.classList.add("active");
+        div.style.background = color;
+      } else if (ghost[`${r},${c}`]) {
+        div.classList.add("ghost");
+        div.style.borderColor = color;
+        div.style.background = `${color}22`;
+      }
+      board.push(div);
+    }
+  }
+  $("board").replaceChildren(...board);
+
+  // Next piece, in the next player's color.
+  const nextColor = seatColor(turnSeat === undefined ? 0 : (turnSeat + 1) % numPlayers);
+  const nextCells = Logic.rotations(state.next)[0];
+  const preview = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    const div = document.createElement("div");
+    const on = nextCells.some(([pr, pc]) => pr === r && pc === c);
+    div.className = on ? "cell block" : "cell off";
+    if (on) div.style.background = nextColor;
+    preview.push(div);
+  }
+  $("next").replaceChildren(...preview);
+  $("lines").textContent = state.lines;
+
+  // Controls.
+  for (const id of ["left", "rotate", "right", "drop"]) $(id).disabled = !humanActing || !pos;
+
+  // The end.
+  const end = $("end");
+  if (latest.status === "over") {
+    const winners = state.winners ?? [];
+    const names = winners.map(playerName);
+    const title = names.length === 0 ? "The match is over"
+      : names.length === 1 ? `${names[0]} wins!`
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} win!`;
+    end.innerHTML = `<h2></h2><div class="pts"></div><div class="made">made with g<b>/</b>b</div>`;
+    end.querySelector("h2").textContent = title;
+    end.querySelector(".pts").textContent = winners.length
+      ? `${state.scores[winners[0]]} point${state.scores[winners[0]] === 1 ? "" : "s"}`
+      : latest.end_reason === "player_left" ? "a player left" : "";
+    end.hidden = false;
+  } else {
+    end.hidden = true;
+  }
+}
+
+function dropNow() {
+  const acting = actingSeat();
+  if (acting === null || !pos) return;
+  const { state: next, nextTurn } = Logic.drop(gameState(), acting, pos.rot, pos.col, latest.players.length);
+  pos = null;
+  makeMove(next, nextTurn);
+  render();
+}
+
+$("left").onclick = () => pos && tryPos(pos.rot, pos.col - 1);
+$("right").onclick = () => pos && tryPos(pos.rot, pos.col + 1);
+$("rotate").onclick = () => pos && tryPos((pos.rot + 1) % 4, pos.col);
+$("drop").onclick = dropNow;
+document.addEventListener("keydown", (e) => {
+  if (!pos || $("left").disabled) return;
+  if (e.key === "ArrowLeft") tryPos(pos.rot, pos.col - 1);
+  else if (e.key === "ArrowRight") tryPos(pos.rot, pos.col + 1);
+  else if (e.key === "ArrowUp") tryPos((pos.rot + 1) % 4, pos.col);
+  else if (e.key === "ArrowDown" || e.key === " ") dropNow();
+});
+window.addEventListener("resize", () => latest && render());
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const message = event.data;
+  if (!message || message.type !== "state_changed") return;
+  latest = message;
+  moveSent = false;
+  const acting = actingSeat();
+  const state = gameState();
+  if (acting === null) {
+    pos = null;
+  } else if (latest.players[acting]?.kind === "computer") {
+    // Show the computer's choice, then drop it after a short pause.
+    pos = Logic.bestPlacement(state);
+    const scheduledFor = latest;
+    setTimeout(() => { if (latest === scheduledFor) dropNow(); }, 700);
+  } else {
+    const spawn = Logic.rotations(state.current)[0];
+    pos = { rot: 0, col: Logic.spawnCol(spawn) };
+  }
+  render();
+});
+</script>
+</body>
+</html>
