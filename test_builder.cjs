@@ -12,7 +12,7 @@ function setup(request = async () => {}) {
       setAttribute(){}, addEventListener(){}});
     return nodes.get(id);
   };
-  const ctx = vm.createContext({console, URLSearchParams, Set, setTimeout: fn=>fn(),
+  const ctx = vm.createContext({console, URLSearchParams, Set, AbortController, setInterval, clearInterval, setTimeout: fn=>fn(),
     document:{getElementById:node}, window:{addEventListener(){}},
     Auth:{current:()=>({id:'user'})},
     GameFrame:class {load(code){this.lastCode=code;} unload(){} send(){}},
@@ -158,4 +158,23 @@ test('switching between test and edit preserves the running test snapshot',()=>{
   const {node,run}=setup();node('code').value='edited after test began';
   run('state.test={code:"running code",players:[{kind:"human",name:"A"}],moves:[],turn:[0],state:{score:4},status:"ongoing"};showTab("edit")');
   assert.equal(run('frame.lastCode'),'running code');assert.equal(run('state.test.state.score'),4);
+});
+
+test('stopping a request preserves the prompt and ignores its eventual reply',async()=>{
+  const wait=deferred();const {node,run}=setup(()=>wait.promise);
+  node('agent-input').value='implement backgammon';const first=run('sendAgentMessage()');
+  assert.equal(node('agent-stop').hidden,false);run('stopAgentWaiting()');
+  wait.resolve({message:'late',code:'late code'});await first;
+  assert.equal(node('agent-input').value,'implement backgammon');
+  assert.equal(run('state.agent.pending'),null);assert.equal(run('state.agentSending'),false);
+  assert.match(node('agent-message').textContent,/Stopped waiting/);
+});
+
+test('starting from a catalog game creates an attributed unpublished copy',async()=>{
+  let calls=0;const {node,run}=setup(async()=>{calls++;return [{id:'bg',version:3,name:'Backgammon',description:'Board game',code:'published code',allowed_player_counts:[2]}];});
+  await run('loadStarters()');node('starter-game').value='bg';run('useStarter()');
+  assert.equal(calls,1);assert.equal(node('code').value,'published code');
+  assert.equal(node('name').value,'Backgammon (copy)');assert.match(node('description').value,/Based on Backgammon v3/);
+  assert.equal(run('state.selectedId'),'new');assert.equal(run('state.activeTab'),'edit');
+  assert.equal(run('isDirty()'),true);
 });

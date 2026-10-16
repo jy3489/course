@@ -162,3 +162,12 @@
 @media (max-width:600px) { .edit-heading h3 { font-size:24px; }.edit-heading #save { width:100%; }.edit-preview,.edit-chat { padding:14px; } }
 .edit-chat label { color:#334018; }
 .edit-chat #agent-log:empty::after { content:'Ask for a rule change or a new feature.'; }
+#agent-activity { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:16px; border:1px solid #647b2c; border-radius:6px; background:#1c281b; color:#d2e8ad; font-size:12px; }
+#agent-activity progress { grid-column:1/-1; width:100%; height:6px; accent-color:#c6f432; }
+#agent-wait-note { grid-column:1/-1; margin:0; line-height:1.6; }
+#agent-stop { border-color:#ffbd77; color:#ffce99; }
+.edit-chat #agent-stop { color:#10141f; border-color:#657c1c; background:transparent; }
+#starter-options { padding:16px; border:1px solid #44506b; border-radius:6px; margin:4px 0 16px; }
+#starter-options summary { cursor:pointer; font-weight:600; color:#5fd4ff; }
+#starter-options .inline-row { margin-top:12px; }
+#starter-game { max-width:100%; }

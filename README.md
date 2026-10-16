@@ -634,6 +634,17 @@ The preview process must stay running; jobs remain in its memory until completio
 It returns the real backend response and does not retry paid generation requests
 automatically. Refreshing the page still clears the current editor/chat session.
 
+The waiting panel distinguishes sending the request from waiting for an accepted
+preview job. Its elapsed timer and indeterminate indicator do not represent model
+progress. **Stop waiting** aborts the browser request/polling and restores the
+prompt; it cannot cancel computation already running on the course server.
+
+For an immediate playable starting point, choose **New game → Start from a
+published game → Load game catalog**, select a game, and choose **Use as starting
+point**. This loads an attributed, unpublished copy into the editor and playtest;
+it does not generate a new game or change the original. Subsequent rule-change
+prompts still use the real Muse endpoint and depend on its response time.
+
 ### Builder generation latency
 
 The builder now requests Muse with `reasoning_effort="low"`, temperature 1.0,

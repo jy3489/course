@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Builder</title>
     <link rel="stylesheet" href="/static/common.css?v=3" />
-    <link rel="stylesheet" href="/static/builder.css?v=5" />
+    <link rel="stylesheet" href="/static/builder.css?v=6" />
   </head>
   <body>
     <header class="topbar">
@@ -99,10 +99,12 @@
               Describe your idea or ask for a change. Apply the proposal, playtest it,
               then publish when it feels right.
             </div>
+            <details id="starter-options"><summary>Start from a published game</summary><p class="muted">Load an existing game immediately, then ask Muse to change its rules. This creates an unpublished copy; it does not run AI generation.</p><div class="inline-row"><button id="load-starters" type="button">Load game catalog</button><select id="starter-game" aria-label="Published starting game"></select><button id="use-starter" type="button" disabled>Use as starting point</button></div></details>
             <div id="agent-home"><div id="agent-tools">
             <div class="inline-row" style="margin-top: var(--space-sm)">
               <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
             </div>
+            <div id="agent-activity" hidden role="status" aria-live="polite"><progress aria-label="Waiting for server response"></progress><strong id="agent-phase">Sending request</strong><span id="agent-elapsed" aria-live="off"></span><p id="agent-wait-note">No game code has returned yet.</p></div>
             <div id="agent-log"></div>
             <div id="agent-proposal" class="proposal" hidden>
               <div class="muted">Review this change before applying it. Nothing is published yet.</div>
@@ -117,6 +119,7 @@
             </div>
             <div class="inline-row">
               <button id="agent-send" type="button" class="primary">Let’s build ↗</button>
+              <button id="agent-stop" type="button" hidden>Stop waiting</button>
               <button id="agent-publish" type="button">Publish game</button>
               <span id="agent-message" class="message"></span>
             </div>
@@ -125,8 +128,8 @@
         </div>
       </main>
     </div>
-    <script src="/static/common.js?v=2"></script>
+    <script src="/static/common.js?v=3"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=12"></script>
+    <script src="/static/builder.js?v=13"></script>
   </body>
 </html>

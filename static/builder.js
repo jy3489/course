@@ -68,6 +68,8 @@ const state = {
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
   activeTab: "agent",
+  agentRequest: null,
+  starters: [],
   draftUndo: [],
   restoring: false,
   saving: false,
@@ -501,6 +503,13 @@ function undoTestMove() {
 // Game-building agent: iterative chat that proposes code for the editor.
 
 function resetAgent() {
+  if (state.agentRequest) {
+    state.agentRequest.cancelled = true;
+    state.agentRequest.controller.abort();
+  }
+  state.agentRequest = null;
+  $("agent-activity").hidden = true;
+  $("agent-stop").hidden = true;
   state.agent = null;
   state.agentSending = false;
   $("agent-send").disabled = false;
@@ -558,21 +567,78 @@ function agentHistory() {
   return state.agent;
 }
 
-async function requestAgentReply(user, body, isCurrent) {
-  let reply = await apiRequest("POST", "/agent/chat", { user, body });
-  // The local connected preview returns a job immediately so long generations
-  // survive browser/proxy request deadlines. Production returns the reply directly.
+function generationActivity(phase, started) {
+  $("agent-activity").hidden = false;
+  if ($("agent-phase").textContent !== phase) $("agent-phase").textContent = phase;
+  const seconds = Math.floor((Date.now() - started) / 1000);
+  $("agent-elapsed").textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed`;
+  $("agent-wait-note").textContent = seconds >= 60
+    ? "The live server has not returned game code. Its model progress is unavailable. You can keep waiting or stop waiting."
+    : "Waiting for the live course server to return a proposal. This indicator is not model progress.";
+}
+
+function stopAgentWaiting() {
+  const request = state.agentRequest;
+  if (!request) return;
+  request.cancelled = true;
+  request.controller.abort();
+  setMessage("agent-message", "Stopping this browser's wait…");
+}
+
+async function requestAgentReply(user, body, isCurrent, request) {
   const started = Date.now();
-  const deadline = started + 16 * 60 * 1000;
-  while (reply?.preview_job_id) {
-    if (!isCurrent()) throw new Error("Conversation changed.");
-    if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
-    const seconds = Math.floor((Date.now() - started) / 1000);
-    setMessage("agent-message", `Waiting for the course server… ${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed. Generation progress is not available.`);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, { user });
+  const options = {user, signal: request.controller.signal};
+  let phase = "Sending request to the course server";
+  generationActivity(phase, started);
+  const ticker = setInterval(() => {
+    if (isCurrent() && !request.cancelled) generationActivity(phase, started);
+  }, 1000);
+  try {
+    let reply = await apiRequest("POST", "/agent/chat", {...options, body});
+    const deadline = started + 16 * 60 * 1000;
+    while (reply?.preview_job_id) {
+      if (!isCurrent() || request.cancelled) throw new Error("Waiting stopped.");
+      if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
+      phase = "Request accepted — waiting for the backend response";
+      generationActivity(phase, started);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (request.cancelled) throw new Error("Waiting stopped.");
+      reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, options);
+    }
+    if (request.cancelled) throw new Error("Waiting stopped.");
+    return reply;
+  } finally {
+    clearInterval(ticker);
   }
-  return reply;
+}
+
+async function loadStarters() {
+  $("load-starters").disabled = true;
+  try {
+    state.starters = await apiRequest("GET", "/games");
+    $("starter-game").replaceChildren(...state.starters.map((game) => el("option", {value: game.id, textContent: `${game.name} · v${game.version}`})));
+    $("use-starter").disabled = state.starters.length === 0;
+  } catch (error) {
+    setMessage("agent-message", `Couldn't load the catalog: ${error.message}`, "error");
+  } finally {
+    $("load-starters").disabled = false;
+  }
+}
+
+function useStarter() {
+  if (state.selectedId !== "new" || state.saving || state.agentSending || state.agent?.pending || state.restoring) {
+    setMessage("agent-message", "Stop waiting and apply or discard any proposal before loading a starting game.", "error");
+    return;
+  }
+  const game = state.starters.find((game) => game.id === $("starter-game").value);
+  if (!game) return;
+  resetAgent();
+  replaceDraft({...game, name: `${game.name} (copy)`, description: `${game.description || game.name} · Based on ${game.name} v${game.version}.`});
+  showTab("edit");
+  setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
+  startTest();
+  agentLog("system", `Loaded a copy of published ${game.name} v${game.version}. No AI generation was performed. Describe a change to customize it.`);
+  saveMessage("Loaded an unpublished copy. Customize it and test before publishing.", "ok");
 }
 
 async function sendAgentMessage() {
@@ -585,11 +651,14 @@ async function sendAgentMessage() {
     return;
   }
   const values = editorValues();
-  const isCurrent = () => state.agent === history && me()?.id === user.id;
+  const request = {cancelled: false, controller: new AbortController()};
+  state.agentRequest = request;
+  const isCurrent = () => state.agent === history && me()?.id === user.id && state.agentRequest === request;
   const messages = [...history.messages, { role: "user", content: input }];
   $("agent-input").value = "";
   agentLog("user", input);
-  setMessage("agent-message", "The agent is thinking…");
+  setMessage("agent-message", "");
+  $("agent-stop").hidden = false;
   state.agentSending = true;
   renderDraftControls();
   $("agent-send").disabled = true;
@@ -600,8 +669,8 @@ async function sendAgentMessage() {
         allowed_player_counts: values.allowed_player_counts,
         code: values.code,
         messages,
-    }, isCurrent);
-    if (!isCurrent()) return;
+    }, isCurrent, request);
+    if (!isCurrent() || request.cancelled) return;
     history.messages.push({ role: "user", content: input });
     history.messages.push({ role: "assistant", content: reply.message });
     agentLogReply(reply);
@@ -614,11 +683,16 @@ async function sendAgentMessage() {
     setMessage("agent-message", "");
   } catch (error) {
     if (!isCurrent()) return;
-    setMessage("agent-message", `The agent couldn't reply: ${error.message}`, "error");
-    $("agent-input").value = input;
+    setMessage("agent-message", request.cancelled
+      ? "Stopped waiting. The live server may still finish the original request. Your prompt is preserved."
+      : `The agent couldn't reply: ${error.message}`, request.cancelled ? "" : "error");
+    if (!$("agent-input").value.trim()) $("agent-input").value = input;
   } finally {
     if (isCurrent()) {
       state.agentSending = false;
+      state.agentRequest = null;
+      $("agent-activity").hidden = true;
+      $("agent-stop").hidden = true;
       $("agent-send").disabled = false;
       renderDraftControls();
     }
@@ -673,6 +747,7 @@ function render() {
     );
   }
   $("new-game").disabled = !me() || state.saving;
+  $("starter-options").hidden = state.selectedId !== "new";
   if (showWorkspace) { renderEditorMeta(); renderDraftControls(); }
   $("play-game").hidden = !selectedGame();
   if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
@@ -705,6 +780,9 @@ async function main() {
   $("tab-test").addEventListener("click", () => showTab("test"));
   $("tab-agent").addEventListener("click", () => showTab("agent"));
   $("agent-send").addEventListener("click", sendAgentMessage);
+  $("agent-stop").addEventListener("click", stopAgentWaiting);
+  $("load-starters").addEventListener("click", loadStarters);
+  $("use-starter").addEventListener("click", useStarter);
   $("agent-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendAgentMessage();
   });
