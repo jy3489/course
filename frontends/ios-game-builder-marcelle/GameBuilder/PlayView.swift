@@ -58,7 +58,7 @@ struct PlaySetupView: View {
                     .frame(width: 40, height: 40)
                     .background(selected ? Theme.accent : Theme.background, in: RoundedRectangle(cornerRadius: Theme.radius))
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(selected ? Theme.accent : Theme.line))
-                    .accessibilityLabel("\(n) players")
+                    .accessibilityLabel(n == 1 ? "1 player" : "\(n) players")
             }
         }
     }
@@ -68,26 +68,38 @@ struct PlaySetupView: View {
             Rectangle().fill(Theme.playerColor(seat)).frame(width: 10, height: 10)
             Text("Seat \(seat + 1)").font(Theme.font(16, .semibold)).foregroundStyle(Theme.text)
             Spacer()
-            HStack(spacing: 0) {
-                ForEach([LocalMatch.Kind.human, .computer], id: \.self) { kind in
-                    let selected = kinds[seat] == kind
-                    Button(kind.rawValue) { kinds[seat] = kind }
-                        .font(Theme.mono(13, bold: selected))
-                        .foregroundStyle(selected ? Theme.accentText : Theme.muted)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 34)
-                        .background(selected ? Theme.accent : .clear)
-                        .accessibilityIdentifier("seat\(seat)-\(kind.rawValue)")
-                }
+            if kinds.count == 1 {
+                // Solo: just me, no computer seat and no handing the phone over.
+                Text("you (solo)").font(Theme.mono(13)).foregroundStyle(Theme.muted)
+                    .accessibilityIdentifier("solo-seat")
+            } else {
+                seatKindPicker(seat)
             }
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.line))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
         }
     }
 
+    private func seatKindPicker(_ seat: Int) -> some View {
+        HStack(spacing: 0) {
+            ForEach([LocalMatch.Kind.human, .computer], id: \.self) { kind in
+                let selected = kinds[seat] == kind
+                Button(kind.rawValue) { kinds[seat] = kind }
+                    .font(Theme.mono(13, bold: selected))
+                    .foregroundStyle(selected ? Theme.accentText : Theme.muted)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 34)
+                    .background(selected ? Theme.accent : .clear)
+                    .accessibilityIdentifier("seat\(seat)-\(kind.rawValue)")
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.line))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+
     /// Keeps choices already made; new seats default to: seat 1 human, others computer.
+    /// A single seat is always human.
     private func resize(to n: Int) {
         kinds = (0..<n).map { seat in seat < kinds.count ? kinds[seat] : (seat == 0 ? .human : .computer) }
+        if n == 1 { kinds = [.human] }
     }
 }
 

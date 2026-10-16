@@ -7,7 +7,8 @@ struct Account: Codable, Equatable {
     let displayName: String
 }
 
-/// One game from `GET /games`. Fields we don't use (dates, etc.) are ignored.
+/// One game from `GET /games` or `GET /builder/games`. Fields we don't use (dates, etc.)
+/// are ignored.
 struct Game: Codable, Identifiable, Hashable {
     let id: String
     let version: Int
@@ -18,6 +19,11 @@ struct Game: Codable, Identifiable, Hashable {
     let allowsLeaveMidMatch: Bool
     let allowsJoinMidMatch: Bool
     let code: String
+    /// false: only its owner sees it (unpublished from the web builder). Missing in games
+    /// saved before the server had this field, which were all published.
+    var published: Bool? = nil
+
+    var isPublished: Bool { published != false }
 
     var fields: GameFields {
         GameFields(name: name, description: description, allowedPlayerCounts: allowedPlayerCounts, code: code)
@@ -27,7 +33,7 @@ struct Game: Codable, Identifiable, Hashable {
     func with(_ f: GameFields) -> Game {
         Game(id: id, version: version, ownerUserId: ownerUserId, name: f.name, description: f.description,
              allowedPlayerCounts: f.allowedPlayerCounts, allowsLeaveMidMatch: allowsLeaveMidMatch,
-             allowsJoinMidMatch: allowsJoinMidMatch, code: f.code)
+             allowsJoinMidMatch: allowsJoinMidMatch, code: f.code, published: published)
     }
 }
 
@@ -45,6 +51,12 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .server(let status, let detail): "Server error \(status): \(detail)"
+        }
+    }
+
+    var status: Int {
+        switch self {
+        case .server(let status, _): status
         }
     }
 }
@@ -96,9 +108,14 @@ enum API {
         return Account(id: auth.userId, password: auth.password, displayName: auth.displayName)
     }
 
-    /// `GET /games`: every game that isn't deleted.
+    /// `GET /games`: every published game that isn't deleted.
     static func fetchGames() async throws -> [Game] {
         try decoder.decode([Game].self, from: try await send("GET", "games"))
+    }
+
+    /// `GET /builder/games`: my own games, including unpublished ones.
+    static func fetchMyGames(as account: Account) async throws -> [Game] {
+        try decoder.decode([Game].self, from: try await send("GET", "builder/games", as: account))
     }
 
     /// `POST /games`: creates a game owned by `account`.
@@ -188,8 +205,10 @@ extension API {
         try decoder.decode([Match].self, from: try await send("GET", "matches/open"))
     }
 
-    static func match(id: String) async throws -> Match {
-        try decoder.decode(Match.self, from: try await send("GET", "matches/\(id)"))
+    /// Sends my login (when there is one): a match of an unpublished game is only visible to
+    /// its players and the game's owner.
+    static func match(id: String, as account: Account?) async throws -> Match {
+        try decoder.decode(Match.self, from: try await send("GET", "matches/\(id)", as: account))
     }
 
     static func joinMatch(id: String, as account: Account) async throws -> Match {
@@ -238,9 +257,15 @@ extension API {
         return try decoder.decode(User.self, from: try await send("GET", "users/\(userId)")).displayName
     }
 
-    /// `GET /games/{id}/versions/{version}`: the exact version a match plays.
-    static func gameVersion(id: String, version: Int) async throws -> Game {
-        try decoder.decode(Game.self, from: try await send("GET", "games/\(id)/versions/\(version)"))
+    /// `GET /games/{id}/versions/{version}`: the exact version a match plays. Sends my login,
+    /// so my own unpublished games (and versions my matches use) still load.
+    static func gameVersion(id: String, version: Int, as account: Account?) async throws -> Game {
+        try decoder.decode(Game.self, from: try await send("GET", "games/\(id)/versions/\(version)", as: account))
+    }
+
+    /// `GET /games/{id}`: the latest version, with my login (see `gameVersion`).
+    static func game(id: String, as account: Account?) async throws -> Game {
+        try decoder.decode(Game.self, from: try await send("GET", "games/\(id)", as: account))
     }
 
     /// The web portal's link to a match (it works in any browser).

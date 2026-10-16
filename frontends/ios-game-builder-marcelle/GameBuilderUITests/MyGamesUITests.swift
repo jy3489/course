@@ -135,4 +135,88 @@ final class MyGamesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2, 4 players"].exists)
         screenshot("after-upload")
     }
+
+    // MARK: Unpublished and solo games
+
+    /// A REST call to the local server (to set up what the app should show).
+    private func rest(_ method: String, _ path: String, _ body: Any? = nil, as user: [String: Any]? = nil) async throws -> Any {
+        var r = URLRequest(url: URL(string: "http://localhost:8000" + path)!)
+        r.httpMethod = method
+        if let body {
+            r.httpBody = try JSONSerialization.data(withJSONObject: body)
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        if let user {
+            r.setValue(user["id"] as? String, forHTTPHeaderField: "X-User-Id")
+            r.setValue(user["password"] as? String, forHTTPHeaderField: "X-User-Password")
+        }
+        let (data, response) = try await URLSession.shared.data(for: r)
+        let status = (response as! HTTPURLResponse).statusCode
+        XCTAssertTrue((200..<300).contains(status), "\(method) \(path): \(status) \(String(decoding: data, as: UTF8.self))")
+        return data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data)
+    }
+
+    @MainActor
+    func testUnpublishedGame() async throws {
+        // A user with one game, unpublished (as the web builder does).
+        let me = try await rest("POST", "/users", ["display_name": "UI Test"]) as! [String: Any]
+        let game = try await rest("POST", "/games", [
+            "name": "Secret Draft", "description": "only I can see it", "allowed_player_counts": [2],
+            "allows_leave_mid_match": false, "allows_join_mid_match": false,
+            "code": "<!doctype html><title>draft</title>",
+        ], as: me) as! [String: Any]
+        let id = game["id"] as! String
+        _ = try await rest("POST", "/games/\(id)/unpublish", as: me)
+        let publicList = try await rest("GET", "/games") as! [[String: Any]]
+        XCTAssertFalse(publicList.contains { $0["id"] as? String == id }, "GET /games should hide it")
+
+        launch(["-resetLocalData", "-loginAs", me["id"] as! String, me["password"] as! String])
+        // Listed under my games (from GET /builder/games), with the tag.
+        let row = app.staticTexts["Secret Draft"]
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "my unpublished game isn't listed")
+        XCTAssertTrue(app.staticTexts["unpublished-tag"].exists || app.staticTexts["unpublished"].exists)
+        screenshot("unpublished-in-my-games")
+
+        // It can't be played online: a clear message instead of "Server error 404".
+        row.tap()
+        tap(app.buttons["play-online"])
+        tap(app.buttons["create-match"])
+        let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'isn\u{2019}t published' OR label CONTAINS \"isn't published\"")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 10), "no clear message")
+        screenshot("unpublished-play-online")
+        app.buttons["cancel"].tap()
+
+        // Editing is done in the web builder; the app says so and doesn't offer saving.
+        tap(app.buttons["edit-game"])
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This game is unpublished'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["save"].isEnabled)
+        screenshot("unpublished-editor")
+    }
+
+    func testSoloGame() {
+        launchLoggedIn()
+        tap(app.buttons["new-game"])
+        replaceText(app.textFields["name"], with: "Solo Race")
+        tap(app.buttons["1 player"])            // pick 1 ...
+        tap(app.buttons["2 players"])           // ... and drop the default 2
+        tap(app.buttons["save"])
+        XCTAssertTrue(app.staticTexts["Solo Race"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["1 player (solo)"].exists)
+
+        app.staticTexts["Solo Race"].tap()
+        tap(app.buttons["test-play"])
+        XCTAssertTrue(app.staticTexts["solo-seat"].waitForExistence(timeout: 5) || app.staticTexts["you (solo)"].exists)
+        XCTAssertFalse(app.buttons["seat0-computer"].exists, "a solo game has no computer seat")
+        screenshot("solo-setup")
+        tap(app.buttons["start"])
+
+        // Every move is mine again: no "pass the phone" screen, no computer.
+        let add = app.webViews.buttons["+1"]
+        for _ in 0..<3 {
+            tap(add, timeout: 15)
+            XCTAssertFalse(app.buttons["handoff-ready"].waitForExistence(timeout: 2), "handoff in a solo game")
+        }
+        XCTAssertTrue(app.staticTexts["turn-indicator"].label.hasPrefix("Your turn"), app.staticTexts["turn-indicator"].label)
+        screenshot("solo-play")
+    }
 }

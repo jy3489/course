@@ -32,6 +32,12 @@ final class AppModel {
             account = nil
             pendingEdits = []
         }
+        // For UI tests: `-loginAs <id> <password>` uses an account the test created through
+        // the REST API (kept in memory only, never saved in the Keychain).
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-loginAs"), i + 2 < args.count {
+            account = Account(id: args[i + 1], password: args[i + 2], displayName: "UI Test")
+        }
         // For screenshots: `-screenshotMode` shows the Games screen with a placeholder
         // account that is never saved or sent to the server.
         if account == nil, ProcessInfo.processInfo.arguments.contains("-screenshotMode") {
@@ -107,7 +113,7 @@ final class AppModel {
         defer { isLoading = false }
         await uploadPendingEdits()
         do {
-            let fresh = try await API.fetchGames()
+            let fresh = Self.merging(mine: try await fetchMyGames(), into: try await API.fetchGames())
             games = Self.applying(pendingEdits, to: fresh, owner: account?.id ?? "")
             gamesSavedAt = .now
             isOffline = false
@@ -193,13 +199,28 @@ final class AppModel {
         if games.contains(where: { $0.id == serverId }) { games.removeAll { $0.id == localId }; return }
         games = games.map { $0.id == localId ? Game(id: serverId, version: $0.version, ownerUserId: $0.ownerUserId,
             name: $0.name, description: $0.description, allowedPlayerCounts: $0.allowedPlayerCounts,
-            allowsLeaveMidMatch: $0.allowsLeaveMidMatch, allowsJoinMidMatch: $0.allowsJoinMidMatch, code: $0.code) : $0 }
+            allowsLeaveMidMatch: $0.allowsLeaveMidMatch, allowsJoinMidMatch: $0.allowsJoinMidMatch, code: $0.code,
+            published: $0.published) : $0 }
     }
 
     /// Shows the server's copy, unless newer edits for it are still queued.
     private func replaceGame(_ saved: Game) {
         guard !pendingEdits.dropFirst().contains(where: { $0.gameId == saved.id }) else { return }
         games = games.map { $0.id == saved.id ? saved : $0 }
+    }
+
+    /// My games from `GET /builder/games` (they include unpublished ones). Empty without a real
+    /// login (the screenshot placeholder); a network failure is thrown like for `GET /games`.
+    private func fetchMyGames() async throws -> [Game] {
+        guard let account, !account.password.isEmpty else { return [] }
+        return try await API.fetchMyGames(as: account)
+    }
+
+    /// The class games (published) plus my own games, mine first; my copy wins when both
+    /// lists have the same game.
+    private static func merging(mine: [Game], into published: [Game]) -> [Game] {
+        let myIds = Set(mine.map(\.id))
+        return mine + published.filter { !myIds.contains($0.id) }
     }
 
     /// The list with queued edits applied on top (used after downloading the server's list).
