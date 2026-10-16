@@ -212,7 +212,9 @@ function renderLists() {
     select.dataset.key = key;
     select.replaceChildren(...games.map((game) =>
       el("option", { value: game.id, textContent: `${game.name} (${game.allowed_player_counts.join(", ")} players)` })));
-    if (games.some((game) => game.id === previous)) select.value = previous;
+    const requested = new URLSearchParams(location.hash.slice(1)).get("game");
+    const chosen = requested || previous;
+    if (games.some((game) => game.id === chosen)) select.value = chosen;
   }
   $("create").disabled = !user || games.length === 0;
 }

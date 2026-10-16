@@ -604,3 +604,13 @@ python -m pytest game_platform
 
 The tests start the app in-process (no server or network needed) and use temporary
 directories for data files, so they don't touch your data.
+
+### Web builder regression checks
+
+Run `node test_builder.cjs` (Node.js 18+) from this package directory. These
+checks exercise editor preservation, asynchronous agent replies, publishing and
+local move validation with a small DOM stub; they do not call the model API.
+
+The web builder uses the server's configured model API key. Students only need
+to log in; they do not need to supply a personal API key. After publishing,
+**Play this game** opens the portal with the saved game selected for a new match.

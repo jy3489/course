@@ -67,6 +67,8 @@ const state = {
   deleteArmed: false,
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
+  saving: false,
+  agentSending: false,
   agentDebug: false, // show the agent's thinking and raw replies in the chat
 };
 
@@ -85,6 +87,7 @@ function me() {
 async function onUserChanged() {
   state.selectedId = null;
   state.baseline = null;
+  resetAgent();
   stopTest();
   await loadGames();
   render();
@@ -163,19 +166,17 @@ function fillEditor(values) {
 const isDirty = () => state.baseline !== null && JSON.stringify(editorValues()) !== state.baseline;
 
 function select(id) {
-  if (id !== state.selectedId && isDirty() && state.pendingSwitch !== id) {
+  if (id === state.selectedId || state.saving) return;
+  if (id !== state.selectedId && (isDirty() || state.agent?.pending) && state.pendingSwitch !== id) {
     state.pendingSwitch = id;
-    setMessage("edit-message", "You have unsaved changes. Click again to discard them.", "error");
+    saveMessage("You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
+    setMessage("test-status", "You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
     return;
   }
   state.pendingSwitch = null;
   state.selectedId = id;
   state.deleteArmed = false;
-  state.agent = null;
-  $("agent-log").replaceChildren();
-  $("agent-proposal").hidden = true;
-  $("agent-input").value = "";
-  setMessage("agent-message", "");
+  resetAgent();
   const game = selectedGame();
   fillEditor(game ?? NEW_GAME);
   setMessage("edit-message", "");
@@ -188,28 +189,57 @@ function setMessage(id, text, kind = "") {
   $(id).className = `message ${kind}`;
 }
 
+function saveMessage(text, kind = "") {
+  setMessage("edit-message", text, kind);
+  setMessage("agent-message", text, kind);
+}
+
+function updateSaveControls() {
+  for (const id of ["save", "agent-publish", "delete", "revert", "new-game"]) {
+    $(id).disabled = state.saving;
+  }
+}
+
 async function save() {
+  if (state.saving) return;
+  if (state.agent?.pending || state.agentSending) {
+    saveMessage("Wait for the agent, then apply or discard its proposal before publishing.", "error");
+    return;
+  }
   const user = me();
+  const selectedId = state.selectedId;
+  if (!user || !selectedId) return;
   const values = editorValues();
+  const baseline = JSON.stringify(values);
+  state.saving = true;
+  updateSaveControls();
+  saveMessage("Saving…");
   try {
-    let game;
-    if (state.selectedId === "new") {
-      game = await apiRequest("POST", "/games", { body: values, user });
-    } else {
-      game = await apiRequest("PATCH", `/games/${state.selectedId}`, { body: values, user });
-    }
-    await loadGames();
+    const game = await apiRequest(selectedId === "new" ? "POST" : "PATCH",
+      selectedId === "new" ? "/games" : `/games/${selectedId}`, { body: values, user });
+    if (me()?.id !== user.id || state.selectedId !== selectedId) return;
+    state.games = [game, ...state.games.filter((item) => item.id !== game.id)];
     state.selectedId = game.id;
-    fillEditor(game);
-    setMessage("edit-message", `Saved version ${game.version}.`, "ok");
+    // Keep edits typed while the request was in flight.
+    if (JSON.stringify(editorValues()) === baseline) fillEditor(game);
+    else state.baseline = baseline;
+    saveMessage(`Published version ${game.version}.`, "ok");
     render();
   } catch (error) {
-    setMessage("edit-message", `Couldn't save: ${error.message}`, "error");
+    if (me()?.id === user.id && state.selectedId === selectedId) {
+      saveMessage(`Couldn't save: ${error.message}`, "error");
+    }
+  } finally {
+    state.saving = false;
+    updateSaveControls();
+    render();
   }
 }
 
 async function deleteGame() {
+  if (state.saving) return;
   if (state.selectedId === "new") {
+    stopTest();
     state.selectedId = null;
     state.baseline = null;
     render();
@@ -223,6 +253,7 @@ async function deleteGame() {
   }
   try {
     await apiRequest("DELETE", `/games/${state.selectedId}`, { user: me() });
+    stopTest();
     state.selectedId = null;
     state.baseline = null;
     state.deleteArmed = false;
@@ -339,7 +370,8 @@ function onTestMove(move) {
   }
   const next = move.next_turn_player_indices;
   const valid = next === null ||
-    (Array.isArray(next) && next.length > 0 && next.every((seat) => seat >= 0 && seat < test.players.length));
+    (Array.isArray(next) && next.length > 0 && new Set(next).size === next.length &&
+      next.every((seat) => Number.isInteger(seat) && seat >= 0 && seat < test.players.length));
   if (!valid) {
     testLog(`rejected make_move: next_turn_player_indices ${JSON.stringify(next)} is not a set of seats`, true);
     sendTestState();
@@ -367,6 +399,16 @@ function undoTestMove() {
 }
 
 // Game-building agent: iterative chat that proposes code for the editor.
+
+function resetAgent() {
+  state.agent = null;
+  state.agentSending = false;
+  $("agent-send").disabled = false;
+  $("agent-log").replaceChildren();
+  $("agent-proposal").hidden = true;
+  $("agent-input").value = "";
+  setMessage("agent-message", "");
+}
 
 function agentLog(role, text) {
   $("agent-log").append(el("div", { class: `msg ${role}`, textContent: text }));
@@ -418,17 +460,19 @@ function agentHistory() {
 async function sendAgentMessage() {
   const user = me();
   const input = $("agent-input").value.trim();
-  if (!input) return;
+  if (!input || !user || state.agentSending || state.saving) return;
   const history = agentHistory();
   if (history.pending) {
     setMessage("agent-message", "Apply or discard the pending proposal first.", "error");
     return;
   }
   const values = editorValues();
+  const isCurrent = () => state.agent === history && me()?.id === user.id;
   const messages = [...history.messages, { role: "user", content: input }];
   $("agent-input").value = "";
   agentLog("user", input);
   setMessage("agent-message", "The agent is thinking…");
+  state.agentSending = true;
   $("agent-send").disabled = true;
   try {
     const reply = await apiRequest("POST", "/agent/chat", {
@@ -441,6 +485,7 @@ async function sendAgentMessage() {
         messages,
       },
     });
+    if (!isCurrent()) return;
     history.messages.push({ role: "user", content: input });
     history.messages.push({ role: "assistant", content: reply.message });
     agentLogReply(reply);
@@ -451,10 +496,14 @@ async function sendAgentMessage() {
     }
     setMessage("agent-message", "");
   } catch (error) {
+    if (!isCurrent()) return;
     setMessage("agent-message", `The agent couldn't reply: ${error.message}`, "error");
     $("agent-input").value = input;
   } finally {
-    $("agent-send").disabled = false;
+    if (isCurrent()) {
+      state.agentSending = false;
+      $("agent-send").disabled = false;
+    }
   }
 }
 
@@ -493,11 +542,21 @@ function render() {
   } else {
     $("no-user").textContent = "Select a game on the left, or create one with New game.";
   }
-  $("new-game").disabled = !me();
+  $("new-game").disabled = !me() || state.saving;
   if (showWorkspace) renderEditorMeta();
+  $("play-game").hidden = !selectedGame();
+  if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
+}
+
+function protectUnsavedChanges(event) {
+  if (isDirty() || state.agent?.pending || state.agentSending || state.saving) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
 }
 
 async function main() {
+  window.addEventListener("beforeunload", protectUnsavedChanges);
   $("new-game").addEventListener("click", () => select("new"));
   $("save").addEventListener("click", save);
   $("revert").addEventListener("click", () => {
