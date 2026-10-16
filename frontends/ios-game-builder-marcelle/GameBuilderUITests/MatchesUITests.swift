@@ -234,10 +234,18 @@ final class MatchesUITests: XCTestCase {
         _ = createTicTacToeMatch(computers: 0)
         backToGames()
 
+        // ongoing: Friend plays Poker (joinable mid-match) with a computer; I'm not in it.
+        let friend2 = try await newFriend()
+        let poker = try await request("POST", "/matches", ["game_id": "poker", "num_computer_opponents": 1], as: friend2) as! [String: Any]
+        _ = try await request("POST", "/matches/\(poker["id"] as! String)/start", [:], as: friend2)
+
         openMatchesTab()
-        for chip in ["waiting for players", "your turn", "their turn", "over"] {
+        for chip in ["waiting for players", "your turn", "their turn", "over", "ongoing"] {
             XCTAssertTrue(app.staticTexts[chip].waitForExistence(timeout: 10), "no \(chip) chip")
         }
         screenshot("status-chips")
+        let ongoing = app.staticTexts["ongoing"]
+        for _ in 0..<10 where !ongoing.isHittable { app.swipeUp() }
+        screenshot("status-chip-ongoing")
     }
 }

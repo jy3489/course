@@ -101,14 +101,14 @@ private struct MatchRow: View {
         .themeCard(padding: 14)
     }
 
-    /// Colored chips (dark text): your turn = lime, waiting = yellow, their turn = mint.
-    /// "over" and "ongoing" (a match I only watch) stay plain.
+    /// Colored chips (dark text): your turn = lime, waiting = yellow, their turn and
+    /// ongoing (a match I don't play in) = mint. "over" stays plain.
     private var statusChip: some View {
         let (text, color): (String, Color?) =
             match.isWaiting ? ("waiting for players", Theme.waitingChip)
             : match.isOver ? ("over", nil)
             : model.isMyTurn(match) ? ("your turn", Theme.accent)
-            : model.mySeat(match) == nil ? ("ongoing", nil)
+            : model.mySeat(match) == nil ? ("ongoing", Theme.theirTurnChip)
             : ("their turn", Theme.theirTurnChip)
         return Text(text)
             .font(Theme.mono(12, bold: color != nil))
