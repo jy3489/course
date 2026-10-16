@@ -614,3 +614,16 @@ local move validation with a small DOM stub; they do not call the model API.
 The web builder uses the server's configured model API key. Students only need
 to log in; they do not need to supply a personal API key. After publishing,
 **Play this game** opens the portal with the saved game selected for a new match.
+
+### Preview local UI with the course server's Muse setup
+
+Install `requirements-dev.txt`, then run `python preview.py` from this directory
+and open http://127.0.0.1:8001/builder. This serves your local HTML/CSS/JavaScript
+while forwarding product API calls to https://buildplay.fun, whose server owns
+the Muse Spark key. No personal model key is requested or stored locally.
+**This uses live course accounts and saves games/matches on buildplay.fun.**
+The separate port keeps preview accounts separate from an offline local server.
+Google sign-in requires the course OAuth app to allow the local origin; guest
+login remains available for generation checks. Use the deployed site for final
+Google-login verification. The preview binds only to loopback and does not proxy
+admin/debug endpoints. Run `python -m pytest test_preview.py` for its routing check.
