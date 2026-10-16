@@ -1,6 +1,26 @@
 # BuildPlay deployment findings and builder acceptance checks
 
-Checked 2026-10-15 against `origin/main` at `d0fe663` and the public website.
+Hosting observations were checked 2026-10-15 against the public website.
+The repository was rechecked and this branch rebased onto `origin/main` at
+`6d3bac2` on 2026-10-16.
+
+## Changes found during the rebase
+
+Main added a native iOS game builder, mobile portal improvements and more sample
+games. Its web changes include a shared `[hidden]` visibility fix and hiding the
+source editor. This branch retains that shared fix and keeps source editing
+inside the collapsed **Game settings & source code** section, alongside the
+prompt-driven editing workspace. Its builder now loads the updated common CSS.
+
+Main's `agent.py` and `model_api.py` are unchanged from the previous base. The
+streaming, reasoning-effort and bounded-retry changes are still specific to this
+branch; rebasing does not deploy them or prove live generation reliability.
+
+Rebase validation: 18 builder JavaScript checks passed. The Python suite had 181
+passing tests and three failures. All three failures also reproduce on an
+untouched archive of main at `6d3bac2`: two config tests assume Unix path strings,
+and the example-data snapshot does not match its generator. Browser smoke checks
+confirmed tab visibility, the saved-game preview, and expandable source settings.
 
 ## What is confirmed
 

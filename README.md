@@ -681,7 +681,7 @@ rollout requirements, and acceptance checks for the course assignment.
 
 Selecting a saved game opens **Edit & publish**, with the playable draft and the
 lime **Describe your change** panel together. Ask for rule changes, features, or
-bug fixes, review the proposed source, and choose **Apply to editor**. The preview
+bug fixes, review the proposed source, and choose **Apply**. The preview
 restarts with the new draft; follow-up prompts receive that current code and the
 conversation. Nothing is published until **Publish new version** is clicked.
 
