@@ -39,7 +39,7 @@ struct GamesView: View {
     private var classGames: [Game] { model.games.filter { !model.isMine($0) } }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        TabNavigation(path: $path, placeholder: "Pick a game from the list.") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     AppHeader()
@@ -76,10 +76,7 @@ struct GamesView: View {
                    let game = model.games.first(where: { $0.id == args[i + 1] }) { path = [.game(game)] }
                 #endif
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Route.self) { $0.destination }
         }
-        .environment(\.navigate) { path.append($0) }
     }
 
     private func section(_ title: String, games: [Game], empty: String) -> some View {
@@ -89,8 +86,7 @@ struct GamesView: View {
                 Text(empty).font(Theme.font(14)).foregroundStyle(Theme.muted)
             }
             ForEach(games) { game in
-                NavigationLink(value: Route.game(game)) { GameRow(game: game, pending: model.isPending(game)) }
-                    .buttonStyle(.plain)
+                RouteButton(route: .game(game)) { GameRow(game: game, pending: model.isPending(game)) }
             }
         }
     }
@@ -153,7 +149,7 @@ struct UnpublishedTag: View {
 /// A game's page: test play, details, code, and (for my games) edit.
 struct GameDetailView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeScreen) private var closeScreen
     let initial: Game
     @State private var tab = Tab.details
     @State private var editing = false
@@ -210,12 +206,13 @@ struct GameDetailView: View {
                 changePanel
             }
             .padding(20)
+            .readableWidth()
         }
         .background(Theme.background)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .sheet(isPresented: $editing) { GameEditorView(game: game, onDelete: { dismiss() }) }
+        .sheet(isPresented: $editing) { GameEditorView(game: game, onDelete: { closeScreen() }) }
         .sheet(isPresented: $creatingMatch) { CreateMatchView(game: game) { navigate(.match($0.id)) } }
     }
 

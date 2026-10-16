@@ -70,7 +70,7 @@ final class MyGamesUITests: XCTestCase {
         screenshot("my-games")
 
         // Edit: rename; the server makes version 2.
-        tap(app.staticTexts["Robot Race"])
+        tap(app.row("Robot Race"))
         tap(app.buttons["edit-game"])
         replaceText(app.textFields["name"], with: "Robot Race 2")
         tap(app.buttons["save"])
@@ -82,8 +82,8 @@ final class MyGamesUITests: XCTestCase {
         tap(app.buttons["start"])
         tap(app.webViews.buttons["+1"], timeout: 15)
         XCTAssertTrue(app.staticTexts["move 2"].waitForExistence(timeout: 10), "the computer didn't move")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
+        app.goBack()
 
         // Delete (with a confirmation).
         tap(app.buttons["edit-game"])
@@ -104,14 +104,14 @@ final class MyGamesUITests: XCTestCase {
         launch(["-simulateOffline"])
         createGame("Offline Game", extraCount: 4)
         XCTAssertTrue(notUploaded.exists)
-        tap(app.staticTexts["Offline Game"])
+        tap(app.row("Offline Game"))
         tap(app.buttons["edit-game"])
         replaceText(app.textFields["name"], with: "Offline Game 2")
         tap(app.buttons["save"])
         XCTAssertTrue(app.staticTexts["Not uploaded yet"].waitForExistence(timeout: 5))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
 
-        tap(app.staticTexts["Server Game"])
+        tap(app.row("Server Game"))
         tap(app.buttons["edit-game"])
         tap(app.buttons["delete"])
         tap(app.buttons["Delete game"])
@@ -172,7 +172,7 @@ final class MyGamesUITests: XCTestCase {
 
         launch(["-resetLocalData", "-loginAs", me["id"] as! String, me["password"] as! String])
         // Listed under my games (from GET /builder/games), with the tag.
-        let row = app.staticTexts["Secret Draft"]
+        let row = app.row("Secret Draft")
         XCTAssertTrue(row.waitForExistence(timeout: 15), "my unpublished game isn't listed")
         XCTAssertTrue(app.staticTexts["unpublished-tag"].exists || app.staticTexts["unpublished"].exists)
         screenshot("unpublished-in-my-games")
@@ -203,7 +203,7 @@ final class MyGamesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Solo Race"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["1 player (solo)"].exists)
 
-        app.staticTexts["Solo Race"].tap()
+        app.row("Solo Race").tap()
         tap(app.buttons["test-play"])
         XCTAssertTrue(app.staticTexts["solo-seat"].waitForExistence(timeout: 5) || app.staticTexts["you (solo)"].exists)
         XCTAssertFalse(app.buttons["seat0-computer"].exists, "a solo game has no computer seat")

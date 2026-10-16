@@ -119,11 +119,11 @@ final class MatchesModel {
             // Keep my local copy of matches whose moves are still queued.
             myMatches = mine.map { m in hasPendingMoves(m) ? (match(id: m.id) ?? m) : m }
             otherMatches = (try? await API.openMatches()) ?? otherMatches
-            app.isOffline = false
+            app.setOffline(false)
             save()
             await downloadDetails(for: myMatches + otherMatches)
         } catch {
-            app.isOffline = error is URLError
+            app.setOffline(error is URLError)
             if !app.isOffline { notice = error.localizedDescription }
         }
     }
@@ -134,10 +134,10 @@ final class MatchesModel {
         if pendingMoves.contains(where: { $0.matchId == matchId }) { return } // offline: keep my copy
         do {
             store(try await API.match(id: matchId, as: app.account))
-            app.isOffline = false
+            app.setOffline(false)
             if let m = match(id: matchId) { await downloadDetails(for: [m]) }
         } catch {
-            app.isOffline = error is URLError
+            app.setOffline(error is URLError)
         }
     }
 
@@ -155,12 +155,20 @@ final class MatchesModel {
     }
 
     /// Puts a match from the server into the right list.
+    /// Saves a match from the server. Only real changes are written: the match screen polls
+    /// every 2 seconds, and rewriting an unchanged match would redraw the lists each time.
     private func store(_ m: Match) {
         guard !removed.contains(m.id) else { return }
         if m.seat(of: me) != nil || m.ownerUserId == me {
-            if let i = myMatches.firstIndex(where: { $0.id == m.id }) { myMatches[i] = m } else { myMatches.insert(m, at: 0) }
-            otherMatches.removeAll { $0.id == m.id }
+            if let i = myMatches.firstIndex(where: { $0.id == m.id }) {
+                guard myMatches[i] != m else { return }
+                myMatches[i] = m
+            } else {
+                myMatches.insert(m, at: 0)
+            }
+            if otherMatches.contains(where: { $0.id == m.id }) { otherMatches.removeAll { $0.id == m.id } }
         } else if let i = otherMatches.firstIndex(where: { $0.id == m.id }) {
+            guard otherMatches[i] != m else { return }
             otherMatches[i] = m
         } else {
             otherMatches.append(m)
@@ -309,10 +317,10 @@ final class MatchesModel {
                                                    expectedMoveCount: move.expectedMoveCount, as: account)
                 pendingMoves.removeFirst()
                 if !pendingMoves.contains(where: { $0.matchId == move.matchId }) { store(saved) }
-                app.isOffline = false
+                app.setOffline(false)
             } catch let error as URLError {
                 _ = error
-                app.isOffline = true
+                app.setOffline(true)
                 return
             } catch APIError.server(let status, _) where status >= 500 || status == 401 {
                 return // may work later

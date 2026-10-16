@@ -34,7 +34,7 @@ final class MatchesUITests: XCTestCase {
 
     /// Games tab → Tic-tac-toe → play online → create; returns the match id.
     private func createTicTacToeMatch(computers: Int) -> String {
-        tap(app.staticTexts["Tic-tac-toe"])
+        tap(app.row("Tic-tac-toe"))
         tap(app.buttons["play-online"])
         tap(app.buttons["computers-\(computers)"])
         tap(app.buttons["create-match"])
@@ -45,12 +45,12 @@ final class MatchesUITests: XCTestCase {
 
     private var cells: XCUIElementQuery { app.webViews.buttons }
 
-    private func openMatchesTab() { tap(app.tabBars.buttons["Matches"]) }
+    private func openMatchesTab() { tap(app.tab("Matches")) }
 
     /// From a match screen back to the Games list.
     private func backToGames() {
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
+        app.goBack()
     }
 
     /// My match is the first "Tic-tac-toe" (open matches from other players come after it).
@@ -101,7 +101,7 @@ final class MatchesUITests: XCTestCase {
         openMatchesTab()
         // The list only builds rows on screen; "join by link" is below the open matches.
         let field = app.textFields["match-link-field"]
-        for _ in 0..<15 where !field.exists { app.swipeUp() }
+        for _ in 0..<15 where !field.exists { app.list.swipeUp() }
         sleep(1) // let the scrolling stop before tapping
         tap(field)
         if !((field.value(forKey: "hasKeyboardFocus") as? Bool) ?? false) { sleep(1); field.tap() }
@@ -115,7 +115,7 @@ final class MatchesUITests: XCTestCase {
     /// Scrolls the Matches list back up to "// my matches" (rows off screen aren't built).
     private func scrollToMyMatches() {
         let label = app.staticTexts["// my matches"]
-        for _ in 0..<15 where !(label.exists && label.isHittable) { app.swipeDown() }
+        for _ in 0..<15 where !(label.exists && label.isHittable) { app.list.swipeDown() }
     }
 
     private func newFriend() async throws -> [String: Any] {
@@ -186,8 +186,8 @@ final class MatchesUITests: XCTestCase {
         try await friendMoves(id, cell: 4, next: [0], as: friend)
         XCTAssertTrue(cells["O"].waitForExistence(timeout: 8), "the app didn't show Friend's move")
         screenshot("online-two-players")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
+        app.goBack()
         openMatchesTab()
         XCTAssertTrue(app.staticTexts["your turn"].waitForExistence(timeout: 10))
         screenshot("my-matches")
@@ -201,7 +201,7 @@ final class MatchesUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["move-pending"].waitForExistence(timeout: 5)
                       || app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Offline: your move'")).firstMatch.exists)
         screenshot("offline-move")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
         XCTAssertTrue(app.staticTexts["1 move waiting to upload"].waitForExistence(timeout: 5))
         app.terminate()
 
@@ -228,7 +228,7 @@ final class MatchesUITests: XCTestCase {
         openMatchesTab()
         openFirstMatch()
         cells.matching(NSPredicate(format: "label == ''")).element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
         XCTAssertTrue(app.staticTexts["1 move waiting to upload"].waitForExistence(timeout: 5))
         app.terminate()
 
@@ -278,7 +278,7 @@ final class MatchesUITests: XCTestCase {
         }
         screenshot("status-chips")
         let ongoing = app.staticTexts["ongoing"]
-        for _ in 0..<10 where !ongoing.isHittable { app.swipeUp() }
+        for _ in 0..<10 where !ongoing.isHittable { app.list.swipeUp() }
         screenshot("status-chip-ongoing")
     }
 
@@ -291,7 +291,7 @@ final class MatchesUITests: XCTestCase {
         openMatchesTab()
         let row = app.staticTexts["Tic-tac-toe"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.swipeLeft()
+        app.listCell("Tic-tac-toe").swipeLeft()
         tap(app.buttons["delete"])
         XCTAssertTrue(app.alerts["Delete this match for everyone?"].waitForExistence(timeout: 5))
         screenshot("delete-confirm")
@@ -316,11 +316,11 @@ final class MatchesUITests: XCTestCase {
             "new_state": ["board": ["O", "", "", "", "", "", "", "", ""], "winner": NSNull(), "draw": false],
             "next_turn_player_indices": NSNull(), "expected_move_count": 0,
         ], as: friend)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.goBack()
         scrollToMyMatches()
-        app.swipeDown() // pull to refresh
+        app.list.swipeDown() // pull to refresh
         XCTAssertTrue(app.staticTexts["over"].waitForExistence(timeout: 10))
-        app.staticTexts["Tic-tac-toe"].firstMatch.swipeLeft()
+        app.listCell("Tic-tac-toe").swipeLeft()
         tap(app.buttons["hide"])               // no confirmation for hiding
         XCTAssertTrue(app.staticTexts["over"].waitForNonExistence(timeout: 10))
         // Hidden only for me: the match itself still exists.
@@ -346,7 +346,7 @@ final class MatchesUITests: XCTestCase {
         alert.buttons["Leave"].tap()
         // Back on the list, without my seat in it (it may still be listed under open matches,
         // since Poker lets people join mid-match). On the server a computer has my seat.
-        XCTAssertTrue(app.tabBars.buttons["Matches"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tab("Matches").waitForExistence(timeout: 10))
         scrollToMyMatches()
         XCTAssertTrue(app.staticTexts["Friend · Marcelle"].waitForNonExistence(timeout: 10), "still listed as my match")
         let m = try await match(id)
@@ -364,7 +364,7 @@ final class MatchesUITests: XCTestCase {
         openMatchesTab()
         let row = app.staticTexts["Tic-tac-toe"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.swipeLeft()
+        app.listCell("Tic-tac-toe").swipeLeft()
         let note = app.buttons["needs internet"]
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["delete"].exists)

@@ -6,7 +6,7 @@ import SwiftUI
 struct MatchView: View {
     @Environment(AppModel.self) private var app
     @Environment(MatchesModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeScreen) private var closeScreen
     let matchId: String
     @State private var error: String?
     @State private var busy = false
@@ -26,7 +26,7 @@ struct MatchView: View {
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { actionMenu } }
-        .modifier(MatchActionFlow(request: $actionRequest, onDone: { dismiss() }))
+        .modifier(MatchActionFlow(request: $actionRequest, onDone: { closeScreen() }))
         .task {
             // Poll every 2 seconds while this screen is open (like the web portal).
             while !Task.isCancelled {
@@ -80,6 +80,7 @@ struct MatchView: View {
             }
         }
         .padding(16)
+        .readableWidth(820)
     }
 
     private func statusText(_ match: Match) -> String {
@@ -177,6 +178,7 @@ struct MatchView: View {
                 }
             }
             .padding(20)
+            .readableWidth()
         }
     }
 

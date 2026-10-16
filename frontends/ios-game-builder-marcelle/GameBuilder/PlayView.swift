@@ -38,6 +38,7 @@ struct PlaySetupView: View {
                     .accessibilityIdentifier("start")
             }
             .padding(20)
+            .readableWidth()
         }
         .background(Theme.background)
         .navigationBarTitleDisplayMode(.inline)
@@ -137,6 +138,7 @@ struct PlayView: View {
             }
         }
         .padding(16)
+        .readableWidth(820) // on iPad landscape, don't spread the game over the whole width
         .background(Theme.background)
         .navigationTitle(game.name)
         .navigationBarTitleDisplayMode(.inline)

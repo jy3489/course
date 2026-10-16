@@ -13,7 +13,7 @@ struct MatchesView: View {
     @State private var actionRequest: Match?
 
     var body: some View {
-        NavigationStack(path: $path) {
+        TabNavigation(path: $path, placeholder: "Pick a match from the list.") {
             List {
                 Group {
                     VStack(spacing: 0) {
@@ -49,11 +49,12 @@ struct MatchesView: View {
             .refreshable { await model.refreshList() }
             .task { await model.refreshList() }
             .onChange(of: scenePhase) { if scenePhase == .active { Task { await model.refreshList() } } }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Route.self) { $0.destination }
             .modifier(MatchActionFlow(request: $actionRequest))
+            // A match deleted, hidden or left from the list disappears from the right side too.
+            .onChange(of: model.myMatches.map(\.id)) {
+                if case .match(let id) = path.first, model.match(id: id) == nil { path = [] }
+            }
         }
-        .environment(\.navigate) { path.append($0) }
     }
 
     @ViewBuilder
@@ -61,8 +62,7 @@ struct MatchesView: View {
         SectionLabel(title: title).padding(.top, 16)
         if matches.isEmpty { Text(empty).font(Theme.font(14)).foregroundStyle(Theme.muted) }
         ForEach(matches) { m in
-            Button { path.append(.match(m.id)) } label: { MatchRow(match: m) }
-                .buttonStyle(.plain)
+            RouteButton(route: .match(m.id)) { MatchRow(match: m) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if swipe { swipeButton(m) }
                 }
@@ -95,7 +95,7 @@ struct MatchesView: View {
                     .accessibilityIdentifier("match-link-field")
                 Button("open") {
                     Task {
-                        do { path.append(.match(try await model.open(linkOrId: link).id)); link = ""; error = nil }
+                        do { path = [.match(try await model.open(linkOrId: link).id)]; link = ""; error = nil }
                         catch { self.error = error.localizedDescription }
                     }
                 }

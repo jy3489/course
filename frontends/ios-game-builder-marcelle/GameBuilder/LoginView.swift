@@ -50,6 +50,7 @@ struct LoginView: View {
                 }
             }
             .padding(.horizontal, 20)
+            .readableWidth(520)
         }
         .background(Theme.background)
     }

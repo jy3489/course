@@ -62,6 +62,11 @@ Google login. Xcode downloads it on the first build.
   takes over if the game allows it, otherwise the match ends; `POST /matches/{id}/leave`).
   The match disappears from the list and the phone once the server confirms. Offline these
   are disabled ("needs internet"), never queued.
+- **iPad**: runs on iPhone and iPad, in any orientation. On iPad (or any wide window) the
+  Games and Matches tabs are split in two: the list on the left (the open one outlined in
+  lime) and the game or match on the right, where test play and matches open too. Pages,
+  the play screen and match boards keep a comfortable width instead of stretching across the
+  screen. On iPhone nothing changes: one screen at a time.
 
 ## Run
 1. Open `GameBuilder.xcodeproj` in Xcode.
@@ -117,6 +122,7 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
   the queue of moves and what happens when one is rejected.
 - `MatchesView.swift`: the Matches tab (my matches, open matches, join by link).
 - `MatchActions.swift`: delete / hide / leave: labels, confirmations, running them.
+- `TabNavigation.swift`: a tab's navigation: a stack on iPhone, list + detail on iPad.
 - `MatchView.swift`: one match (waiting room with share link + QR, then the game), the
   "new online match" sheet, and the QR code.
 - `PlayView.swift`: test play: the setup screen (players, seats) and the play screen.
@@ -162,6 +168,8 @@ Run them with **⌘U** in Xcode, or:
 xcodebuild test -project GameBuilder.xcodeproj -scheme GameBuilder \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
+The same tests run on iPad (e.g. `name=iPad Pro 11-inch (M5)`); `GameBuilderUITests/TestHelpers.swift`
+handles the differences (tabs at the top, the list always on the left).
 
 ## Debug-only launch arguments
 - `-screenshotMode`: shows the Games screen with a placeholder account (never saved or sent

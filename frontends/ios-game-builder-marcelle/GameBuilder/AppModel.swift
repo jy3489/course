@@ -14,7 +14,7 @@ final class AppModel {
     /// When the shown list was last downloaded (nil = never).
     var gamesSavedAt: Date?
     /// True when the last request failed for lack of network, so we're showing saved data.
-    var isOffline = false
+    private(set) var isOffline = false
     var isLoading = false
     var errorMessage: String?
 
@@ -57,6 +57,12 @@ final class AppModel {
             }
         }
         network.start(queue: .main)
+    }
+
+    /// Changes the offline flag only when it really changes, so screens that show it aren't
+    /// redrawn on every successful request.
+    func setOffline(_ offline: Bool) {
+        if isOffline != offline { isOffline = offline }
     }
 
     func isMine(_ game: Game) -> Bool { game.ownerUserId == account?.id }
@@ -116,10 +122,10 @@ final class AppModel {
             let fresh = Self.merging(mine: try await fetchMyGames(), into: try await API.fetchGames())
             games = Self.applying(pendingEdits, to: fresh, owner: account?.id ?? "")
             gamesSavedAt = .now
-            isOffline = false
+            setOffline(false)
             GameCache.save(games)
         } catch {
-            isOffline = Self.isNetworkError(error)
+            setOffline(Self.isNetworkError(error))
             errorMessage = error.localizedDescription
         }
     }
@@ -178,9 +184,9 @@ final class AppModel {
                 case .delete:
                     try await API.deleteGame(id: edit.gameId, as: account)
                 }
-                isOffline = false
+                setOffline(false)
             } catch where Self.isNetworkError(error) || Self.isServerTrouble(error) {
-                isOffline = Self.isNetworkError(error)
+                setOffline(Self.isNetworkError(error))
                 return
             } catch {
                 errorMessage = "Couldn't upload a change (\(edit.kind.rawValue)): \(error.localizedDescription)"
