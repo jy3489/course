@@ -8,7 +8,7 @@ function setup(request=async()=>{}) {
   const nodes=new Map();
   const node=id=>{
     if(!nodes.has(id)) nodes.set(id,{value:'',hidden:false,disabled:false,dataset:{},children:[],
-      replaceChildren(...children){this.children=children;},setAttribute(){},addEventListener(){}});
+      replaceChildren(...children){this.children=children;},setAttribute(){},addEventListener(){},focus(){}});
     return nodes.get(id);
   };
   const ctx=vm.createContext({console,Map,Set,URLSearchParams,
@@ -81,6 +81,29 @@ test('typed search finds a game in a large catalog and Enter selects it',()=>{
   run('onGameSearchKey({key:"Enter",preventDefault(){}})');
   assert.equal(node('new-game').value,'game-83');assert.equal(node('game-search').value,'Puzzle 83');
   assert.equal(node('create').disabled,false);assert.equal(node('game-search-popup').hidden,true);
+});
+
+test('browsing the full catalog reaches games beyond the first twelve without a name',()=>{
+  const {node,run}=setup();
+  run('state.games=Array.from({length:100},(_,i)=>({id:"game-"+i,name:"Puzzle "+i,version:1,allowed_player_counts:[2]}));state.gameSearchOriginal="game-0"');
+  node('game-search').value='previous search';run('browseAllGames()');
+  assert.equal(node('game-results').children.length,100);
+  assert.match(node('game-results-note').textContent,/100 games available/);
+  assert.doesNotMatch(node('game-results-note').textContent,/Showing 12/);
+  for(let i=0;i<99;i++)run('onGameSearchKey({key:"ArrowDown",preventDefault(){}})');
+  run('onGameSearchKey({key:"Enter",preventDefault(){}})');
+  assert.equal(node('new-game').value,'game-99');
+  assert.equal(node('game-search').value,'Puzzle 99');
+});
+
+test('description searches remain complete and Browse all clears the filter',()=>{
+  const {node,run}=setup();
+  run('state.games=Array.from({length:41},(_,i)=>({id:"game-"+i,name:"Game "+i,description:i<20?"A card game":"A board game",version:1,allowed_player_counts:[2]}))');
+  node('game-search').value='card';run('onGameSearchInput()');
+  assert.equal(node('game-results').children.length,20);
+  run('browseAllGames()');
+  assert.equal(node('game-search').value,'');
+  assert.equal(node('game-results').children.length,41);
 });
 
 test('unmatched search cannot create the previously selected game on blur',async()=>{

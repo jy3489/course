@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=4" />
-    <link rel="stylesheet" href="/static/portal.css?v=1" />
+    <link rel="stylesheet" href="/static/portal.css?v=2" />
   </head>
   <body>
     <header class="topbar">
@@ -43,7 +43,7 @@
             <label class="game-label" for="game-search">Choose your game</label>
             <div id="game-chooser" class="game-chooser">
               <input id="new-game" type="hidden" />
-              <input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Type a game name…" />
+              <div class="game-search-controls"><input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Search by name or description…" /><button id="browse-games" type="button">Browse all games</button></div>
               <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
             </div>
             <div id="selected-game-card" class="selected-game-card">
@@ -74,6 +74,6 @@
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/portal.js?v=7"></script>
+    <script src="/static/portal.js?v=8"></script>
   </body>
 </html>
