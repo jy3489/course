@@ -12,7 +12,7 @@ function setup(request = async () => {}) {
       setAttribute(){}, addEventListener(){}});
     return nodes.get(id);
   };
-  const ctx = vm.createContext({console, URLSearchParams, Set,
+  const ctx = vm.createContext({console, URLSearchParams, Set, setTimeout: fn=>fn(),
     document:{getElementById:node}, window:{addEventListener(){}},
     Auth:{current:()=>({id:'user'})},
     GameFrame:class {load(){} unload(){} send(){}},
@@ -87,4 +87,16 @@ test('leaving warns for drafts and proposals but not clean saved games',()=>{
   assert.equal(run('let warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),true);
   assert.equal(run('state.baseline=JSON.stringify(editorValues()); warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),false);
   assert.equal(run('agentHistory().pending={code:"draft"}; warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),true);
+});
+
+test('connected preview polls its job without repeating the paid request',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path)=>{
+    calls.push([method,path]);
+    return method==='POST' ? {preview_job_id:'job-1'} : {message:'Muse finished',code:'<html>game</html>'};
+  });
+  node('agent-input').value='backgammon';await run('sendAgentMessage()');
+  assert.deepEqual(calls,[['POST','/agent/chat'],['GET','/preview/jobs/job-1']]);
+  assert.equal(run('state.agent.pending.code'),'<html>game</html>');
+  assert.equal(node('agent-send').disabled,false);
 });

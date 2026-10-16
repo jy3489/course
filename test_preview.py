@@ -20,7 +20,15 @@ def test_preview_serves_local_builder_and_forwards_authenticated_muse_requests()
         assert 'builder.css' in page.text
         assert 'Connected to buildplay.fun' in page.text
         reply = client.post('/agent/chat', json={'messages': []}, headers={'X-User-Id': 'test-user', 'X-User-Password': 'test-password'})
-        assert reply.json()['message'] == 'Muse reply'
+        assert reply.status_code == 202
+        job = reply.json()['preview_job_id']
+        owner = {'X-User-Id': 'test-user', 'X-User-Password': 'test-password'}
+        assert client.get(f'/preview/jobs/{job}').status_code == 404
+        for _ in range(20):
+            result = client.get(f'/preview/jobs/{job}', headers=owner)
+            if result.status_code != 202:
+                break
+        assert result.json()['message'] == 'Muse reply'
         assert str(seen[0].url) == 'https://buildplay.fun/agent/chat'
         assert seen[0].headers['x-user-id'] == 'test-user'
         assert seen[0].headers['x-user-password'] == 'test-password'
@@ -43,3 +51,25 @@ def test_preview_reports_unreachable_backend():
         raise httpx.ConnectError('unreachable', request=request)
     with TestClient(preview.create_preview('https://buildplay.fun', transport=httpx.MockTransport(backend))) as client:
         assert client.get('/auth/config').status_code == 502
+
+
+def test_slow_generation_returns_a_job_and_remains_pollable():
+    import asyncio
+    import time
+    async def backend(request):
+        await asyncio.sleep(0.15)
+        return httpx.Response(200, json={'message': 'Generated backgammon', 'code': '<html>game</html>'})
+    with TestClient(preview.create_preview('https://buildplay.fun', transport=httpx.MockTransport(backend))) as client:
+        assert client.post('/agent/chat', json={}).status_code == 401
+        owner = {'X-User-Id': 'test-user', 'X-User-Password': 'test-password'}
+        start = client.post('/agent/chat', json={}, headers=owner)
+        assert start.status_code == 202
+        path = '/preview/jobs/' + start.json()['preview_job_id']
+        assert client.get(path, headers=owner).status_code == 202
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            result = client.get(path, headers=owner)
+            if result.status_code != 202:
+                break
+            time.sleep(0.02)
+        assert result.json()['message'] == 'Generated backgammon'

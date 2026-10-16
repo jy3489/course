@@ -458,6 +458,21 @@ function agentHistory() {
   return state.agent;
 }
 
+async function requestAgentReply(user, body, isCurrent) {
+  let reply = await apiRequest("POST", "/agent/chat", { user, body });
+  // The local connected preview returns a job immediately so long generations
+  // survive browser/proxy request deadlines. Production returns the reply directly.
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (reply?.preview_job_id) {
+    if (!isCurrent()) throw new Error("Conversation changed.");
+    if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
+    setMessage("agent-message", "Muse is generating your game… Larger games can take a few minutes.");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, { user });
+  }
+  return reply;
+}
+
 async function sendAgentMessage() {
   const user = me();
   const input = $("agent-input").value.trim();
@@ -476,16 +491,13 @@ async function sendAgentMessage() {
   state.agentSending = true;
   $("agent-send").disabled = true;
   try {
-    const reply = await apiRequest("POST", "/agent/chat", {
-      user,
-      body: {
+    const reply = await requestAgentReply(user, {
         game_name: values.name,
         game_description: values.description,
         allowed_player_counts: values.allowed_player_counts,
         code: values.code,
         messages,
-      },
-    });
+    }, isCurrent);
     if (!isCurrent()) return;
     history.messages.push({ role: "user", content: input });
     history.messages.push({ role: "assistant", content: reply.message });
