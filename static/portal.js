@@ -245,7 +245,7 @@ function renderGameSearch() {
   $("game-search-popup").hidden = !state.gameSearchOpen;
   const query = state.gameSearchQuery.trim().toLocaleLowerCase();
   const results = state.games.filter((game) => `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query));
-  state.filteredGames = results.slice(0, 12);
+  state.filteredGames = results;
   state.gameSearchActive = Math.min(state.gameSearchActive, Math.max(0, state.filteredGames.length - 1));
   const key = JSON.stringify([state.gameSearchOpen, state.gameSearchQuery, state.gameSearchActive,
     results.map((game) => [game.id, game.version])]);
@@ -256,9 +256,19 @@ function renderGameSearch() {
     id: `game-result-${index}`, type: "button", role: "option", tabIndex: -1,
     class: "game-option", "aria-selected": String(index === state.gameSearchActive),
     onclick: () => chooseGame(game.id),
-  }, el("span", {textContent: game.name}), el("small", {textContent: gameCountLabel(game)}))));
+  }, el("span", {class: "game-option-copy"},
+    el("span", {textContent: game.name}),
+    ...(game.description ? [el("span", {class: "game-option-description", textContent: game.description})] : [])),
+    el("small", {textContent: gameCountLabel(game)}))));
   $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
-    : results.length > 12 ? `Showing 12 of ${results.length} games. Keep typing to narrow the list.` : `${results.length} ${results.length === 1 ? "game" : "games"} found. Use arrow keys and Enter to select.`;
+    : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to select.`;
+}
+
+function browseAllGames() {
+  if (!state.gameSearchOpen) state.gameSearchOriginal = $("new-game").value;
+  $("game-search").value = "";
+  onGameSearchInput();
+  $("game-search").focus();
 }
 
 function chooseGame(id) {
@@ -625,6 +635,7 @@ function main() {
     renderGameSearch();
   });
   $("game-search").addEventListener("input", onGameSearchInput);
+  $("browse-games").addEventListener("click", browseAllGames);
   $("game-search").addEventListener("keydown", onGameSearchKey);
   $("game-chooser").addEventListener("focusout", (event) => {
     if (!$("game-chooser").contains(event.relatedTarget)) closeGameSearch();
