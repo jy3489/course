@@ -32,6 +32,7 @@ const state = {
   gameSearchOriginal: "",
   gameSearchKey: null,
   filteredGames: [],
+  requestedGameHandled: false,
 };
 
 const frame = new GameFrame($("game-box"), (move) => onMakeMove(move), (problem) => showMessage(problem, "error"));
@@ -221,7 +222,8 @@ function renderLists() {
   const key = JSON.stringify(games.map((game) => [game.id, game.version]));
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    const requested = new URLSearchParams(location.hash.slice(1)).get("game");
+    const requested = state.requestedGameHandled ? null : new URLSearchParams(location.hash.slice(1)).get("game");
+    state.requestedGameHandled = true;
     const chosen = requested || previous;
     if (!state.gameSearchOpen) select.value = games.some((game) => game.id === chosen) ? chosen : games[0]?.id ?? "";
     else if (!games.some((game) => game.id === previous)) select.value = "";

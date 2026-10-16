@@ -97,3 +97,9 @@ test('Your turn is absent when no human turn needs attention',()=>{
   run('state.myMatches=[{id:"m",game_id:"game",game_version:2,players:[{player_index:0,kind:"human",user_id:"owner"}],status:"ongoing",turn_of_player_indices:[0]}];renderLists()');
   assert.equal(node('group-turn').hidden,false);assert.equal(node('count-turn').textContent,'1');
 });
+
+test('catalog updates preserve a searched choice instead of restoring an old URL choice',()=>{
+  const {node,run}=setup();
+  run('location.hash="#game=game";state.games.push({id:"other",version:1,name:"Other",allowed_player_counts:[2]});renderLists();chooseGame("other");state.games[0].version++;renderLists()');
+  assert.equal(node('new-game').value,'other');assert.equal(node('game-search').value,'Other');
+});
