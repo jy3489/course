@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Builder</title>
     <link rel="stylesheet" href="/static/common.css?v=4" />
-    <link rel="stylesheet" href="/static/builder.css?v=8" />
+    <link rel="stylesheet" href="/static/builder.css?v=9" />
   </head>
   <body>
     <header class="topbar">
@@ -48,7 +48,7 @@
             </div>
             <div class="draft-toolbar"><button id="undo-ai-change" type="button" disabled>Undo applied change</button><span id="draft-status" class="muted"></span></div>
             <div class="version-section"><h4>Published versions</h4><div id="published-versions" class="inline-row"></div><p class="muted">Loading a version changes your draft. Publish to make it the latest version.</p></div>
-            <details id="advanced-editor"><summary>Game settings &amp; source code</summary>
+            <details id="advanced-editor"><summary>Player settings &amp; source code</summary>
             <div class="form-grid">
               <label for="name">Name</label>
               <input id="name" spellcheck="false" />
@@ -105,6 +105,7 @@
             <details id="starter-options"><summary>Start from a published game</summary><p class="muted">Load an existing game immediately, then ask Muse to change its rules. This creates an unpublished copy; it does not run AI generation.</p><div class="inline-row"><button id="load-starters" type="button">Load game catalog</button><select id="starter-game" aria-label="Published starting game"></select><button id="use-starter" type="button" disabled>Use as starting point</button></div></details>
             <div id="agent-home"><div id="agent-tools">
             <div id="agent-player-summary" class="muted"></div>
+            <button id="open-player-settings" type="button">Player settings &amp; code</button>
             <div class="inline-row" style="margin-top: var(--space-sm)">
               <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
             </div>
@@ -136,6 +137,6 @@
     </div>
     <script src="/static/common.js?v=3"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=19"></script>
+    <script src="/static/builder.js?v=20"></script>
   </body>
 </html>

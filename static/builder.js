@@ -756,7 +756,7 @@ async function sendAgentMessage() {
   const values = editorValues();
   const generationMode = $("lock-player-counts").checked ? "manual" : "auto";
   if (generationMode !== "auto" && values.allowed_player_counts.length === 0) {
-    setMessage("agent-message", "Select at least one player count in advanced settings, or unlock counts so Muse can choose.", "error");
+    setMessage("agent-message", "Open Player settings & code and select at least one player count, or unlock counts so Muse can choose.", "error");
     return;
   }
   const request = {cancelled: false, controller: new AbortController()};
@@ -901,6 +901,12 @@ async function main() {
   $("tab-edit").addEventListener("click", () => showTab("edit"));
   $("tab-test").addEventListener("click", () => showTab("test"));
   $("tab-agent").addEventListener("click", () => showTab("agent"));
+  $("open-player-settings").addEventListener("click", () => {
+    showTab("edit");
+    $("advanced-editor").open = true;
+    $("advanced-editor").scrollIntoView({block: "start", behavior: "smooth"});
+    $("lock-player-counts").focus({preventScroll: true});
+  });
   $("agent-send").addEventListener("click", sendAgentMessage);
   $("agent-stop").addEventListener("click", stopAgentWaiting);
   $("load-starters").addEventListener("click", loadStarters);
