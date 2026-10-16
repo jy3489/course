@@ -26,7 +26,8 @@
 .builder-shell .list-item { border: 1px solid transparent; border-left: 3px solid transparent; border-radius: 4px; padding: 14px 12px; margin-bottom: 8px; }
 .builder-shell .list-item:hover { background: #1c2233; }
 .builder-shell .list-item[aria-selected="true"] { background: #222a3d; border-left-color: #ff5fa2; }
-.builder-shell .list-item .title { font-size: 14px; }
+.builder-shell .list-item .title { font-size: 14px; flex-direction: column; align-items: flex-start; gap: 6px; overflow-wrap: anywhere; }
+.builder-shell .list-item .badge { white-space: normal; }
 .builder-shell .list-item .sub { margin-top: 7px; font-size: 11px; }
 .builder-shell .empty-note { padding: 12px 0; line-height: 1.6; }
 .sidebar-note { margin-top: auto; padding: 22px 16px; border: 1px solid #343e55; border-radius: 8px; background: #1a2030; }
