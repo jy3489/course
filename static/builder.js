@@ -180,7 +180,7 @@ function fillEditor(values) {
         type: "checkbox",
         id: `count-${count}`,
         checked: values.allowed_player_counts.includes(count),
-        onchange: () => { $("generation-player-mode").value = "custom"; renderTestSetup(); renderDraftControls(); },
+        onchange: () => { $("lock-player-counts").checked = true; renderTestSetup(); renderDraftControls(); },
       }),
       count === 1 ? "1 (solo)" : String(count)),
   ));
@@ -208,7 +208,7 @@ function select(id) {
   state.draftUndo = [];
   const game = selectedGame();
   fillEditor(selectedDraft() ?? game ?? NEW_GAME);
-  $("generation-player-mode").value = "auto";
+  $("lock-player-counts").checked = false;
   stopTest();
   showTab(id === "new" ? "agent" : "edit");
   setMessage("edit-message", "");
@@ -384,18 +384,6 @@ function renderEditorMeta() {
 }
 
 // Tabs
-
-function changeGenerationMode() {
-  const mode = $("generation-player-mode").value;
-  const counts = mode === "solo" ? [1] : mode === "multiplayer"
-    ? editorValues().allowed_player_counts.filter((count) => count >= 2) : null;
-  if (counts) {
-    if (!counts.length) counts.push(2);
-    for (const count of PLAYER_COUNTS) $(`count-${count}`).checked = counts.includes(count);
-    renderTestSetup();
-    renderDraftControls();
-  }
-}
 
 const TABS = ["edit", "test", "agent"];
 
@@ -766,9 +754,9 @@ async function sendAgentMessage() {
     return;
   }
   const values = editorValues();
-  const generationMode = $("generation-player-mode").value;
+  const generationMode = $("lock-player-counts").checked ? "manual" : "auto";
   if (generationMode !== "auto" && values.allowed_player_counts.length === 0) {
-    setMessage("agent-message", "Select at least one player count, or choose Auto.", "error");
+    setMessage("agent-message", "Select at least one player count in advanced settings, or unlock counts so Muse can choose.", "error");
     return;
   }
   const request = {cancelled: false, controller: new AbortController()};
@@ -827,8 +815,8 @@ function applyAgentProposal() {
   const history = agentHistory();
   const pending = history.pending;
   if (!pending || state.saving || state.restoring) return;
-  if (pending.generationMode && pending.generationMode !== $("generation-player-mode").value) {
-    setMessage("agent-message", "The player mode changed while Muse was working. Discard this proposal and request a fresh change.", "error");
+  if (pending.generationMode && pending.generationMode !== ($("lock-player-counts").checked ? "manual" : "auto")) {
+    setMessage("agent-message", "The player count lock changed while Muse was working. Discard this proposal and request a fresh change.", "error");
     return;
   }
   if (pending.base && JSON.stringify(editorValues()) !== pending.base) {
@@ -923,7 +911,7 @@ async function main() {
   $("agent-apply").addEventListener("click", applyAgentProposal);
   $("agent-discard").addEventListener("click", discardAgentProposal);
   $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
-  $("generation-player-mode").addEventListener("change", changeGenerationMode);
+  $("lock-player-counts").addEventListener("change", renderDraftControls);
   $("agent-publish").addEventListener("click", () => save(true));
   for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
     $(id).addEventListener("click", () => setTestMode(mode));

@@ -71,3 +71,29 @@ test('polling preserves collapsed groups and unchanged match buttons',()=>{
   assert.equal(node('group-open').open,false);assert.equal(node('group-over').open,false);
   assert.equal(node('list-over').children,original);
 });
+
+test('typed search finds a game in a large catalog and Enter selects it',()=>{
+  const {node,run}=setup();
+  run('state.games=Array.from({length:100},(_,i)=>({id:"game-"+i,name:"Puzzle "+i,version:1,allowed_player_counts:[2]}));state.gameSearchOriginal="game-0"');
+  node('game-search').value='PUZZLE 83';run('onGameSearchInput()');
+  assert.equal(run('state.filteredGames.length'),1);
+  assert.equal(node('create').disabled,true);
+  run('onGameSearchKey({key:"Enter",preventDefault(){}})');
+  assert.equal(node('new-game').value,'game-83');assert.equal(node('game-search').value,'Puzzle 83');
+  assert.equal(node('create').disabled,false);assert.equal(node('game-search-popup').hidden,true);
+});
+
+test('unmatched search cannot create the previously selected game on blur',async()=>{
+  let calls=0;const {node,run}=setup(async()=>{calls++;});
+  run('state.gameSearchOriginal="game"');
+  node('game-search').value='does not exist';run('onGameSearchInput();closeGameSearch()');
+  assert.equal(node('new-game').value,'');assert.equal(node('create').disabled,true);
+  await run('createMatch()');assert.equal(calls,0);
+  assert.match(node('game-results-note').textContent,/No matching games/);
+});
+
+test('Your turn is absent when no human turn needs attention',()=>{
+  const {node,run}=setup();run('renderLists()');assert.equal(node('group-turn').hidden,true);
+  run('state.myMatches=[{id:"m",game_id:"game",game_version:2,players:[{player_index:0,kind:"human",user_id:"owner"}],status:"ongoing",turn_of_player_indices:[0]}];renderLists()');
+  assert.equal(node('group-turn').hidden,false);assert.equal(node('count-turn').textContent,'1');
+});

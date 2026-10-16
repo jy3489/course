@@ -26,6 +26,12 @@ const state = {
   refreshAgain: false,
   creating: false,
   revealedMatch: null,
+  gameSearchOpen: false,
+  gameSearchQuery: "",
+  gameSearchActive: 0,
+  gameSearchOriginal: "",
+  gameSearchKey: null,
+  filteredGames: [],
 };
 
 const frame = new GameFrame($("game-box"), (move) => onMakeMove(move), (problem) => showMessage(problem, "error"));
@@ -62,6 +68,11 @@ function actingFor(match, userId) {
   if (turn.includes(seat.player_index)) return seat.player_index;
   const computer = turn.map((index) => match.players[index]).find((player) => player && player.kind === "computer");
   return computer ? computer.player_index : null;
+}
+
+function isYourTurn(match, userId) {
+  const seat = seatOf(match, userId);
+  return match.status === "ongoing" && seat && (match.turn_of_player_indices ?? []).includes(seat.player_index);
 }
 
 function isJoinable(match, userId) {
@@ -159,9 +170,9 @@ async function refresh() {
 function matchItem(match) {
   const game = gameOf(match.game_id, match.game_version);
   const user = me();
-  const yourTurn = user && actingFor(match, user.id) !== null;
+  const yourTurn = user && isYourTurn(match, user.id);
   const badges = [el("span", { class: `badge ${match.status}`, textContent: match.status.replaceAll("_", " ") })];
-  if (yourTurn) badges.unshift(el("span", { class: "badge turn", textContent: "your move" }));
+  if (yourTurn) badges.unshift(el("span", { class: "badge turn", textContent: "your turn" }));
   return el(
     "button",
     {
@@ -181,7 +192,7 @@ function matchItem(match) {
 function renderLists() {
   const user = me();
   const groups = [
-    ["turn", (m) => user && actingFor(m, user.id) !== null],
+    ["turn", (m) => user && isYourTurn(m, user.id)],
     ["ongoing", (m) => m.status === "ongoing"],
     ["waiting", (m) => m.status === "waiting_for_players"],
     ["over", (m) => m.status === "over"],
@@ -191,6 +202,7 @@ function renderLists() {
     const matches = state.myMatches.filter((m) => !shown.has(m.id) && predicate(m));
     matches.forEach((m) => shown.add(m.id));
     $("count-" + id).textContent = String(matches.length);
+    if (id === "turn") $("group-turn").hidden = matches.length === 0;
     renderMatchList($("list-" + id), matches);
     if (matches.some((m) => m.id === state.selectedId) && state.revealedMatch !== state.selectedId) {
       $("group-" + id).open = true;
@@ -209,14 +221,87 @@ function renderLists() {
   const key = JSON.stringify(games.map((game) => [game.id, game.version]));
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    select.replaceChildren(...games.map((game) =>
-      el("option", { value: game.id, textContent: `${game.name} (${game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1 ? "solo · 1 player" : game.allowed_player_counts.join(", ") + " players"})` })));
     const requested = new URLSearchParams(location.hash.slice(1)).get("game");
     const chosen = requested || previous;
-    if (games.some((game) => game.id === chosen)) select.value = chosen;
+    if (!state.gameSearchOpen) select.value = games.some((game) => game.id === chosen) ? chosen : games[0]?.id ?? "";
+    else if (!games.some((game) => game.id === previous)) select.value = "";
   }
+  renderGameSearch();
   updateComputerLimit();
-  $("create").disabled = !user || games.length === 0 || state.creating;
+}
+
+function gameCountLabel(game) {
+  return game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1
+    ? "1 player · solo" : `${game.allowed_player_counts.join(", ")} players`;
+}
+
+function renderGameSearch() {
+  const input = $("game-search");
+  const selected = state.games.find((game) => game.id === $("new-game").value);
+  if (!state.gameSearchOpen) input.value = selected?.name ?? state.gameSearchQuery;
+  input.setAttribute("aria-expanded", String(state.gameSearchOpen));
+  $("game-search-popup").hidden = !state.gameSearchOpen;
+  const query = state.gameSearchQuery.trim().toLocaleLowerCase();
+  const results = state.games.filter((game) => `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query));
+  state.filteredGames = results.slice(0, 12);
+  state.gameSearchActive = Math.min(state.gameSearchActive, Math.max(0, state.filteredGames.length - 1));
+  const key = JSON.stringify([state.gameSearchOpen, state.gameSearchQuery, state.gameSearchActive,
+    results.map((game) => [game.id, game.version])]);
+  if (key === state.gameSearchKey) return;
+  state.gameSearchKey = key;
+  input.setAttribute("aria-activedescendant", state.gameSearchOpen && state.filteredGames.length ? `game-result-${state.gameSearchActive}` : "");
+  $("game-results").replaceChildren(...state.filteredGames.map((game, index) => el("button", {
+    id: `game-result-${index}`, type: "button", role: "option", tabIndex: -1,
+    class: "game-option", "aria-selected": String(index === state.gameSearchActive),
+    onclick: () => chooseGame(game.id),
+  }, el("span", {textContent: game.name}), el("small", {textContent: gameCountLabel(game)}))));
+  $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
+    : results.length > 12 ? `Showing 12 of ${results.length} games. Keep typing to narrow the list.` : `${results.length} ${results.length === 1 ? "game" : "games"} found. Use arrow keys and Enter to select.`;
+}
+
+function chooseGame(id) {
+  if (!state.games.some((game) => game.id === id)) return;
+  $("new-game").value = id;
+  state.gameSearchOpen = false;
+  state.gameSearchQuery = "";
+  state.gameSearchOriginal = id;
+  $("create-message").textContent = "";
+  renderGameSearch();
+  updateComputerLimit();
+}
+
+function closeGameSearch(restore = false) {
+  if (!state.gameSearchOpen) return;
+  if (restore && !$("new-game").value && state.games.some((game) => game.id === state.gameSearchOriginal)) $("new-game").value = state.gameSearchOriginal;
+  state.gameSearchOpen = false;
+  if (restore || $("new-game").value) state.gameSearchQuery = "";
+  renderGameSearch();
+  updateComputerLimit();
+}
+
+function onGameSearchInput() {
+  state.gameSearchOpen = true;
+  state.gameSearchQuery = $("game-search").value;
+  state.gameSearchActive = 0;
+  $("new-game").value = "";
+  renderGameSearch();
+  updateComputerLimit();
+}
+
+function onGameSearchKey(event) {
+  if (event.key === "Escape") { event.preventDefault(); closeGameSearch(true); return; }
+  if (event.key === "Enter" && state.gameSearchOpen) {
+    event.preventDefault();
+    const game = state.filteredGames[state.gameSearchActive];
+    if (game) chooseGame(game.id);
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const wasOpen = state.gameSearchOpen;
+    state.gameSearchOpen = true;
+    if (wasOpen) state.gameSearchActive = (state.gameSearchActive + (event.key === "ArrowDown" ? 1 : -1) + Math.max(1, state.filteredGames.length)) % Math.max(1, state.filteredGames.length);
+    renderGameSearch();
+    $(`game-result-${state.gameSearchActive}`)?.scrollIntoView?.({block:"nearest"});
+  }
 }
 
 function renderMatchList(node, matches) {
@@ -238,6 +323,7 @@ function updateComputerLimit() {
   $("computers").max = String(maximum);
   $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
   $("computers").disabled = maximum === 0;
+  $("create").disabled = !me() || !game || state.creating;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("create").textContent = solo ? "Play solo ↗" : "Create match ↗";
   $("computer-setting").hidden = !game || solo;
@@ -245,7 +331,7 @@ function updateComputerLimit() {
   $("selected-game-name").textContent = game?.name || "Choose a game";
   $("selected-game-description").textContent = game?.description || "";
   $("selected-game-mode").textContent = solo ? "1 player · solo" : game ? `${game.allowed_player_counts.join(", ")} players` : "";
-  $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "With 0 computers, invite friends using your match link. Start once everyone is seated." : "Publish a game in the builder to make it available here.";
+  $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "With 0 computers, invite friends using your match link. Start once everyone is seated." : state.games.length ? "Choose a game from the search results to continue." : "Publish a game in the builder to make it available here.";
 }
 
 function selectMatch(id) {
@@ -337,6 +423,7 @@ function renderMatch() {
       if (latest && latest.version > match.game_version && latest.allowed_player_counts.length === 1 && latest.allowed_player_counts[0] === 1) {
         actions.push(actionButton("Play latest solo version", async () => {
           $("new-game").value = latest.id;
+          renderGameSearch();
           updateComputerLimit();
           await createMatch();
         }, {primary: true}));
@@ -478,6 +565,10 @@ async function createMatch() {
     $("create-message").className = "message error";
     return;
   }
+  if (!state.games.some((game) => game.id === $("new-game").value)) {
+    $("create-message").textContent = "Choose a game from the search results first.";
+    return;
+  }
   let match;
   state.creating = true;
   $("create").disabled = true;
@@ -522,11 +613,27 @@ function main() {
     showMessage("");
     refresh();
   });
-  $("new-game").addEventListener("change", updateComputerLimit);
+  $("game-search").addEventListener("focus", () => {
+    if (state.gameSearchOpen) return;
+    state.gameSearchOriginal = $("new-game").value;
+    state.gameSearchOpen = true;
+    state.gameSearchQuery = "";
+    state.gameSearchActive = 0;
+    $("game-search").select();
+    renderGameSearch();
+  });
+  $("game-search").addEventListener("input", onGameSearchInput);
+  $("game-search").addEventListener("keydown", onGameSearchKey);
+  $("game-chooser").addEventListener("focusout", (event) => {
+    if (!$("game-chooser").contains(event.relatedTarget)) closeGameSearch();
+  });
+  document.addEventListener("click", (event) => {
+    if (!$("game-chooser").contains(event.target)) closeGameSearch();
+  });
   $("show-creator").addEventListener("click", () => {
     $("match-creator").open = true;
     $("match-creator").scrollIntoView({behavior: "smooth", block: "start"});
-    $("new-game").focus({preventScroll: true});
+    $("game-search").focus({preventScroll: true});
   });
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);

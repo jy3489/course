@@ -27,8 +27,8 @@
         <button id="show-creator" type="button" class="primary">+ New match</button>
         <div id="portal-login-note" class="muted" hidden>Log in to see your matches.</div>
         <div id="my-matches">
-          <details id="group-turn" class="match-group" open><summary>Your move <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
-          <details id="group-ongoing" class="match-group" open><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
+          <details id="group-turn" class="match-group" open hidden><summary title="Matches where it is your turn to play">Your turn <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
+          <details id="group-ongoing" class="match-group"><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
           <details id="group-waiting" class="match-group"><summary>Waiting for players <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
           <details id="group-over" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
         </div>
@@ -40,8 +40,12 @@
           <summary><span class="creator-title">New match</span><span class="creator-toggle" aria-hidden="true">+</span></summary>
           <div class="creator-content">
             <p class="creator-description">Choose a game. Play solo, add computers, or invite friends.</p>
-            <label class="game-label" for="new-game">Choose your game</label>
-            <select id="new-game" aria-label="Game"></select>
+            <label class="game-label" for="game-search">Choose your game</label>
+            <div id="game-chooser" class="game-chooser">
+              <input id="new-game" type="hidden" />
+              <input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Type a game name…" />
+              <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
+            </div>
             <div id="selected-game-card" class="selected-game-card">
               <div class="game-symbol" aria-hidden="true">✳</div>
               <div><h2 id="selected-game-name">Choose a game</h2><p id="selected-game-description"></p><span id="selected-game-mode" class="mode-label"></span></div>
@@ -70,6 +74,6 @@
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/portal.js?v=6"></script>
+    <script src="/static/portal.js?v=7"></script>
   </body>
 </html>

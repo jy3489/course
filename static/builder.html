@@ -54,8 +54,8 @@
               <input id="name" spellcheck="false" />
               <label for="description">Description</label>
               <input id="description" />
-              <label class="inline">Advanced player mode <select id="generation-player-mode"><option value="auto">Auto — from your prompt</option><option value="solo">Solo — 1 player</option><option value="multiplayer">Multiplayer — 2+ players</option><option value="custom">Use selected player counts</option></select></label>
-              <p class="muted">Muse normally sets counts from your prompt. Override here only when you need to constrain generation.</p>
+              <label class="inline"><input id="lock-player-counts" type="checkbox" /> Lock the player counts below for AI generation</label>
+              <p class="muted">Leave unlocked to let Muse follow your prompt. Checking a player count below locks it; uncheck this lock to let prompts change modes again.</p>
               <label>Player counts (1 = solo)</label>
               <div id="counts" class="counts"></div>
               <label>Mid-match</label>
@@ -136,6 +136,6 @@
     </div>
     <script src="/static/common.js?v=3"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=18"></script>
+    <script src="/static/builder.js?v=19"></script>
   </body>
 </html>
