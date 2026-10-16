@@ -73,3 +73,12 @@ def test_slow_generation_returns_a_job_and_remains_pollable():
                 break
             time.sleep(0.02)
         assert result.json()['message'] == 'Generated backgammon'
+
+def test_preview_returns_an_explicit_timeout_instead_of_a_network_failure():
+    def backend(request):
+        raise httpx.ReadTimeout('slow model', request=request)
+    with TestClient(preview.create_preview('https://buildplay.fun', transport=httpx.MockTransport(backend))) as client:
+        result = client.get('/agent/chat')
+        assert result.status_code == 504
+        assert '15 minutes' in result.json()['detail']
+        assert 'preserved' in result.json()['detail']

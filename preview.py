@@ -29,7 +29,7 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
     if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username:
         raise ValueError("backend must be an HTTPS origin, such as https://buildplay.fun")
     backend = backend.rstrip("/")
-    client = httpx.AsyncClient(base_url=backend, timeout=300, trust_env=False, transport=transport)
+    client = httpx.AsyncClient(base_url=backend, timeout=httpx.Timeout(900, connect=15), trust_env=False, transport=transport)
 
     jobs = {}
 
@@ -74,6 +74,8 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
         async def forward():
             try:
                 upstream = await client.request(request.method, target, headers=headers, content=body)
+            except httpx.TimeoutException:
+                return JSONResponse({"detail": "Muse did not return within 15 minutes. Your prompt is preserved."}, status_code=504)
             except httpx.HTTPError:
                 return JSONResponse({"detail": "The course backend connection failed. Your prompt is preserved; try again."}, status_code=502)
             return Response(upstream.content, status_code=upstream.status_code,

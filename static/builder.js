@@ -462,11 +462,13 @@ async function requestAgentReply(user, body, isCurrent) {
   let reply = await apiRequest("POST", "/agent/chat", { user, body });
   // The local connected preview returns a job immediately so long generations
   // survive browser/proxy request deadlines. Production returns the reply directly.
-  const deadline = Date.now() + 10 * 60 * 1000;
+  const started = Date.now();
+  const deadline = started + 16 * 60 * 1000;
   while (reply?.preview_job_id) {
     if (!isCurrent()) throw new Error("Conversation changed.");
     if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
-    setMessage("agent-message", "Muse is generating your game… Larger games can take a few minutes.");
+    const seconds = Math.floor((Date.now() - started) / 1000);
+    setMessage("agent-message", `Muse is generating your game… ${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed. Larger games can take several minutes.`);
     await new Promise((resolve) => setTimeout(resolve, 1500));
     reply = await apiRequest("GET", `/preview/jobs/${encodeURIComponent(reply.preview_job_id)}`, { user });
   }
