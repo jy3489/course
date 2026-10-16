@@ -10,13 +10,10 @@
   --color-error: #ff9393; --color-ok: #c6f432;
   background: #10141f; color: #eef0f5;
   font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
-  font-size: 15px; grid-template-columns: 260px minmax(0,1fr);
+  font-size: 15px; grid-template-columns: 275px minmax(0,1fr);
 }
 .builder-shell [hidden] { display: none !important; }
-.builder-shell .sidebar { padding: 30px 18px; background: #131825; display: flex; flex-direction: column; gap: 20px; }
-.studio-brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; letter-spacing: -.6px; }
-.studio-brand small { display: block; font: 9px/2.4 var(--font-mono); letter-spacing: 1px; color: #a5aec2; }
-.studio-mark { display: grid; place-items: center; width: 38px; height: 42px; color: #c6f432; font-size: 44px; }
+.builder-shell .sidebar { padding: 28px 18px; background: #131825; display: flex; flex-direction: column; gap: 16px; }
 .builder-shell .section-title { padding: 20px 0 0; color: #a5aec2; font: 11px var(--font-mono); letter-spacing: 1px; flex-wrap: wrap; }
 .builder-shell button { min-height: 40px; padding: 9px 15px; border-radius: 6px; box-shadow: none; font-weight: 600; cursor: pointer; }
 .builder-shell button.primary, .builder-shell #new-game { background: #c6f432; border: 1px solid #c6f432; color: #10141f; }
@@ -37,7 +34,7 @@
 .color-dots { display: flex; gap: 7px; margin-top: 20px; }
 .color-dots i { width: 13px; height: 13px; border-radius: 50%; background: #ff5fa2; }
 .color-dots i:nth-child(2) { background: #ffd84d; }.color-dots i:nth-child(3) { background: #5fd4ff; }.color-dots i:nth-child(4) { background: #c6f432; }
-.builder-main { padding: 36px clamp(20px,4vw,64px) 48px; gap: 28px; }
+.builder-main { padding: 36px clamp(20px,4vw,60px) 48px; gap: 24px; }
 .studio-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex: none; }
 .eyebrow { color: #a5aec2; font: 10px var(--font-mono); letter-spacing: 2px; }
 .studio-intro h2 { margin: 14px 0 12px; font-size: clamp(34px,4.6vw,62px); line-height: 1; letter-spacing: -2.5px; font-weight: 800; }
@@ -90,14 +87,13 @@
 #test-log .entry.error { color: #ff9393; }
 .builder-shell .message { overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 @media (min-width: 1500px) { .builder-main { padding-right: max(64px,calc((100vw - 1280px)/2)); } }
-@media (max-width: 1000px) { .builder-shell { grid-template-columns: 210px minmax(0,1fr); }.game-art { transform: scale(.8); transform-origin: right center; width: 160px; }.builder-main { padding: 28px 22px; }.test-layout { grid-template-columns: minmax(0,1fr); }.panel-tag { display: none; } }
+@media (max-width: 1050px) { .builder-shell { grid-template-columns: 230px minmax(0,1fr); }.game-art { transform: scale(.8); transform-origin: right center; width: 160px; }.builder-main { padding: 24px; }.test-layout { grid-template-columns: minmax(0,1fr); }.panel-tag { display: none; } }
 @media (max-width: 860px) {
   .builder-shell { grid-template-columns: minmax(0,1fr); overflow: auto; }
-  .builder-shell .sidebar { padding: 16px; gap: 12px; border-right: 0; border-bottom: 1px solid #343e55; overflow: visible; }
-  .studio-brand { font-size: 17px; }.studio-brand small { display: none; }.studio-mark { height: 28px; font-size: 34px; }
+  .builder-shell .sidebar { padding: 18px; gap: 8px; border-right: 0; border-bottom: 1px solid #343e55; overflow: visible; }
   .builder-shell .section-title { padding: 0; }.sidebar-note { display: none; }
   #games { display: flex; gap: 8px; overflow-x: auto; } .builder-shell .list-item { min-width: 175px; margin: 0; }
-  .builder-main { overflow: visible; padding: 24px 16px 36px; gap: 24px; }
+  .builder-main { overflow: visible; padding: 22px 14px 36px; gap: 24px; }
   .studio-intro h2 { font-size: 40px; letter-spacing: -1.8px; }.studio-intro p { font-size: 12px; }
   .game-art { display: none; }.builder-shell #workspace > section { padding: 18px !important; }
   .builder-shell .tabs button { padding: 9px 5px; font-size: 11px; white-space: normal; }.builder-shell .tabs button span { display: block; margin: 0 0 4px; }

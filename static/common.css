@@ -282,6 +282,34 @@ label.inline {
 
 /* Builder and portal: a sidebar with lists and a main work area. */
 
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-height: 44px;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -.6px;
+}
+
+.app-brand-mark {
+  flex: none;
+  color: #c6f432;
+  font-size: 44px;
+  line-height: 1;
+}
+
+.app-brand-name {
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .app-brand { font-size: 19px; min-height: 32px; }
+  .app-brand-mark { font-size: 32px; }
+}
+
 .app {
   flex: 1;
   min-height: 0;
