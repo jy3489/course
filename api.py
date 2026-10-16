@@ -52,7 +52,7 @@ from game_platform.service import (
     PlatformError,
     UnauthorizedError,
 )
-from game_platform.agent import AgentError, chat_with_agent
+from game_platform.agent import GENERATION_BUDGET_SECONDS, AgentError, chat_with_agent
 from game_platform.config import AuthConfig, ModelApiConfig
 from game_platform.model_api import ModelApiClient
 from game_platform.models import LinkedAccountKind
@@ -587,7 +587,7 @@ async def agent_chat(
         )
     try:
         return await asyncio.wait_for(
-            run_in_threadpool(chat_with_agent, client, body), timeout=120
+            run_in_threadpool(chat_with_agent, client, body), timeout=GENERATION_BUDGET_SECONDS
         )
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Muse did not finish within two minutes. Try a smaller game or change.") from exc

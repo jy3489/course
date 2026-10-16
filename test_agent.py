@@ -446,3 +446,31 @@ def test_chat_endpoint_returns_504_at_its_wall_clock_limit(api, monkeypatch):
     response = api.request('POST', '/agent/chat', as_user=alice, json=_request().model_dump())
     assert response.status_code == 504
     assert 'two minutes' in response.json()['detail']
+
+
+def test_real_endpoint_deadline_does_not_wait_for_a_blocked_model(api, monkeypatch):
+    """Exercise the actual threadpool and asyncio timeout, not a mocked timer."""
+    import threading
+    import time
+    from game_platform import api as routes
+
+    release = threading.Event()
+    calls = []
+
+    def blocked_model(*args):
+        calls.append(1)
+        release.wait(timeout=3)
+        return routes.AgentChatResponse(message='late response')
+
+    monkeypatch.setattr(routes, 'GENERATION_BUDGET_SECONDS', 0.05)
+    monkeypatch.setattr(routes, 'chat_with_agent', blocked_model)
+    api.client.app.state.model_api_config = ModelApiConfig(api_key='k')
+    user = api.new_user('deadline check')
+    started = time.monotonic()
+    try:
+        response = api.request('POST', '/agent/chat', as_user=user, json=_request().model_dump())
+        assert response.status_code == 504
+        assert time.monotonic() - started < 1
+        assert len(calls) == 1
+    finally:
+        release.set()
