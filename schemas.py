@@ -1,7 +1,7 @@
 """Request and response bodies of the HTTP API."""
 
 import datetime as dt
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -464,6 +464,8 @@ class AgentChatRequest(_Request):
     game_name: str = ""
     game_description: str = ""
     allowed_player_counts: list[int] = []
+    # Existing mobile clients keep their selected counts; web explicitly opts in.
+    player_count_mode: Literal["auto", "manual"] = "manual"
     code: str = ""
     messages: Annotated[list[AgentMessage], Field(min_length=1, max_length=50)]
 
@@ -474,6 +476,8 @@ class AgentChatResponse(BaseModel):
     code: str | None = None
     name: str | None = None
     description: str | None = None
+    # Applied with the proposed code, so solo code cannot retain a default two seats.
+    allowed_player_counts: PlayerCounts | None = None
     # Debug info about the model turn (optional; safe to show in the UI).
     # Chain-of-thought the model exposed for this turn, if any.
     thinking: str | None = None

@@ -674,6 +674,21 @@ and other supported counts. One human playing against a computer still uses at
 least two seats. In Playtest, the Solo, Vs computer, and Local multiplayer buttons
 configure seat types for supported counts. Online human matches use the portal.
 
+The visible **Player mode** selector defaults to **Auto — from your prompt**.
+Muse proposes player counts alongside the complete code: applying a solo proposal
+also selects **1 (solo)**, instead of leaving the new-game default at two seats.
+Choose **Solo — 1 player** to require a solo game, or use selected counts for a
+manual constraint. Proposals without valid counts are retried; counts and code
+are reviewed, applied, undone and published together. Existing mobile clients
+retain manual-count behavior unless they opt into Auto.
+
+The portal labels solo-only games and **Play solo** creates and starts a one-human
+match immediately. Games offering both solo and multiplayer keep their lobby and
+Start choice; a valid one-seat lobby says **Ready to start**, not that another
+player is needed. Old matches keep their original game version. If a newer solo
+version exists, **Play latest solo version** creates a fresh match with it without
+rewriting the old match's history.
+
 See `docs/deployment-and-builder-modes.md` for the deployment investigation,
 rollout requirements, and acceptance checks for the course assignment.
 

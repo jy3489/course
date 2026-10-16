@@ -102,6 +102,7 @@
             </div>
             <details id="starter-options"><summary>Start from a published game</summary><p class="muted">Load an existing game immediately, then ask Muse to change its rules. This creates an unpublished copy; it does not run AI generation.</p><div class="inline-row"><button id="load-starters" type="button">Load game catalog</button><select id="starter-game" aria-label="Published starting game"></select><button id="use-starter" type="button" disabled>Use as starting point</button></div></details>
             <div id="agent-home"><div id="agent-tools">
+            <label class="inline">Player mode <select id="generation-player-mode"><option value="auto">Auto — from your prompt</option><option value="solo">Solo — 1 player</option><option value="multiplayer">Multiplayer — 2+ players</option><option value="custom">Use selected player counts</option></select></label>
             <div class="inline-row" style="margin-top: var(--space-sm)">
               <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
             </div>
@@ -109,6 +110,7 @@
             <div id="agent-log"></div>
             <div id="agent-proposal" class="proposal" hidden>
               <div class="muted">Review this change before applying it. Nothing is published yet.</div>
+              <div id="agent-proposed-players" class="muted"></div>
               <details><summary>Review proposed code</summary><pre id="agent-proposed-code"></pre></details>
               <div class="inline-row">
                 <button id="agent-apply" type="button" class="primary">Apply</button>
@@ -132,6 +134,6 @@
     </div>
     <script src="/static/common.js?v=3"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=15"></script>
+    <script src="/static/builder.js?v=17"></script>
   </body>
 </html>

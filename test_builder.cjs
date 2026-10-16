@@ -16,7 +16,7 @@ function setup(request = async () => {}) {
     document:{getElementById:node}, window:{addEventListener(){}},
     Auth:{current:()=>({id:'user'})},
     GameFrame:class {load(code){this.lastCode=code;} unload(){} send(){}},
-    apiRequest:request, formatTime:()=>'', el:()=>node(Symbol()),
+    apiRequest:request, formatTime:()=>'', el:(tag,attrs={})=>Object.assign(attrs.id?node(attrs.id):node(Symbol()),attrs),
     stateChangedMessage: x=>x});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/, ''),ctx);
   const run = code=>vm.runInContext(code,ctx);
@@ -233,4 +233,44 @@ test('saving edits to a public game leaves its public code and version untouched
   assert.equal(run('state.games[0].code'),'published code');
   assert.equal(run('state.games[0].version'),2);
   assert.equal(run('state.drafts[0].code'),'private change');
+});
+test('Muse solo counts apply with code, undo with code, and publish as one player',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path,opts.body]);
+    if(path==='/agent/chat') return {message:'Solo Hanoi',code:'<html>Hanoi</html>',allowed_player_counts:[1]};
+    return {...opts.body,id:'solo',version:1};
+  });
+  node('agent-input').value='Tower of Hanoi'; await run('sendAgentMessage()');
+  assert.equal(calls[0][2].player_count_mode,'auto');
+  assert.match(node('agent-proposed-players').textContent,/1 \(solo\)/);
+  assert.equal(node('count-2').checked,true); // review before applying metadata
+  run('applyAgentProposal()');
+  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
+  await run('save()');
+  assert.deepEqual(Array.from(calls[1][2].allowed_player_counts),[1]);
+});
+
+test('undoing a solo proposal restores the previous player counts too',async()=>{
+  const {node,run}=setup(async()=>({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]}));
+  node('agent-input').value='Make it solo';await run('sendAgentMessage()');run('applyAgentProposal();undoAppliedChange()');
+  assert.equal(node('count-1').checked,false);assert.equal(node('count-2').checked,true);
+});
+
+test('visible solo override configures one seat and sends a manual constraint',async()=>{
+  let body;
+  const {node,run}=setup(async(method,path,opts)=>{body=opts.body;return {message:'done'};});
+  node('generation-player-mode').value='solo';run('changeGenerationMode()');
+  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
+  node('agent-input').value='Hanoi';await run('sendAgentMessage()');
+  assert.equal(body.player_count_mode,'manual');assert.deepEqual(Array.from(body.allowed_player_counts),[1]);
+});
+
+test('changing player mode during generation invalidates its proposal',async()=>{
+  const wait=deferred();const {node,run}=setup(()=>wait.promise);
+  node('agent-input').value='Hanoi';const request=run('sendAgentMessage()');
+  node('generation-player-mode').value='custom';
+  wait.resolve({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]});await request;
+  run('applyAgentProposal()');assert.notEqual(node('code').value,'<html>solo</html>');
+  assert.match(node('agent-message').textContent,/player mode changed/);
 });
