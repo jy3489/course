@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Allows plain http only to local addresses, so debug builds can use a backend
+	     running on the Mac (launch argument -server http://localhost:8000). -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Google sign-in. Client IDs are public identifiers, not secrets.
+	     GIDClientID: my iOS OAuth client. GIDServerClientID: the website's client
+	     (GET https://buildplay.fun/auth/config), so the ID token's audience is the one
+	     the server checks in oauth.py. The URL scheme is the iOS client ID reversed;
+	     Google sends the user back to the app through it. -->
+	<key>GIDClientID</key>
+	<string>849325917253-vtaev575ikmqt1s9hstmntdihjcs3t60.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>849325917253-mhkn0rqs4297kkqm9bs7tb6ajh00rkdd.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.849325917253-vtaev575ikmqt1s9hstmntdihjcs3t60</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Bundled Google Fonts (OFL), see GameBuilder/Fonts/ -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>BricolageGrotesque-Regular.ttf</string>
+		<string>BricolageGrotesque-Medium.ttf</string>
+		<string>BricolageGrotesque-SemiBold.ttf</string>
+		<string>BricolageGrotesque-ExtraBold.ttf</string>
+		<string>SpaceMono-Regular.ttf</string>
+		<string>SpaceMono-Bold.ttf</string>
+	</array>
+</dict>
+</plist>
