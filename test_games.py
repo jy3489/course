@@ -92,9 +92,9 @@ def test_unknown_game_is_not_found(api: Api) -> None:
             ],
         ),
         (
-            {"allowed_player_counts": [1, 11]},
+            {"allowed_player_counts": [0, 11]},
             [
-                "allowed_player_counts.0: Input should be greater than or equal to 2",
+                "allowed_player_counts.0: Input should be greater than or equal to 1",
                 "allowed_player_counts.1: Input should be less than or equal to 10",
             ],
         ),
@@ -170,7 +170,7 @@ def test_update_validates_its_input(api: Api) -> None:
         json={"name": None, "allowed_player_counts": [0]},
     )
     assert validation_errors(response) == [
-        "allowed_player_counts.0: Input should be greater than or equal to 2"
+        "allowed_player_counts.0: Input should be greater than or equal to 1"
     ]
     response = api.request(
         "PATCH", f"/games/{game_id}", as_user=alice, json={"name": None}

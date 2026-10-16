@@ -210,7 +210,7 @@ another of your accounts.
 | `DELETE /matches/{id}` | yes | Owner: delete the match. Other players: hide an ended match from their list |
 
 Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct, each in
-2..10), `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
+1..10), `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
 
 ### Game versions and deletion
 
@@ -604,3 +604,90 @@ python -m pytest game_platform
 
 The tests start the app in-process (no server or network needed) and use temporary
 directories for data files, so they don't touch your data.
+
+### Web builder regression checks
+
+Run `node test_builder.cjs` (Node.js 18+) from this package directory. These
+checks exercise editor preservation, asynchronous agent replies, publishing and
+local move validation with a small DOM stub; they do not call the model API.
+
+The web builder uses the server's configured model API key. Students only need
+to log in; they do not need to supply a personal API key. After publishing,
+**Play this game** opens the portal with the saved game selected for a new match.
+
+### Preview local UI with the course server's Muse setup
+
+Install `requirements-dev.txt`, then run `python preview.py` from this directory
+and open http://127.0.0.1:8001/builder. This serves your local HTML/CSS/JavaScript
+while forwarding product API calls to https://buildplay.fun, whose server owns
+the Muse Spark key. No personal model key is requested or stored locally.
+**This uses live course accounts and saves games/matches on buildplay.fun.**
+The separate port keeps preview accounts separate from an offline local server.
+Google sign-in requires the course OAuth app to allow the local origin; guest
+login remains available for generation checks. Use the deployed site for final
+Google-login verification. The preview binds only to loopback and does not proxy
+admin/debug endpoints. Run `python -m pytest test_preview.py` for its routing check.
+
+The connected preview submits Muse generation as a background job and polls for
+the result. This avoids relying on one long browser HTTP request for large games.
+The preview process must stay running; jobs remain in its memory until completion.
+It returns the real backend response and does not retry paid generation requests
+automatically. Refreshing the page still clears the current editor/chat session.
+
+The waiting panel distinguishes sending the request from waiting for an accepted
+preview job. Its elapsed timer and indeterminate indicator do not represent model
+progress. **Stop waiting** aborts the browser request/polling and restores the
+prompt; it cannot cancel computation already running on the course server.
+
+For an immediate playable starting point, choose **New game → Start from a
+published game → Load game catalog**, select a game, and choose **Use as starting
+point**. This loads an attributed, unpublished copy into the editor and playtest;
+it does not generate a new game or change the original. Subsequent rule-change
+prompts still use the real Muse endpoint and depend on its response time.
+
+### Builder generation latency
+
+The builder now requests Muse with `reasoning_effort="low"`, temperature 1.0,
+and `stream=True`. Streaming is collected on the server, preserving the existing
+`/agent/chat` response format while avoiding Meta's non-streaming generation limit.
+The SDK's automatic retries are disabled; the agent owns retries under one
+120-second budget. Timeouts and truncated/interrupted streams do not trigger
+another hidden paid call. The HTTP endpoint also returns 504 after 120 seconds.
+Attempt timings are logged without game code, credentials, or model reasoning.
+
+These changes must be deployed on the course backend to change live generation
+behavior. Running the local connected preview alone cannot change the remote
+server's reasoning effort or retry policy. Verify after deployment with an actual
+generation and the server's `Builder generation` timing logs. Tests with simulated
+model responses check request options and failure handling; they do not measure
+live Muse latency.
+
+References: https://dev.meta.ai/docs/reasoning and
+https://dev.meta.ai/docs/protocols/chat-completions (reasoning effort, sampling,
+and the non-streaming time limit).
+
+### Solo and multiplayer games
+
+Allowed player counts now range from 1 to 10. Select **1 (solo)** for a true
+single-player game. A game may offer both solo and multiplayer by including 1
+and other supported counts. One human playing against a computer still uses at
+least two seats. In Playtest, the Solo, Vs computer, and Local multiplayer buttons
+configure seat types for supported counts. Online human matches use the portal.
+
+See `docs/deployment-and-builder-modes.md` for the deployment investigation,
+rollout requirements, and acceptance checks for the course assignment.
+
+### Change a game through prompts
+
+Selecting a saved game opens **Edit & publish**, with the playable draft and the
+lime **Describe your change** panel together. Ask for rule changes, features, or
+bug fixes, review the proposed source, and choose **Apply**. The preview
+restarts with the new draft; follow-up prompts receive that current code and the
+conversation. Nothing is published until **Publish new version** is clicked.
+
+**Undo applied change** restores the previous local draft. The last six published
+versions can be loaded as drafts and republished as a new version. Settings and
+manual source editing remain under **Game settings & source code**. Proposals
+based on a draft that changed during generation are rejected to preserve newer
+edits. The shared conversation and test controls move between tabs without
+creating separate histories or losing the saved local test state.

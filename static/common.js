@@ -127,7 +127,7 @@ class ApiError extends Error {
 }
 
 /** Calls the API as [user] ({id, password} or null); throws ApiError on failure. */
-async function apiRequest(method, path, { body, user } = {}) {
+async function apiRequest(method, path, { body, user, signal } = {}) {
   const headers = {};
   if (user) {
     headers["X-User-Id"] = user.id;
@@ -137,6 +137,7 @@ async function apiRequest(method, path, { body, user } = {}) {
   const response = await fetch(path, {
     method,
     headers,
+    signal,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
