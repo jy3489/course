@@ -5,132 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Builder</title>
     <link rel="stylesheet" href="/static/common.css?v=4" />
-    <style>
-      .counts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-      }
-
-      .test-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 360px;
-        gap: var(--space-md);
-        align-items: start;
-      }
-
-      @media (max-width: 720px) {
-        /* Test tab: frame above, log below. */
-        .test-layout {
-          grid-template-columns: minmax(0, 1fr);
-        }
-      }
-
-      #test-log {
-        max-height: 560px;
-        overflow: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      #test-log .entry {
-        font-family: var(--font-mono);
-        font-size: var(--font-size-xs);
-        border-bottom: 1px solid var(--color-border-1);
-        padding: 2px 0;
-        word-break: break-word;
-      }
-
-      #test-log .entry.error {
-        color: var(--color-error);
-      }
-
-      #agent-log {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-sm);
-        max-height: 480px;
-        overflow: auto;
-        margin: var(--space-md) 0;
-      }
-
-      #agent-log .msg {
-        padding: var(--space-sm) var(--space-md);
-        border-radius: 8px;
-        max-width: 90%;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      #agent-log .msg.user {
-        align-self: flex-end;
-        background: var(--color-accent-bg, #e8f0fe);
-      }
-
-      #agent-log .msg.assistant {
-        align-self: flex-start;
-        background: var(--color-surface-2, #f5f5f5);
-        border: 1px solid var(--color-border-1);
-      }
-
-      #agent-log .msg.system {
-        align-self: center;
-        font-size: var(--font-size-xs);
-        color: var(--color-text-muted, #666);
-      }
-
-      #agent-log:empty::after {
-        content: "No messages yet. Say hello, or describe the game you want to build.";
-        color: var(--color-text-muted, #666);
-        font-style: italic;
-      }
-
-      /* Per-message debug info for the game-building agent. */
-      #agent-log .msg.assistant .agent-debug {
-        margin-top: var(--space-xs);
-        font-size: var(--font-size-xs);
-      }
-
-      #agent-log .msg.assistant .agent-debug summary {
-        cursor: pointer;
-        color: var(--color-text-tertiary);
-      }
-
-      #agent-log .msg.assistant .agent-debug summary:hover {
-        color: var(--color-text-primary);
-      }
-
-      #agent-log .msg.assistant .agent-debug pre {
-        max-height: 220px;
-        overflow: auto;
-        background: var(--color-bg-0);
-        border: 1px solid var(--color-border-1);
-        border-radius: var(--radius-sm);
-        padding: var(--space-sm);
-        margin: var(--space-xs) 0 0;
-      }
-
-      #agent-log .msg.agent-note {
-        align-self: center;
-        font-size: var(--font-size-xs);
-        color: var(--color-text-tertiary);
-        font-style: italic;
-      }
-
-      #agent-input {
-        width: 100%;
-        resize: vertical;
-      }
-
-      .proposal {
-        border: 1px solid var(--color-border-1);
-        border-radius: 8px;
-        padding: var(--space-md);
-        margin: var(--space-md) 0;
-        background: var(--color-surface-2, #f5f5f5);
-      }
-    </style>
+    <link rel="stylesheet" href="/static/builder.css?v=2" />
   </head>
   <body>
     <header class="topbar">
@@ -146,24 +21,28 @@
       <span class="spacer"></span>
       <span id="account-menu"></span>
     </header>
-    <div class="app">
+    <div class="app builder-shell">
       <aside class="sidebar">
+        <div class="studio-brand"><span class="studio-mark" aria-hidden="true">✳</span><div>Game Builder<small>YOUR GAME NIGHT STARTS HERE</small></div></div>
         <div class="section-title">
-          My games <span class="spacer"></span>
-          <button id="new-game" type="button">New game</button>
+          Your library <span class="spacer"></span>
+          <button id="new-game" type="button">+ New game</button>
         </div>
         <div id="games"></div>
+        <div class="sidebar-note"><span class="note-label">FROM IDEA TO GAME NIGHT</span><p>Dream it. Build it.<br>Bring your friends.</p><span>Describe an idea, try it out, and make it yours.</span><div class="color-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
       </aside>
-      <main class="work">
+      <main class="work builder-main">
+        <div class="studio-intro"><div><span class="eyebrow">THE GAME NIGHT STUDIO</span><h2>Big ideas.<br> <span>Playable games.</span></h2><p>Make something your friends will want to play again.</p></div><div class="game-art" aria-hidden="true"><div class="art-card card-pink">♥<small>MAKE</small></div><div class="art-card card-blue">✦<small>PLAY</small></div><div class="art-die">⚄</div></div></div>
         <div id="no-user" class="muted">Log in at the top right to see and build your games.</div>
         <div id="workspace" hidden>
           <a id="play-game" href="/portal" hidden>Play this game</a>
           <div class="tabs" role="tablist">
-            <button id="tab-edit" type="button" role="tab" aria-selected="true">Edit</button>
-            <button id="tab-test" type="button" role="tab" aria-selected="false">Test</button>
-            <button id="tab-agent" type="button" role="tab" aria-selected="false">Agent</button>
+            <button id="tab-agent" type="button" role="tab" aria-selected="false" aria-controls="agent-panel"><span>01</span> Describe &amp; change</button>
+            <button id="tab-test" type="button" role="tab" aria-selected="false" aria-controls="test-panel"><span>02</span> Playtest</button>
+            <button id="tab-edit" type="button" role="tab" aria-selected="true" aria-controls="edit-panel"><span>03</span> Edit &amp; publish</button>
           </div>
-          <section id="edit-panel" class="work" style="padding: var(--space-md) 0">
+          <section id="edit-panel" class="work" role="tabpanel" aria-labelledby="tab-edit">
+            <h3 class="panel-heading">Make it yours<span class="panel-tag">THE DETAILS</span></h3>
             <div id="game-meta" class="muted"></div>
             <div class="form-grid">
               <label for="name">Name</label>
@@ -187,7 +66,8 @@
               <span id="edit-message" class="message"></span>
             </div>
           </section>
-          <section id="test-panel" class="work" style="padding: var(--space-md) 0" hidden>
+          <section id="test-panel" class="work" role="tabpanel" aria-labelledby="tab-test" hidden>
+            <h3 class="panel-heading">Take it for a spin<span class="panel-tag">THE PLAYGROUND</span></h3>
             <div class="muted">
               Pass-and-play: you play every human seat, in turn, with the game's current
               code (saved or not). Moves stay in this page; nothing is sent to the server.
@@ -206,14 +86,14 @@
               </div>
             </div>
           </section>
-          <section id="agent-panel" class="work" style="padding: var(--space-md) 0" hidden>
+          <section id="agent-panel" class="work" role="tabpanel" aria-labelledby="tab-agent" hidden>
+            <h3 class="panel-heading">What are we playing?<span class="panel-tag">YOUR AI CO-CREATOR</span></h3>
             <div class="muted">
-              Chat with the game-building agent: describe the game you want, or ask for
-              changes to your game. Apply its proposal, test it in the Test
-              tab, and keep iterating — then publish when you're happy.
+              Describe your idea or ask for a change. Apply the proposal, playtest it,
+              then publish when it feels right.
             </div>
             <div class="inline-row" style="margin-top: var(--space-sm)">
-              <label class="inline"><input type="checkbox" id="agent-debug" /> Debug: show the agent's thinking and raw replies</label>
+              <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
             </div>
             <div id="agent-log"></div>
             <div id="agent-proposal" class="proposal" hidden>
@@ -224,18 +104,19 @@
               </div>
             </div>
             <div class="inline-row">
-              <textarea id="agent-input" rows="3" placeholder="Describe your game, or ask for a change…"></textarea>
+              <textarea id="agent-input" rows="3" placeholder="A card game with a twist? A strategy showdown? Tell me your idea…"></textarea>
             </div>
             <div class="inline-row">
-              <button id="agent-send" type="button" class="primary">Send</button>
-              <button id="agent-publish" type="button">Publish new version</button>
+              <button id="agent-send" type="button" class="primary">Let’s build ↗</button>
+              <button id="agent-publish" type="button">Publish game</button>
               <span id="agent-message" class="message"></span>
             </div>
           </section>
+        </div>
       </main>
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=5"></script>
+    <script src="/static/builder.js?v=6"></script>
   </body>
 </html>

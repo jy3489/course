@@ -179,6 +179,7 @@ function select(id) {
   resetAgent();
   const game = selectedGame();
   fillEditor(game ?? NEW_GAME);
+  showTab(id === "new" ? "agent" : "edit");
   setMessage("edit-message", "");
   stopTest();
   render();
@@ -540,7 +541,10 @@ function render() {
       el("button", { type: "button", class: "link", textContent: "Log in", onclick: () => Auth.openDialog("login") })
     );
   } else {
-    $("no-user").textContent = "Select a game on the left, or create one with New game.";
+    $("no-user").replaceChildren(
+      "Ready to make your next favorite game? ",
+      el("button", { type: "button", textContent: "Create a game ↗", onclick: () => select("new") })
+    );
   }
   $("new-game").disabled = !me() || state.saving;
   if (showWorkspace) renderEditorMeta();
