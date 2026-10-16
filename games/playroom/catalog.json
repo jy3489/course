@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Dots & Boxes",
+    "description": "Connect neighboring dots. Finish a box to claim it and take another turn. Most of the nine boxes wins.",
+    "allowed_player_counts": [2],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false,
+    "file": "dots-and-boxes.html"
+  },
+  {
+    "name": "Reversi",
+    "description": "Black moves first. Place a disc to trap and flip an unbroken line of opposing discs. Turns with no legal moves are skipped. Most discs at the end wins.",
+    "allowed_player_counts": [2],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false,
+    "file": "reversi.html"
+  },
+  {
+    "name": "Crazy Eights",
+    "description": "Match suit or rank; eights are wild. Draw one card instead of playing, ending your turn. Empty your hand to win. If everyone is blocked, lowest card points wins (eight 50, face cards 10, ace 1).",
+    "allowed_player_counts": [2, 3, 4],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false,
+    "file": "crazy-eights.html"
+  }
+]

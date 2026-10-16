@@ -1,0 +1,17 @@
+{
+  "name": "Game platform · Portal",
+  "short_name": "Playroom",
+  "start_url": "/static/portal.html",
+  "scope": "/static/",
+  "display": "standalone",
+  "background_color": "#101827",
+  "theme_color": "#101827",
+  "icons": [
+    {
+      "src": "/static/portal-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

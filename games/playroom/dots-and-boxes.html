@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dots & Boxes</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #101827;
+        color: #edf2ff;
+        font: 16px system-ui;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      h1 {
+        font-size: 23px;
+        margin: 0 0 8px;
+      }
+      p {
+        line-height: 1.5;
+      }
+      #status {
+        font-weight: 650;
+        margin: 12px 0;
+        color: #8ee7cd;
+      }
+      #scores {
+        font-size: 14px;
+        margin: 12px 0;
+      }
+      button {
+        font: inherit;
+        min-height: 44px;
+        border: 1px solid #64748b;
+        border-radius: 8px;
+        background: #25344e;
+        color: white;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      button:disabled {
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 3px solid #fcd34d;
+      }
+      .dots-and-boxes {
+        display: grid;
+        grid-template-columns: 12px 1fr 12px 1fr 12px 1fr 12px;
+        grid-template-rows: 12px 64px 12px 64px 12px 64px 12px;
+        align-items: stretch;
+        max-width: 400px;
+      }
+      .dot {
+        border-radius: 50%;
+        background: white;
+      }
+      .edge {
+        min-height: 0;
+        border-radius: 3px;
+        border: 0;
+        background: #42506a;
+        position: relative;
+      }
+      .edge::after {
+        content: "";
+        position: absolute;
+        inset: -8px;
+      }
+      .box {
+        display: grid;
+        place-items: center;
+        margin: 5px;
+        border-radius: 6px;
+      }
+      .p0 {
+        background: #478ebd;
+      }
+      .p1 {
+        background: #a15bb7;
+      }
+      .reversi {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        max-width: 440px;
+        gap: 2px;
+      }
+      .square {
+        aspect-ratio: 1;
+        min-height: 0;
+        padding: 0;
+        border-radius: 3px;
+        background: #17604b;
+        font-size: clamp(23px, 6vw, 42px);
+        line-height: 1;
+      }
+      .square.p0 {
+        color: #071016;
+      }
+      .square.p1 {
+        color: white;
+      }
+      .hand {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 16px 0;
+      }
+      .hand button {
+        background: #fff;
+        color: #18253d;
+        min-width: 52px;
+        height: 78px;
+        font-size: 23px;
+      }
+      .hand button:disabled {
+        opacity: 0.6;
+      }
+      #suits {
+        display: flex;
+        gap: 8px;
+        margin: 10px 0;
+      }
+      #suits button {
+        min-width: 52px;
+      }
+      .rules {
+        font-size: 14px;
+        color: #bec9dc;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Dots & Boxes</h1>
+    <p class="rules">
+      Connect neighboring dots. Finish a box to claim it and take another turn.
+      Most of the nine boxes wins.
+    </p>
+    <div id="status">Waiting for the platform…</div>
+    <div id="scores"></div>
+    <div id="board"></div>
+    <div id="suits"></div>
+    <script>
+      "use strict";
+      const KIND = "dots-and-boxes";
+
+      const Logic = (() => {
+        const edges = Array.from({ length: 24 }, (_, i) => i);
+        const boxEdges = (i) => {
+          const r = Math.floor(i / 3),
+            c = i % 3;
+          return [
+            r * 3 + c,
+            (r + 1) * 3 + c,
+            12 + r * 4 + c,
+            12 + r * 4 + c + 1,
+          ];
+        };
+        function initialState() {
+          return {
+            edges: Array(24).fill(null),
+            boxes: Array(9).fill(null),
+            turn: 0,
+            winner: null,
+            done: false,
+          };
+        }
+        function actions(s) {
+          return edges.filter((i) => s.edges[i] === null);
+        }
+        function play(s, seat, edge) {
+          s = structuredClone(s || initialState());
+          if (s.done || s.turn !== seat || !actions(s).includes(edge))
+            throw Error("Illegal edge");
+          s.edges[edge] = seat;
+          let gained = false;
+          s.boxes.forEach((owner, i) => {
+            if (
+              owner === null &&
+              boxEdges(i).every((e) => s.edges[e] !== null)
+            ) {
+              s.boxes[i] = seat;
+              gained = true;
+            }
+          });
+          s.done = s.boxes.every((x) => x !== null);
+          if (s.done) {
+            const n = s.boxes.filter((x) => x === 0).length;
+            s.winner = n > 4 ? 0 : 1;
+          } else if (!gained) s.turn = 1 - seat;
+          return { state: s, nextTurn: s.done ? null : s.turn };
+        }
+        function computer(s, seat) {
+          return actions(s).sort((a, b) => score(b) - score(a))[0];
+          function score(e) {
+            return s.boxes.reduce(
+              (n, o, i) =>
+                n +
+                (o === null && boxEdges(i).includes(e)
+                  ? boxEdges(i).filter((x) => s.edges[x] !== null).length === 3
+                    ? 20
+                    : boxEdges(i).filter((x) => s.edges[x] !== null).length ===
+                        2
+                      ? -5
+                      : 0
+                  : 0),
+              0,
+            );
+          }
+        }
+        return { initialState, actions, play, computer, boxEdges };
+      })();
+
+      if (typeof window !== "undefined" && window.document) {
+        let latest = null,
+          sent = false,
+          initial = null;
+        const $ = (id) => document.getElementById(id);
+        function button(text, action, disabled = false) {
+          const b = document.createElement("button");
+          b.textContent = text;
+          b.disabled = disabled;
+          b.onclick = action;
+          return b;
+        }
+        function submit(action) {
+          if (
+            sent ||
+            !latest ||
+            latest.status !== "ongoing" ||
+            latest.acting_for_player_index === null
+          )
+            return;
+          try {
+            const result = Logic.play(
+              current(),
+              latest.acting_for_player_index,
+              action,
+            );
+            sent = true;
+            parent.postMessage(
+              {
+                type: "make_move",
+                new_state: result.state,
+                next_turn_player_indices:
+                  result.nextTurn === null ? null : [result.nextTurn],
+              },
+              "*",
+            );
+            render();
+          } catch (e) {
+            $("status").textContent = e.message;
+          }
+        }
+        function current() {
+          return latest.state || initial;
+        }
+        function render() {
+          const s = current(),
+            seat = latest.acting_for_player_index;
+          const human =
+            seat !== null &&
+            latest.status === "ongoing" &&
+            latest.players[seat]?.kind === "human" &&
+            !sent;
+          const name = (i) => latest.players[i]?.name || `Player ${i + 1}`;
+          $("status").textContent = s.done
+            ? s.winner === null
+              ? "Draw!"
+              : `${name(s.winner)} wins!`
+            : latest.status === "over"
+              ? "Match ended"
+              : sent
+                ? "Saving move…"
+                : human
+                  ? `${name(seat)} — your turn`
+                  : `Waiting for ${name(s.turn)}`;
+          $("scores").textContent = latest.players
+            .map(
+              (p, i) =>
+                `${p.name}: ${KIND === "dots-and-boxes" ? s.boxes.filter((x) => x === i).length + " boxes" : KIND === "reversi" ? s.board.filter((x) => x === i).length + " discs" : s.hands[i].length + " cards"}`,
+            )
+            .join(" · ");
+          const board = $("board");
+          board.replaceChildren();
+          board.className = KIND;
+          if (KIND === "dots-and-boxes") {
+            for (let r = 0; r < 7; r++)
+              for (let c = 0; c < 7; c++) {
+                if (r % 2 === 0 && c % 2 === 0) {
+                  const dot = document.createElement("span");
+                  dot.className = "dot";
+                  board.append(dot);
+                } else if (r % 2 && c % 2) {
+                  const owner =
+                    s.boxes[Math.floor(r / 2) * 3 + Math.floor(c / 2)];
+                  const box = document.createElement("span");
+                  box.className = "box p" + owner;
+                  box.textContent = owner === null ? "" : String(owner + 1);
+                  board.append(box);
+                } else {
+                  const edge =
+                    r % 2 === 0
+                      ? (r / 2) * 3 + Math.floor(c / 2)
+                      : 12 + Math.floor(r / 2) * 4 + c / 2;
+                  const b = button(
+                    "",
+                    () => submit(edge),
+                    !human || s.edges[edge] !== null,
+                  );
+                  b.className = "edge p" + s.edges[edge];
+                  b.setAttribute("aria-label", `Edge ${edge + 1}`);
+                  board.append(b);
+                }
+              }
+          }
+          if (KIND === "reversi") {
+            const options = Logic.actions(s, seat ?? s.turn);
+            s.board.forEach((owner, i) => {
+              const b = button(
+                owner === null
+                  ? options.includes(i)
+                    ? "·"
+                    : ""
+                  : owner === 0
+                    ? "●"
+                    : "○",
+                () => submit(i),
+                !human || !options.includes(i),
+              );
+              b.className = "square p" + owner;
+              b.setAttribute(
+                "aria-label",
+                `Row ${Math.floor(i / 8) + 1}, column ${(i % 8) + 1}`,
+              );
+              board.append(b);
+            });
+          }
+          if (KIND === "crazy-eights") {
+            const top = document.createElement("p");
+            top.textContent = `Top card: ${Logic.label(s.discard.at(-1))} · Current suit: ${Logic.suits[s.suit]}`;
+            board.append(top);
+            const viewer = latest.my_player_index;
+            const hand = document.createElement("div");
+            hand.className = "hand";
+            if (viewer !== null && viewer !== undefined) {
+              const playable = Logic.actions(s, viewer);
+              for (const card of s.hands[viewer]) {
+                const b = button(
+                  Logic.label(card),
+                  () => {
+                    if (Logic.rank(card) !== 8) submit({ card });
+                    else {
+                      const choices = $("suits");
+                      choices.replaceChildren(
+                        ...Logic.suits.map((symbol, chosenSuit) =>
+                          button(symbol, () => {
+                            choices.replaceChildren();
+                            submit({ card, chosenSuit });
+                          }),
+                        ),
+                      );
+                    }
+                  },
+                  !human || seat !== viewer || !playable.includes(card),
+                );
+                hand.append(b);
+              }
+            } else hand.textContent = "Spectators see card counts only.";
+            board.append(
+              hand,
+              button("Draw one / pass", () => submit("draw"), !human),
+            );
+          }
+          if (
+            seat !== null &&
+            latest.status === "ongoing" &&
+            latest.players[seat]?.kind === "computer" &&
+            !sent
+          ) {
+            const ticket = latest;
+            setTimeout(() => {
+              if (ticket === latest && !sent)
+                submit(Logic.computer(current(), seat));
+            }, 450);
+          }
+        }
+        addEventListener("message", (e) => {
+          if (e.source !== parent || e.data?.type !== "state_changed") return;
+          latest = e.data;
+          sent = false;
+          if (!initial) initial = Logic.initialState(latest.players.length);
+          $("suits").replaceChildren();
+          render();
+        });
+      }
+    </script>
+  </body>
+</html>

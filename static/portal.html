@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101827" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=3" />
     <style>
@@ -41,7 +44,7 @@
     <header class="topbar">
       <h1>Game platform</h1>
       <nav>
-        <a href="/portal" aria-current="page">Portal</a>
+        <a href="/static/portal.html" aria-current="page">Portal</a>
         <a href="/builder">Builder</a>
         <a href="/console">API console</a>
         <a href="/browse">Browse data</a>
@@ -51,15 +54,34 @@
       <span class="spacer"></span>
       <span id="account-menu"></span>
     </header>
+    <div class="inline-row" style="padding: 8px 16px" role="status">
+      <span id="offline-status">Preparing offline storage…</span
+      ><button id="retry-sync" type="button">Retry sync</button>
+    </div>
     <div class="app">
       <aside class="sidebar">
         <div class="section-title">New match</div>
         <div class="new-match">
           <select id="new-game" aria-label="Game"></select>
           <div class="inline-row">
-            <label class="inline">Computer opponents <input id="computers" type="number" min="0" max="9" value="0" /></label>
+            <label class="inline"
+              >Computer opponents
+              <input id="computers" type="number" min="0" max="9" value="0"
+            /></label>
             <button id="create" type="button" class="primary">Create</button>
           </div>
+          <label
+            >Local practice
+            <select id="practice-mode">
+              <option value="computer">Against computer</option>
+              <option value="pass">Pass and play</option>
+            </select></label
+          >
+          <button id="practice" type="button">Play on this device</button>
+          <p class="muted">
+            Practice stays on this device. Open games online first to save them
+            for airplane mode.
+          </p>
           <div id="create-message" class="message"></div>
         </div>
         <div id="my-matches"></div>
@@ -67,10 +89,15 @@
         <div id="open-matches"></div>
       </aside>
       <main class="work">
-        <div id="placeholder" class="muted">Log in at the top right, then pick or create a match.</div>
+        <div id="placeholder" class="muted">
+          Log in at the top right, then pick or create a match.
+        </div>
         <div id="match" hidden>
           <div class="match-header">
-            <h2><span id="match-title"></span> <span id="match-status" class="badge"></span></h2>
+            <h2>
+              <span id="match-title"></span>
+              <span id="match-status" class="badge"></span>
+            </h2>
             <div id="match-meta" class="muted"></div>
           </div>
           <div id="seats" class="seats" style="margin: var(--space-sm) 0"></div>
@@ -83,6 +110,7 @@
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/portal.js?v=2"></script>
+    <script src="/static/portal-offline.js?v=1"></script>
+    <script src="/static/portal.js?v=3"></script>
   </body>
 </html>
