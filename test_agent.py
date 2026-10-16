@@ -16,6 +16,7 @@ def _request(**overrides) -> AgentChatRequest:
         "game_name": "Race to 10",
         "game_description": "",
         "allowed_player_counts": [2],
+        "player_count_mode": "auto",
         "code": "<html><body>old</body></html>",
         "messages": [{"role": "user", "content": "make the target 20"}],
     }
@@ -67,6 +68,7 @@ def test_code_proposal_is_parsed() -> None:
             "code": "<html><body>new</body></html>",
             "name": None,
             "description": "First to 20 wins",
+            "allowed_player_counts": [2],
         }
     )
     response = chat_with_agent(_FakeClient(reply), _request())
@@ -74,12 +76,48 @@ def test_code_proposal_is_parsed() -> None:
     assert response.code == "<html><body>new</body></html>"
     assert response.name is None
     assert response.description == "First to 20 wins"
+    assert response.allowed_player_counts == [2]
 
 
 def test_reply_without_code_change() -> None:
     reply = json.dumps({"message": "Sure, what should it do?", "code": None})
     response = chat_with_agent(_FakeClient(reply), _request())
     assert response.code is None
+
+
+def test_solo_proposal_changes_the_default_two_player_metadata() -> None:
+    request = _request(messages=[{"role": "user", "content": "Implement Tower of Hanoi"}])
+    reply = json.dumps({"message": "A solo puzzle", "code": "<html>solo</html>", "allowed_player_counts": [1]})
+    response = chat_with_agent(_FakeClient(reply), request)
+    assert response.allowed_player_counts == [1]
+    assert response.code == "<html>solo</html>"
+    messages, _ = build_prompt_messages(request)
+    assert "player count mode: auto" in messages[1]["content"]
+
+
+@pytest.mark.parametrize("counts", [[], [0], [11], [1, 1], [True], ["1"], "solo"])
+def test_invalid_proposed_counts_are_rejected(counts) -> None:
+    reply = json.dumps({"message": "game", "code": "<html>game</html>", "allowed_player_counts": counts})
+    with pytest.raises(AgentError, match="invalid allowed player counts"):
+        chat_with_agent(_FakeClient(reply), _request(), max_attempts=1)
+
+
+def test_code_without_player_metadata_is_not_silently_accepted() -> None:
+    reply = json.dumps({"message": "Solo puzzle", "code": "<html>solo</html>"})
+    with pytest.raises(AgentError, match="without its allowed player counts"):
+        chat_with_agent(_FakeClient(reply), _request(), max_attempts=1)
+
+
+def test_explicit_manual_solo_count_cannot_be_overridden_by_model() -> None:
+    reply = json.dumps({"message": "game", "code": "<html>game</html>", "allowed_player_counts": [2]})
+    with pytest.raises(AgentError, match="selected manual mode"):
+        chat_with_agent(_FakeClient(reply), _request(allowed_player_counts=[1], player_count_mode="manual"), max_attempts=1)
+
+
+def test_old_clients_keep_their_selected_player_counts() -> None:
+    values = _request().model_dump()
+    del values["player_count_mode"]
+    assert AgentChatRequest.model_validate(values).player_count_mode == "manual"
 
 
 def test_fenced_json_is_tolerated() -> None:
@@ -226,6 +264,7 @@ def test_chat_endpoint_uses_configured_client(
         "code": None,
         "name": None,
         "description": None,
+        "allowed_player_counts": None,
         "thinking": None,
         "raw": None,
         "attempts": 1,

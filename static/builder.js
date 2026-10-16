@@ -159,7 +159,7 @@ function fillEditor(values) {
         type: "checkbox",
         id: `count-${count}`,
         checked: values.allowed_player_counts.includes(count),
-        onchange: renderTestSetup,
+        onchange: () => { $("generation-player-mode").value = "custom"; renderTestSetup(); renderDraftControls(); },
       }),
       count === 1 ? "1 (solo)" : String(count)),
   ));
@@ -186,6 +186,7 @@ function select(id) {
   state.draftUndo = [];
   const game = selectedGame();
   fillEditor(game ?? NEW_GAME);
+  $("generation-player-mode").value = "auto";
   stopTest();
   showTab(id === "new" ? "agent" : "edit");
   setMessage("edit-message", "");
@@ -287,6 +288,18 @@ function renderEditorMeta() {
 }
 
 // Tabs
+
+function changeGenerationMode() {
+  const mode = $("generation-player-mode").value;
+  const counts = mode === "solo" ? [1] : mode === "multiplayer"
+    ? editorValues().allowed_player_counts.filter((count) => count >= 2) : null;
+  if (counts) {
+    if (!counts.length) counts.push(2);
+    for (const count of PLAYER_COUNTS) $(`count-${count}`).checked = counts.includes(count);
+    renderTestSetup();
+    renderDraftControls();
+  }
+}
 
 const TABS = ["edit", "test", "agent"];
 
@@ -651,6 +664,11 @@ async function sendAgentMessage() {
     return;
   }
   const values = editorValues();
+  const generationMode = $("generation-player-mode").value;
+  if (generationMode !== "auto" && values.allowed_player_counts.length === 0) {
+    setMessage("agent-message", "Select at least one player count, or choose Auto.", "error");
+    return;
+  }
   const request = {cancelled: false, controller: new AbortController()};
   state.agentRequest = request;
   const isCurrent = () => state.agent === history && me()?.id === user.id && state.agentRequest === request;
@@ -667,6 +685,7 @@ async function sendAgentMessage() {
         game_name: values.name,
         game_description: values.description,
         allowed_player_counts: values.allowed_player_counts,
+        player_count_mode: generationMode === "auto" ? "auto" : "manual",
         code: values.code,
         messages,
     }, isCurrent, request);
@@ -675,7 +694,10 @@ async function sendAgentMessage() {
     history.messages.push({ role: "assistant", content: reply.message });
     agentLogReply(reply);
     if (reply.code) {
-      history.pending = { code: reply.code, name: reply.name, description: reply.description, base: JSON.stringify(values) };
+      history.pending = { code: reply.code, name: reply.name, description: reply.description, allowed_player_counts: reply.allowed_player_counts, generationMode, base: JSON.stringify(values) };
+      $("agent-proposed-players").textContent = reply.allowed_player_counts
+        ? `Proposed players: ${reply.allowed_player_counts.join(", ")}${reply.allowed_player_counts.length === 1 && reply.allowed_player_counts[0] === 1 ? " (solo)" : ""}`
+        : "Player counts unchanged";
       $("agent-proposed-code").textContent = reply.code;
       $("agent-proposal").hidden = false;
       agentLog("system", "The agent proposed new code. Review it with Apply, or Discard it.");
@@ -703,16 +725,22 @@ function applyAgentProposal() {
   const history = agentHistory();
   const pending = history.pending;
   if (!pending || state.saving || state.restoring) return;
+  if (pending.generationMode && pending.generationMode !== $("generation-player-mode").value) {
+    setMessage("agent-message", "The player mode changed while Muse was working. Discard this proposal and request a fresh change.", "error");
+    return;
+  }
   if (pending.base && JSON.stringify(editorValues()) !== pending.base) {
     setMessage("agent-message", "The draft changed while Muse was working. Discard this proposal and request a fresh change to keep your edits.", "error");
     return;
   }
   replaceDraft({...editorValues(), code: pending.code,
+    allowed_player_counts: pending.allowed_player_counts ?? editorValues().allowed_player_counts,
     name: pending.name || $("name").value, description: pending.description || $("description").value});
   history.pending = null;
   $("agent-proposal").hidden = true;
   $("agent-proposed-code").textContent = "";
   showTab("edit");
+  if (editorValues().allowed_player_counts.length === 1 && editorValues().allowed_player_counts[0] === 1) setTestMode("solo");
   startTest();
   agentLog("system", "Applied to the draft and restarted the preview. Ask for another change or publish when ready.");
   saveMessage("Applied to draft. Test the game, then publish the new version.", "ok");
@@ -789,6 +817,7 @@ async function main() {
   $("agent-apply").addEventListener("click", applyAgentProposal);
   $("agent-discard").addEventListener("click", discardAgentProposal);
   $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
+  $("generation-player-mode").addEventListener("change", changeGenerationMode);
   $("agent-publish").addEventListener("click", save);
   for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
     $(id).addEventListener("click", () => setTestMode(mode));

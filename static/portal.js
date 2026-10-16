@@ -24,6 +24,7 @@ const state = {
   moveInFlight: false,
   refreshing: false,
   refreshAgain: false,
+  creating: false,
 };
 
 const frame = new GameFrame($("game-box"), (move) => onMakeMove(move), (problem) => showMessage(problem, "error"));
@@ -212,13 +213,13 @@ function renderLists() {
   if (select.dataset.key !== key) {
     select.dataset.key = key;
     select.replaceChildren(...games.map((game) =>
-      el("option", { value: game.id, textContent: `${game.name} (${game.allowed_player_counts.join(", ")} players)` })));
+      el("option", { value: game.id, textContent: `${game.name} (${game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1 ? "solo · 1 player" : game.allowed_player_counts.join(", ") + " players"})` })));
     const requested = new URLSearchParams(location.hash.slice(1)).get("game");
     const chosen = requested || previous;
     if (games.some((game) => game.id === chosen)) select.value = chosen;
   }
   updateComputerLimit();
-  $("create").disabled = !user || games.length === 0;
+  $("create").disabled = !user || games.length === 0 || state.creating;
 }
 
 // The selected match
@@ -229,6 +230,7 @@ function updateComputerLimit() {
   $("computers").max = String(maximum);
   $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
   $("computers").disabled = maximum === 0;
+  $("create").textContent = game?.allowed_player_counts.length === 1 && maximum === 0 ? "Play solo" : "Create";
 }
 
 function selectMatch(id) {
@@ -307,6 +309,7 @@ function renderMatch() {
 
   const actions = [];
   const isOwner = user && match.owner_user_id === user.id;
+  const latest = state.games.find((item) => item.id === match.game_id);
   const path = `/matches/${match.id}`;
   const call = (method, suffix = "", body = undefined) => () => apiRequest(method, path + suffix, { user, body });
   if (user && isJoinable(match, user.id)) {
@@ -314,6 +317,13 @@ function renderMatch() {
   }
   if (match.status === "waiting_for_players") {
     if (isOwner) {
+      if (latest && latest.version > match.game_version && latest.allowed_player_counts.length === 1 && latest.allowed_player_counts[0] === 1) {
+        actions.push(actionButton("Play latest solo version", async () => {
+          $("new-game").value = latest.id;
+          updateComputerLimit();
+          await createMatch();
+        }, {primary: true}));
+      }
       const computers = match.players.filter((player) => player.kind === "computer").length;
       const max = Math.max(...counts, 0);
       actions.push(
@@ -347,9 +357,15 @@ function renderMatch() {
   $("waiting").hidden = !waiting;
   if (waiting) {
     const allowed = counts.length ? counts.join(", ") : "?";
-    $("waiting").textContent =
-      `Waiting for players: ${match.players.length} seated, this game plays with ${allowed}. ` +
-      (isOwner ? "Add computers or wait for others to join, then start." : "The owner starts the match.");
+    const ready = counts.includes(match.players.length);
+    if (ready) $("match-status").textContent = "ready to start";
+    $("waiting").textContent = ready
+      ? `Ready to start with ${match.players.length} ${match.players.length === 1 ? "player" : "players"}. ` + (isOwner ? "Press Start to play." : "The owner starts the match.")
+      : `Waiting for players: ${match.players.length} seated, this game plays with ${allowed}. ` +
+        (isOwner ? "Add computers or wait for others to join, then start." : "The owner starts the match.");
+    if (latest && latest.version > match.game_version) {
+      $("waiting").textContent += ` This match uses version ${match.game_version}; the latest game is version ${latest.version}. Create a new match to use its updated rules.`;
+    }
   }
   $("game-box").hidden = waiting;
 }
@@ -438,22 +454,36 @@ async function onMakeMove(move) {
 // Creating matches
 
 async function createMatch() {
+  if (state.creating) return;
   const user = me();
   if (!user) {
     $("create-message").textContent = "Log in first.";
     $("create-message").className = "message error";
     return;
   }
+  let match;
+  state.creating = true;
+  $("create").disabled = true;
+  const game = state.games.find((item) => item.id === $("new-game").value);
   try {
-    const match = await apiRequest("POST", "/matches", {
+    match = await apiRequest("POST", "/matches", {
       user,
       body: { game_id: $("new-game").value, num_computer_opponents: Number($("computers").value) || 0 },
     });
+    // Solo-only games have no lobby or second seat to wait for. Start the pinned
+    // version returned by the server; if the catalog changed, leave Start available.
+    if (game && game.version === match.game_version && game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1 && match.players.length === 1) {
+      match = await apiRequest("POST", `/matches/${match.id}/start`, {user, body: {first_turn_player_indices: [0]}});
+    }
     $("create-message").textContent = "";
     selectMatch(match.id);
   } catch (error) {
-    $("create-message").textContent = error.message;
+    if (match) selectMatch(match.id);
+    $("create-message").textContent = match ? `Match created, but couldn't start automatically: ${error.message}. Press Start to retry.` : error.message;
     $("create-message").className = "message error";
+  } finally {
+    state.creating = false;
+    renderLists();
   }
 }
 
