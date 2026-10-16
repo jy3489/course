@@ -284,7 +284,7 @@ function renderSeatKinds() {
 function startTest() {
   const kinds = [...$("test-seats").querySelectorAll("select")].map((s) => s.value);
   if (kinds.length === 0) {
-    setMessage("test-status", "Choose at least one player count in the editor first.", "error");
+    setMessage("test-status", "Choose at least one player count first.", "error");
     return;
   }
   const players = kinds.map((kind, seat) => ({
@@ -447,7 +447,7 @@ async function sendAgentMessage() {
     if (reply.code) {
       history.pending = { code: reply.code, name: reply.name, description: reply.description };
       $("agent-proposal").hidden = false;
-      agentLog("system", "The agent proposed new code. Review it with Apply to editor, or Discard it.");
+      agentLog("system", "The agent proposed new code. Review it with Apply, or Discard it.");
     }
     setMessage("agent-message", "");
   } catch (error) {
@@ -467,8 +467,8 @@ function applyAgentProposal() {
   $("code").value = pending.code;
   history.pending = null;
   $("agent-proposal").hidden = true;
-  agentLog("system", "Applied the proposal to the editor. Test it in the Test tab, then keep chatting or publish.");
-  setMessage("agent-message", "Applied. The editor has unsaved changes.", "ok");
+  agentLog("system", "Applied the proposal. Test it in the Test tab, then keep chatting or publish.");
+  setMessage("agent-message", "Applied. You have unsaved changes.", "ok");
 }
 
 function discardAgentProposal() {

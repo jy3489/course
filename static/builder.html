@@ -4,14 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Builder</title>
-    <link rel="stylesheet" href="/static/common.css?v=3" />
+    <link rel="stylesheet" href="/static/common.css?v=4" />
     <style>
-      #code {
-        width: 100%;
-        min-height: 360px;
-        flex: none;
-      }
-
       .counts {
         display: flex;
         flex-wrap: wrap;
@@ -183,8 +177,8 @@
                 <label class="inline"><input type="checkbox" id="allows-join" /> players may join</label>
               </div>
             </div>
-            <label for="code" class="muted">Code: the HTML document the game's iframe runs (see the game API in README.md)</label>
-            <textarea id="code" spellcheck="false"></textarea>
+            <label for="code" class="muted" hidden>Code: the HTML document the game's iframe runs (see the game API in README.md)</label>
+            <textarea id="code" spellcheck="false" hidden></textarea>
             <div class="inline-row">
               <button id="save" type="button" class="primary">Save</button>
               <button id="revert" type="button">Revert</button>
@@ -194,8 +188,8 @@
           </section>
           <section id="test-panel" class="work" style="padding: var(--space-md) 0" hidden>
             <div class="muted">
-              Pass-and-play: you play every human seat, in turn, with the code from the editor
-              (saved or not). Moves stay in this page; nothing is sent to the server.
+              Pass-and-play: you play every human seat, in turn, with the game's current
+              code (saved or not). Moves stay in this page; nothing is sent to the server.
             </div>
             <div class="inline-row">
               <label class="inline">Players <select id="test-count"></select></label>
@@ -214,7 +208,7 @@
           <section id="agent-panel" class="work" style="padding: var(--space-md) 0" hidden>
             <div class="muted">
               Chat with the game-building agent: describe the game you want, or ask for
-              changes to the code in the editor. Apply its proposal, test it in the Test
+              changes to your game. Apply its proposal, test it in the Test
               tab, and keep iterating — then publish when you're happy.
             </div>
             <div class="inline-row" style="margin-top: var(--space-sm)">
@@ -222,9 +216,9 @@
             </div>
             <div id="agent-log"></div>
             <div id="agent-proposal" class="proposal" hidden>
-              <div class="muted">The agent proposed new code for the editor.</div>
+              <div class="muted">The agent proposed new code.</div>
               <div class="inline-row">
-                <button id="agent-apply" type="button" class="primary">Apply to editor</button>
+                <button id="agent-apply" type="button" class="primary">Apply</button>
                 <button id="agent-discard" type="button">Discard</button>
               </div>
             </div>
@@ -241,6 +235,6 @@
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=4"></script>
+    <script src="/static/builder.js?v=5"></script>
   </body>
 </html>
