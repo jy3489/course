@@ -6,7 +6,8 @@ game API (the postMessage protocol between the page and the game iframe).
 
 The model is instructed to answer with a single JSON object:
 {"message": "<chat reply>", "code": "<full HTML or null>",
- "name": "<suggested name or null>", "description": "<suggested description or null>"}.
+ "name": "<suggested name or null>", "description": "<suggested description or null>",
+ "allowed_player_counts": [1]}.
 """
 
 from __future__ import annotations
@@ -16,14 +17,16 @@ import logging
 import time
 from dataclasses import dataclass
 
+from pydantic import TypeAdapter, ValidationError
+
 from game_platform.model_api import ModelApiClient, ModelApiError
-from game_platform.schemas import AgentChatRequest, AgentChatResponse
+from game_platform.schemas import AgentChatRequest, AgentChatResponse, PlayerCounts
 
 logger = logging.getLogger(__name__)
 GENERATION_BUDGET_SECONDS = 120.0
 
 SYSTEM_PROMPT = """\
-You are a game-building assistant inside a turn-based multiplayer game platform's \
+You are a game-building assistant inside a turn-based solo and multiplayer platform's \
 builder. You help the user create and refine a game by writing its code through \
 conversation. Be concise, friendly, and iterative: propose a change, explain it \
 briefly, and let the user test it. Write compact, complete code. Avoid unnecessary \
@@ -54,7 +57,14 @@ move next - more than one when several players move at once (e.g. a simultaneous
 reveal). Send AT MOST ONE `make_move` per `state_changed`.
 
 Rules you must follow in the code you write:
-- Respect the editor's allowed player counts. A count of 1 means a genuine solo \
+- Choose allowed player counts that match the requested game and its code. In Auto \
+  mode, the editor's current counts are context, not a constraint: a new game's \
+  default [2] must not force a solo puzzle into multiplayer. Tower of Hanoi and \
+  Solitaire are normally [1], unless the user requests a multiplayer variant. \
+  Preserve counts for unrelated follow-up edits; change them when changing modes.
+- In Manual mode, use exactly the editor's selected counts; explain any conflict \
+  with the user's requested rules instead of silently creating the wrong mode.
+- A count of 1 means a genuine solo \
   game (one human, no computer opponent). Its turns stay on seat 0 until it ends. \
   With 2+ seats, support both human opponents and computer-controlled seats.
 - Computers are played by the game: when `acting_for_player_index` is a computer \
@@ -74,6 +84,10 @@ text, with exactly these keys:
 or null when the code is unchanged.
 - "name": a suggested game name, or null to keep the current one.
 - "description": a suggested one-line description, or null to keep it.
+- "allowed_player_counts": the supported seat counts (unique integers 1..10), \
+  REQUIRED whenever returning code. Use [1] for a true solo game; [2] for a \
+  two-seat game (humans or a human plus a computer); [1,2] only if code supports both. \
+  For discussion without code, use null. Metadata and code MUST agree.
 
 Only return "code" when the user asked for a game or a change to it; for \
 questions and discussion, return "code": null and answer in "message"."""
@@ -89,6 +103,7 @@ class _GameContext:
     description: str
     allowed_player_counts: list[int]
     code: str
+    player_count_mode: str
 
 
 def _context_block(context: _GameContext) -> str:
@@ -97,6 +112,7 @@ def _context_block(context: _GameContext) -> str:
         f"- name: {context.name or '(unnamed)'}",
         f"- description: {context.description or '(none)'}",
         f"- allowed player counts: {', '.join(map(str, context.allowed_player_counts)) or '(none)'}",
+        f"- player count mode: {context.player_count_mode}",
     ]
     if context.code.strip():
         lines.append("- current code (the full HTML document the iframe runs):")
@@ -115,6 +131,7 @@ def build_prompt_messages(
         description=request.game_description,
         allowed_player_counts=list(request.allowed_player_counts),
         code=request.code,
+        player_count_mode=request.player_count_mode,
     )
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
     history = [{"role": m.role, "content": m.content} for m in request.messages]
@@ -157,6 +174,12 @@ def _parse_reply(raw: str) -> AgentChatResponse:
             raise AgentError("The agent's reply had no usable game code.")
     name = data.get("name")
     description = data.get("description")
+    counts = data.get("allowed_player_counts")
+    if counts is not None:
+        try:
+            counts = TypeAdapter(PlayerCounts).validate_python(counts, strict=True)
+        except ValidationError as exc:
+            raise AgentError("The agent returned invalid allowed player counts (expected unique integers 1..10).") from exc
     return AgentChatResponse(
         message=message.strip(),
         code=code,
@@ -164,6 +187,7 @@ def _parse_reply(raw: str) -> AgentChatResponse:
         description=description
         if isinstance(description, str) and description.strip()
         else None,
+        allowed_player_counts=counts,
     )
 
 
@@ -211,9 +235,16 @@ def chat_with_agent(
             raise AgentError(f"The model call failed: {exc}") from exc
         try:
             response = _parse_reply(result.content)
+            if response.code and response.allowed_player_counts is None:
+                raise AgentError("The agent returned game code without its allowed player counts.")
+            if (response.code and request.player_count_mode == "manual"
+                    and response.allowed_player_counts != sorted(request.allowed_player_counts)):
+                raise AgentError("The agent's player counts did not match the selected manual mode.")
         except AgentError as exc:
             last_error = exc
             notes.append(f"attempt {attempt}: {exc}")
+            messages.append({"role": "assistant", "content": result.content})
+            messages.append({"role": "user", "content": f"Please correct the response: {exc} Return the complete JSON response including code and matching allowed_player_counts."})
             continue
         if time.monotonic() >= deadline:
             raise AgentError("Muse exceeded the two-minute generation budget. Try a smaller game or change.")
