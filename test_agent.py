@@ -6,7 +6,7 @@ import pytest
 
 from game_platform.agent import AgentError, build_prompt_messages, chat_with_agent
 from game_platform.config import ModelApiConfig
-from game_platform.model_api import ModelApiClient, ModelApiError
+from game_platform.model_api import ChatResult, ModelApiClient, ModelApiError
 from game_platform.schemas import AgentChatRequest
 from game_platform.testing import Api, validation_errors
 
@@ -26,13 +26,16 @@ def _request(**overrides) -> AgentChatRequest:
 class _FakeClient(ModelApiClient):
     """ModelApiClient that returns a canned reply instead of calling the API."""
 
-    def __init__(self, reply: str, *, enabled: bool = True) -> None:
+    def __init__(
+        self, reply: str, *, enabled: bool = True, reasoning: str | None = None
+    ) -> None:
         super().__init__(api_key="key" if enabled else "")
         self._reply = reply
+        self._reasoning = reasoning
 
-    def chat(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+    def chat_with_reasoning(self, messages, **kwargs):  # type: ignore[no-untyped-def]
         self.seen_messages = messages
-        return self._reply
+        return ChatResult(content=self._reply, reasoning=self._reasoning)
 
 
 def test_context_is_prepended_to_first_user_message() -> None:
@@ -104,19 +107,24 @@ def test_disabled_client_raises() -> None:
 
 
 class _SequencedClient(ModelApiClient):
-    """Returns canned replies (or raises) in order, counting calls."""
+    """Returns canned replies (or raises) in order, counting calls.
+
+    Each reply may be a raw string, a ChatResult, or an exception to raise.
+    """
 
     def __init__(self, replies: list) -> None:
         super().__init__(api_key="key")
         self._replies = list(replies)
         self.calls = 0
 
-    def chat(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+    def chat_with_reasoning(self, messages, **kwargs):  # type: ignore[no-untyped-def]
         self.calls += 1
         reply = self._replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
-        return reply
+        if isinstance(reply, ChatResult):
+            return reply
+        return ChatResult(content=reply, reasoning=None)
 
 
 def test_retries_empty_replies_then_succeeds() -> None:
@@ -218,6 +226,10 @@ def test_chat_endpoint_uses_configured_client(
         "code": None,
         "name": None,
         "description": None,
+        "thinking": None,
+        "raw": None,
+        "attempts": 1,
+        "parse_note": None,
     }
     assert seen["model"] == "m"
 
@@ -227,3 +239,114 @@ def test_error_is_described(api: Api) -> None:
     assert validation_errors(
         api.request("POST", "/agent/chat", as_user=alice, json={})
     ) == ["messages: Field required"]
+
+
+def _ok_reply() -> str:
+    return json.dumps({"message": "hi", "code": None})
+
+
+def test_debug_fields_populated_on_first_try() -> None:
+    reply = _ok_reply()
+    response = chat_with_agent(
+        _FakeClient(reply, reasoning="I considered X, then chose Y."),
+        _request(),
+    )
+    assert response.message == "hi"
+    assert response.thinking == "I considered X, then chose Y."
+    assert response.raw == reply
+    assert response.attempts == 1
+    assert response.parse_note is None
+
+
+def test_missing_reasoning_degrades_to_none() -> None:
+    response = chat_with_agent(_FakeClient(_ok_reply()), _request())
+    assert response.thinking is None
+    assert response.raw == _ok_reply()
+    assert response.attempts == 1
+    assert response.parse_note is None
+
+
+def test_parse_note_describes_retries() -> None:
+    client = _SequencedClient(["", _ok_reply()])
+    response = chat_with_agent(client, _request())
+    assert response.message == "hi"
+    assert response.attempts == 2
+    assert client.calls == 2
+    assert response.parse_note is not None
+    assert "attempt 1" in response.parse_note
+    assert "empty reply" in response.parse_note
+
+
+def test_parse_note_records_model_call_failures() -> None:
+    client = _SequencedClient(
+        [ModelApiError("boom"), ChatResult(content=_ok_reply(), reasoning="r")]
+    )
+    response = chat_with_agent(client, _request())
+    assert response.attempts == 2
+    assert response.thinking == "r"
+    assert response.parse_note is not None
+    assert "attempt 1" in response.parse_note
+    assert "boom" in response.parse_note
+
+
+class _SdkMessage:
+    def __init__(self, content=None, **extra) -> None:
+        self.content = content
+        for key, value in extra.items():
+            setattr(self, key, value)
+
+
+class _SdkChoice:
+    def __init__(self, message) -> None:
+        self.message = message
+
+
+class _SdkResponse:
+    def __init__(self, choice) -> None:
+        self.choices = [choice]
+
+
+def _sdk_client_for(message) -> object:
+    class _Completions:
+        @staticmethod
+        def create(**kwargs):  # type: ignore[no-untyped-def]
+            return _SdkResponse(_SdkChoice(message))
+
+    class _Chat:
+        completions = _Completions()
+
+    class _SdkClient:
+        chat = _Chat()
+
+    return _SdkClient()
+
+
+def test_chat_with_reasoning_captures_reasoning_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = _SdkMessage("hello", reasoning_content="thinking out loud")
+    client = ModelApiClient(api_key="k")
+    monkeypatch.setattr(client, "_client", lambda: _sdk_client_for(message))
+    result = client.chat_with_reasoning([{"role": "user", "content": "hi"}])
+    assert result.content == "hello"
+    assert result.reasoning == "thinking out loud"
+
+
+def test_chat_with_reasoning_without_reasoning_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = _SdkMessage("hello")
+    client = ModelApiClient(api_key="k")
+    monkeypatch.setattr(client, "_client", lambda: _sdk_client_for(message))
+    result = client.chat_with_reasoning([{"role": "user", "content": "hi"}])
+    assert result.content == "hello"
+    assert result.reasoning is None
+
+
+def test_chat_still_returns_plain_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = _SdkMessage("hello", reasoning_content="ignored here")
+    client = ModelApiClient(api_key="k")
+    monkeypatch.setattr(client, "_client", lambda: _sdk_client_for(message))
+    assert client.chat([{"role": "user", "content": "hi"}]) == "hello"

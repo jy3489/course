@@ -1,108 +1,115 @@
-# GamePortal iOS — shared backend integration
+# GamePortal iOS
 
-Open `GamePortal.xcodeproj`, choose GamePortal and an iPhone simulator, then Command-R. Use normal simulator signing: Keychain requires the app's signing entitlements. Do not disable code signing for the online demo. A physical device needs your signing team.
-
-## Online Play
-
-Creates a guest via POST /users and stores its credentials in Keychain. Lists games, your matches and open matches; creates matches with computer opponents; joins waiting matches; starts owner matches; loads the exact game version; renders shared HTML in a sandboxed iframe inside WKWebView; polls the server every two seconds; submits moves with expected_move_count. Match links can be shared with the web portal.
-
-The bridge implements state_changed and make_move from the course README, including turn sets, computer turns, spectator state and game-over state. Game code gets no account credentials. The game frame has an opaque origin, cannot navigate the container, and has network access blocked by CSP. Games depending on external assets may need adaptation.
-
-For a quick demo: Online Play → Tic-tac-toe → 1 computer → Create online match → Start online match → tap a square. For a human opponent, create with 0 computers, have the other player join, then start as owner.
-
-Backend: https://buildplay.fun. No API or backend changes are required. Source belongs in frontends/ios-game-portal in the shared course repository. These local changes have not been pushed.
-
-## Verification on October 9
-
-Xcode 16.3 simulator build passed. On iPhone 16 Pro / iOS 18.4, native guest creation, server match creation/start, downloaded Tic-tac-toe rendering, human move submission and computer response were manually verified. A normally signed build saved the account to Keychain; relaunch restored the identity and server match. The earlier unsigned test created a disposable iOS Demo account whose credentials were not retained. The current persistent demo account is iOS Presentation.
-
-The original offline rules/persistence tests and end-to-end offline UI test passed earlier in the session. Human-to-human joining, every game package, game-over online flows and network-failure recovery have not been exhaustively exercised. Native account linking, leave/delete controls, ongoing-match joining and push notifications remain future work.
-
-## Offline starter reference
-
-# GamePortal · iOS starter
-
-A native SwiftUI portal with a bundled HTML/JavaScript Tic-Tac-Toe game. Two people can play on one phone without a server or account.
+A SwiftUI app for the shared course platform at https://buildplay.fun, with bundled local Tic-Tac-Toe and downloaded shared games. Updated October 15, 2026.
 
 ## Run
 
 1. Open `GamePortal.xcodeproj` in Xcode.
-2. Select the **GamePortal** scheme and an iPhone simulator.
-3. Press **⌘R**. If no simulator is available, install an iOS runtime in Xcode → Settings → Components.
+2. Select the **GamePortal** scheme and an iPhone simulator or connected iPhone.
+3. Press **⌘R**.
 
-Requires Xcode with an iOS SDK; deployment target is iOS 17. No packages, API keys, or paid developer account are needed for the simulator. A physical phone requires your own signing team in Xcode.
+The deployment target is iOS 17. Install an iOS simulator runtime if Xcode asks. Keep normal code signing enabled: the online account uses Keychain. For a physical iPhone, select your own team in the target's **Signing & Capabilities**, trust the connected Mac, and enable Developer Mode on the phone if prompted. Personal signing settings should not replace the project's shared defaults in a commit.
 
-## Demo flow
+## Navigation
 
-1. Enter your name and choose **Play as guest**.
-2. In **Discover**, choose Tic-Tac-Toe → **Choose mode**.
-3. Enter two player names and **Start match**.
-4. Make a move, pass the phone, then tap the next player's confirmation.
-5. Open **My Matches** to resume the same match. Closing and reopening the app preserves the board and pending handoff.
-6. Complete a row, column, or diagonal. The game finishes and appears under **Finished**. Draws are also detected.
-7. Open a finished match to inspect its board or hide it from this device.
+- **Discover:** swipe through featured game cards and browse the class catalog below. **Pass and play** starts bundled Tic-Tac-Toe on this phone. **Set up match** opens native Online Play for the selected class game.
+- **Online Play:** create and resume shared matches against people or supported computer opponents. Share, Copy, QR Code and Refresh have adaptive button rows. Downloaded matches show **Available offline**; offline play uses this same screen.
+- **Local Matches:** resume active or review finished pass-and-play matches saved on this phone.
 
-## What each file does
+The local guest name and online account are separate. Online Play creates a guest account through `POST /users` and saves its credentials in Keychain. It does not currently link that account to Google sign-in. The homework's Google login for adding games on buildplay.fun is a separate workflow.
 
-- `GamePortalApp.swift`: entry point and native screens: Welcome, Discover, setup, My Matches, match and handoff.
-- `Match.swift`: match data, legal move checks, turn changes, win/draw detection.
-- `PortalStore.swift`: guest profile and matches; atomically saves JSON to the app's Documents directory after changes.
-- `GameWebView.swift`: restricted WebView and JSON message bridge. Only the bundled page can navigate; no native account credentials are exposed.
-- `Game/`: board presentation and move proposals, using HTML/CSS/JavaScript.
-- `GamePortalTests/main.swift`: executable tests of moves, handoffs, results, and disk round-trip persistence.
+## Play
 
-## Interface with the game
+### On one phone
 
-The native container sends `state_change` with `state.board`, `turn_of_user`, `my_user`, and `players`. Seats are indexed 0 and 1; `turn_of_user` is null after the match ends.
+1. In Discover, choose **Pass and play** on the local Tic-Tac-Toe card.
+2. Enter two names and start the match.
+3. Make a move, pass the phone, and confirm the next player is ready.
+4. Resume through Local Matches, including after closing and reopening the app.
+5. Finished games appear under **Finished** and can be hidden from this device.
 
-The game responds with `make_move`, `turn_of_player_index`, and `next_state.board`. **Local assumption:** `turn_of_player_index` identifies the player proposing the move. The slide's illustrative payload does not fully define this field; confirm its meaning with the other workstreams before integration.
+### Shared matches
 
-The native app compares the proposed board with its saved state, accepts exactly one legal empty-square placement by the current player, computes the result, and saves. Turn handoffs block additional moves until confirmed.
+1. Open Online Play and create an online guest account if needed.
+2. Choose a game and its number of computer opponents.
+3. Use **0 computers** to invite another person. Share the link; the recipient opens the class web portal, signs in and joins. Start the match as its owner once the game's required player count is met.
+4. For computer play, choose a supported number of computers, create the match, then start it.
 
-Tic-Tac-Toe validation currently lives in `Match.swift`. Supporting arbitrary game packages will require a shared rules/validation interface; merely replacing the HTML is not sufficient. The WebView is restricted for this bundled sample, but externally generated game packages need a further security review.
+The app loads the match's exact game version and exchanges `state_changed` / `make_move` messages with its HTML. Game rules and computer logic live in the game; the shared portal transports opaque state. Matches refresh while their screen is active. Invite links open the web portal.
 
-## Scope and next handoff
+## Offline behavior
 
-Implemented: local guest identity, one discoverable game, two-player setup, playable embedded board, turn privacy overlay, saved active/finished matches, resume and hide-finished behavior.
+Open an ongoing shared match while connected and wait for its board to load. The app saves its snapshot and exact game version for later use.
 
-Not implemented yet: backend accounts, remote matches, shared lobbies, invitations, spectator mode, computer opponents, push notifications, remote offline queues, localization, or downloaded game packages. The guest identity is local, not server authentication. The handoff overlay demonstrates the portal interaction; Tic-Tac-Toe itself has no secret hands.
+- Previously downloaded matches can reopen without internet.
+- Moves for your seat and game-generated computer turns are saved atomically before updating the board. Pending counts indicate moves waiting for server confirmation.
+- Reopening the app restores the provisional board and pending moves, including a locally finished game.
+- You cannot take another human's turn. Computer play depends on the downloaded game's own computer logic.
+- Returning to Online Play while connected retries pending moves in order using their original `expected_move_count`. Background delivery while the app is closed is not guaranteed.
+- If the server state, turn, roster, game version or count diverges, syncing pauses and the app shows **Sync needs review**. The local branch is preserved. **Use server version…** asks for confirmation, archives the pending branch locally, clears its queue and loads the server match.
+- A lost response after the server accepted a move can also require review; the backend has no client idempotency key.
 
-For the next iOS presenter:
+Creating a shared account or match, joining, and starting a waiting lobby require connectivity. Bundled local Tic-Tac-Toe can start offline. Games that were never downloaded cannot run offline. External assets are blocked by the game sandbox, so not every generated class game is guaranteed to work.
 
-1. Agree on game-package metadata and JSON message semantics with GameBuilder.
-2. Agree on match creation/join/move endpoints and version handling with the backend workstream.
-3. Add a network service alongside local storage and complete a move visible on a second client.
+## Physical iPhone acceptance test
 
-## Verification commands
+Simulator checks passed, and the user reported successful physical-iPhone testing. Use this checklist when testing future changes:
+
+1. Run from Xcode on the connected phone. A fresh installation has its own local data; simulator matches and credentials are not automatically copied to it.
+2. Play local Tic-Tac-Toe, close and reopen the app, and resume through Local Matches.
+3. In Online Play, open a shared game against a computer and make a move while connected.
+4. Enable airplane mode and ensure Wi-Fi is also off. Make more moves and confirm the pending count increases and the computer responds.
+5. Close and reopen the app while disconnected. Confirm the saved board and pending moves return.
+6. Reconnect, keep Online Play open and refresh. Confirm pending moves clear and the web portal shows the same state.
+7. Repeat with a second human account in the browser: take your phone's turn offline, confirm you cannot take the other player's turn, reconnect, then respond from the browser.
+
+Use test matches: shared matches and moves go to the live class backend. Installing the app through Xcode does not publish it to the App Store or push source code to GitHub.
+
+## Storage and game isolation
+
+- Local profile and pass-and-play matches: app Documents directory, `portal.json`.
+- Shared catalog, snapshots, downloaded HTML and pending moves: Application Support/OnlineSnapshots, separated by online account.
+- Online credentials: Keychain, never passed into game HTML.
+- Shared game HTML runs in an opaque-origin sandboxed iframe within a nonpersistent WKWebView. Its network access and container navigation are blocked.
+
+Runtime data is stored in the app's sandbox, outside this source folder. Keep Finder `.DS_Store` files, personal Xcode workspace/user settings, signing credentials and build output out of commits. The shared `.xcodeproj/project.pbxproj` belongs in source control.
+
+## Main files
+
+| File | Purpose |
+| --- | --- |
+| `GamePortal/GamePortalApp.swift` | Native screens, online account/API store, shared-game bridge and invite controls |
+| `GamePortal/OnlineCache.swift` | Durable snapshots, versioned game packages, pending moves and conflict archives |
+| `GamePortal/PortalStore.swift` | Local profile and pass-and-play persistence |
+| `GamePortal/Match.swift` | Bundled Tic-Tac-Toe rules and match state |
+| `GamePortal/GameWebView.swift` | Bundled local game's native bridge |
+| `GamePortal/Game/` | Local board HTML, JavaScript and CSS |
+| `GamePortalTests/` | Local rules, cache, mocked online-store and simulator UI tests |
+
+The bundled local game uses its original `state_change` / `next_state` bridge. Shared class games use the current course `state_changed` / `new_state` protocol. These are separate game hosts.
+
+## Verification
+
+Run commands from `frontends/ios-game-portal`:
 
 ```sh
-xcodebuild -project GamePortal.xcodeproj -scheme GamePortal -sdk iphonesimulator -configuration Debug -derivedDataPath /tmp/gameportal-build CODE_SIGNING_ALLOWED=NO build
-swiftc -module-cache-path /tmp/gameportal-swift-cache GamePortal/Match.swift GamePortalTests/main.swift -o /tmp/gameportal-tests
-/tmp/gameportal-tests
+xcodebuild -project GamePortal.xcodeproj -scheme GamePortal -sdk iphonesimulator -configuration Debug -derivedDataPath /tmp/gameportal-build build
+
+swiftc -module-cache-path /tmp/gameportal-swift-cache GamePortal/Match.swift GamePortalTests/main.swift -o /tmp/gameportal-rule-tests
+/tmp/gameportal-rule-tests
+
+swiftc -module-cache-path /tmp/gameportal-swift-cache GamePortal/OnlineCache.swift GamePortalTests/OnlineCache/main.swift -o /tmp/gameportal-cache-tests
+/tmp/gameportal-cache-tests
+
+sh GamePortalTests/OnlineStore/run.sh
 ```
 
-For a presentation, distinguish implemented local behavior from planned shared-backend behavior. Explain the files and credit AI assistance accurately.
+Run the simulator UI test with **⌘U** in Xcode. It creates local sample matches, checks navigation, plays through handoffs, restarts and resumes a match, verifies an occupied square is disabled, and completes a win. It uses the actual player name rather than assuming a fixed name.
 
-### Verified October 1, 2026
+### Verified October 15
 
-- Simulator build and UI-test bundle compile successfully with Xcode 26.4.1.
-- Rules tests pass for valid/invalid moves, mandatory handoff, all winning lines, draws, completed games, and JSON disk persistence.
-- The end-to-end UI test passed on iPhone 17 Pro / iOS 26.4.1: start a match, make a move, restart the app, resume the pending handoff, verify an occupied square is disabled, complete an X win, and find it under Finished.
-- The first UI run failed waiting for the initial handoff; a diagnostic rerun and a final run with diagnostics removed both passed without a game-logic change. Treat that initial failure as an intermittent test/runtime issue, not a confirmed fix. Rehearse the flow before presenting.
-
-Run the UI test in Xcode with **⌘U**. The test creates local sample matches. It expects the guest name Juan, so use a fresh simulator installation if you have already entered a different guest name.
-
-## October 9: shared class catalog
-
-The **Class Games** tab reads `https://buildplay.fun/games` using URLSession and displays game names, descriptions and supported player counts. Pull to refresh or tap the refresh button. Loading, empty and failure states are supported. A failed refresh retains any previously loaded catalog.
-
-**Open online portal** opens `https://buildplay.fun/portal` in the system browser. Native local profiles and matches are separate from the web portal's accounts and online matches. This is a read-only catalog integration, not native multiplayer support; it needs no cloud admin credentials and changes no shared API.
-
-The October 8 course email asks students to use a dedicated frontend folder in `yoav-zibin/course`. This app has not yet been contributed there. The bundled offline game's older message bridge still needs adaptation to the current shared `state_changed` / `make_move` protocol before generic shared games can run natively.
-
-
-## Multiplayer experience upgrade (October 9)
-
-The Online Play match screen now offers a native share sheet, Copy Link, and a QR code for a friend to scan in person. It shows backend-derived match status, a move-count update banner, manual retry, sync errors, and last successful sync time. Polling runs in the foreground every two seconds for the selected match, while list polling is suspended to avoid duplicate timers. The invite link opens the existing web portal; it does not automatically join a player, and the receiving player may need to sign in and choose Join. No server changes.
-
-These changes have been source-integrated but **not compiled or simulator-tested in this environment**; build with Xcode on macOS and verify both players.
+- Simulator build and final three-tab UI test passed.
+- Local rule/persistence tests passed.
+- Mocked production-store tests passed for offline human/computer turns, restart, ordered syncing, stale messages, server conflicts, lost acknowledgements, rejected moves, explicit conflict resolution and game-over syncing. These tests do not write to the live class server.
+- The user manually verified simulator computer play, browser/iOS human play, restart, offline pending moves and reconnection syncing.
+- The user reported that installation and the physical-iPhone checklist worked, including local play, online play, offline moves, restart and reconnect syncing. This is user-reported manual verification; it does not establish compatibility with every class game.

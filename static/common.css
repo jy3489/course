@@ -646,3 +646,97 @@ button.link {
   font-size: inherit;
   text-decoration: underline;
 }
+
+/* ---- Responsive: phones and other narrow screens ---- */
+
+@media (max-width: 720px) {
+  /* Top bar wraps; the nav becomes a horizontal scroll strip so every link
+     (and the account menu) stays reachable without shrinking the tap targets. */
+  .topbar {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    row-gap: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .topbar h1 {
+    font-size: var(--font-size-sm);
+  }
+
+  .topbar nav {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .topbar nav a {
+    white-space: nowrap;
+  }
+
+  /* The sidebar stacks above the work area instead of beside it, and is
+     capped so it can't push the content off the screen. */
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-2);
+    max-height: 30vh;
+  }
+
+  .work {
+    padding: var(--space-sm) var(--space-md);
+    /* Long unbroken strings (ids, JSON) wrap instead of forcing a page-wide
+       horizontal scroll. */
+    overflow-wrap: anywhere;
+  }
+
+  /* Forms: label above the input instead of two columns. */
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-xs);
+  }
+
+  .form-grid > label {
+    margin-top: var(--space-sm);
+  }
+
+  /* The game frame fits the viewport instead of a fixed desktop height. */
+  .frame-box {
+    height: min(560px, 62vh);
+  }
+
+  /* Wide tables (stats, browse) scroll inside their container. */
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* Dialogs fit small screens. */
+  .auth-dialog-backdrop {
+    padding: 5vh var(--space-md);
+  }
+}
+
+/* Comfortable touch targets on touch devices; desktop keeps its sizing. */
+@media (pointer: coarse) {
+  button,
+  input,
+  select {
+    min-height: 40px;
+  }
+
+  .topbar nav a,
+  .tabs button {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

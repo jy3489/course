@@ -67,6 +67,7 @@ const state = {
   deleteArmed: false,
   test: null,
   agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
+  agentDebug: false, // show the agent's thinking and raw replies in the chat
 };
 
 const frame = new GameFrame(
@@ -372,6 +373,43 @@ function agentLog(role, text) {
   $("agent-log").scrollTop = $("agent-log").scrollHeight;
 }
 
+/** One collapsible debug section inside an assistant message. */
+function agentDebugSection(title, text) {
+  return el(
+    "details",
+    { class: "agent-debug", open: state.agentDebug || undefined },
+    el("summary", {}, title),
+    el("pre", {}, text)
+  );
+}
+
+/** Render an assistant reply as a chat bubble with optional debug details. */
+function agentLogReply(reply) {
+  const log = $("agent-log");
+  const bubble = el("div", { class: "msg assistant" }, reply.message);
+  if (reply.thinking) bubble.append(agentDebugSection("💭 Thinking", reply.thinking));
+  if (reply.raw) bubble.append(agentDebugSection("🧾 Raw response", reply.raw));
+  log.append(bubble);
+  if (reply.parse_note) {
+    const attempts = reply.attempts > 1 ? `took ${reply.attempts} attempts` : "needed a retry";
+    log.append(
+      el("div", {
+        class: "msg system agent-note",
+        textContent: `The agent ${attempts} (${reply.parse_note}).`,
+      })
+    );
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+/** The Debug toggle expands or collapses every thinking/raw section at once. */
+function setAgentDebug(on) {
+  state.agentDebug = on;
+  for (const details of $("agent-log").querySelectorAll("details.agent-debug")) {
+    details.open = on;
+  }
+}
+
 function agentHistory() {
   if (!state.agent) state.agent = { messages: [], pending: null };
   return state.agent;
@@ -405,7 +443,7 @@ async function sendAgentMessage() {
     });
     history.messages.push({ role: "user", content: input });
     history.messages.push({ role: "assistant", content: reply.message });
-    agentLog("assistant", reply.message);
+    agentLogReply(reply);
     if (reply.code) {
       history.pending = { code: reply.code, name: reply.name, description: reply.description };
       $("agent-proposal").hidden = false;
@@ -476,6 +514,7 @@ async function main() {
   });
   $("agent-apply").addEventListener("click", applyAgentProposal);
   $("agent-discard").addEventListener("click", discardAgentProposal);
+  $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
   $("agent-publish").addEventListener("click", save);
   $("test-count").addEventListener("change", renderSeatKinds);
   $("test-start").addEventListener("click", startTest);
