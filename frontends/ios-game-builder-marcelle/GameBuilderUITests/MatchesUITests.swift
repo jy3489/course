@@ -47,6 +47,12 @@ final class MatchesUITests: XCTestCase {
 
     private func openMatchesTab() { tap(app.tabBars.buttons["Matches"]) }
 
+    /// From a match screen back to the Games list.
+    private func backToGames() {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
     /// My match is the first "Tic-tac-toe" (open matches from other players come after it).
     private func openFirstMatch() {
         tap(app.staticTexts["Tic-tac-toe"].firstMatch)
@@ -96,14 +102,14 @@ final class MatchesUITests: XCTestCase {
         XCTFail("match \(id) never reached \(count) moves")
     }
 
-    /// Friend puts an O in `cell`, then the turn goes to `next`.
-    private func friendMoves(_ id: String, cell: Int, next: [Int], as friend: [String: Any]) async throws {
+    /// Friend puts an O in `cell`, then the turn goes to `next` (nil ends the match).
+    private func friendMoves(_ id: String, cell: Int, next: [Int]?, as friend: [String: Any]) async throws {
         let m = try await match(id)
         var board = (m["state"] as? [String: Any])?["board"] as? [String] ?? Array(repeating: "", count: 9)
         board[cell] = "O"
         _ = try await request("POST", "/matches/\(id)/moves", [
             "new_state": ["board": board, "winner": NSNull(), "draw": false],
-            "next_turn_player_indices": next,
+            "next_turn_player_indices": next.map { $0 as Any } ?? NSNull(),
             "expected_move_count": m["move_count"] as! Int,
         ], as: friend)
     }
@@ -206,5 +212,32 @@ final class MatchesUITests: XCTestCase {
         openFirstMatch()
         XCTAssertEqual(cells.matching(NSPredicate(format: "label == 'X'")).count, 1)
         XCTAssertEqual(cells.matching(NSPredicate(format: "label == 'O'")).count, 2)
+    }
+
+    func testStatusChips() async throws {
+        launchLoggedIn()
+        // over: I move, Friend moves and ends the match.
+        let (over, friend) = try await startMatchWithFriend()
+        cells.element(boundBy: 0).tap()
+        try await waitForMoveCount(over, 1)
+        try await friendMoves(over, cell: 4, next: nil, as: friend)
+        backToGames()
+        // their turn: I move.
+        let (theirs, _) = try await startMatchWithFriend()
+        cells.element(boundBy: 0).tap()
+        try await waitForMoveCount(theirs, 1)
+        backToGames()
+        // your turn: just started, I go first.
+        _ = try await startMatchWithFriend()
+        backToGames()
+        // waiting for players: created, not started.
+        _ = createTicTacToeMatch(computers: 0)
+        backToGames()
+
+        openMatchesTab()
+        for chip in ["waiting for players", "your turn", "their turn", "over"] {
+            XCTAssertTrue(app.staticTexts[chip].waitForExistence(timeout: 10), "no \(chip) chip")
+        }
+        screenshot("status-chips")
     }
 }

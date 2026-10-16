@@ -25,6 +25,9 @@ enum Theme {
     static let players: [Color] = [0xFF5FA2, 0xFFD84D, 0x5FD4FF, 0xC6F432, 0xB49BFF,
                                    0xFF9F4D, 0x3FE0C0, 0xFF6B6B, 0xA3ACC0, 0xD9A96C].map { Color(hex: $0) }
     static func playerColor(_ seat: Int) -> Color { players[seat % players.count] }
+    /// Match status chips (the text on them is `accentText`).
+    static let waitingChip = players[1]    // yellow: waiting for players
+    static let theirTurnChip = players[6]  // mint: another player's turn
 
     // MARK: Shapes
     static let radius: CGFloat = 4
