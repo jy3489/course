@@ -691,3 +691,27 @@ manual source editing remain under **Game settings & source code**. Proposals
 based on a draft that changed during generation are rejected to preserve newer
 edits. The shared conversation and test controls move between tabs without
 creating separate histories or losing the saved local test state.
+
+### Save privately and publish separately
+
+**Save draft** stores the current name, rules, settings and source on the server,
+visible only to the signed-in account. Reloading the builder restores saved drafts
+from **Your library**. Incomplete drafts can be saved before naming the game or
+choosing player counts. AI proposals must be applied before saving their changes.
+Unsaved edits and the chat conversation are still local to the page.
+
+**Publish game / Publish new version** saves the working copy, then makes that
+version public in the portal and catalog. Saving later edits leaves the public
+version unchanged until the next publication. Existing matches retain their original
+published version. **Discard private draft** removes the working copy of a published
+game without changing the public game; **Delete** removes both after a second click.
+Games published before this feature stay public; saving a draft does not unpublish them.
+
+Private drafts use authenticated `/game-drafts` routes with ownership checks and
+revision checks against stale browser tabs. They are stored separately from public
+games and excluded from public versions, matches, catalog, and debug data responses.
+The existing `/games` POST/PATCH API still publishes for compatibility with other clients.
+Data format 3 adds drafts and loads formats 1/2 automatically. Older server code
+rejects format 3 rather than silently losing drafts: rollback requires code that
+understands drafts or an explicit, reviewed data migration. Keep private backups
+before deployment; never restore an older backup over newer user data by default.

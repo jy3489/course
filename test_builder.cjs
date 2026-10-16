@@ -34,10 +34,11 @@ test('duplicate create requests are blocked and edits during save survive',async
   const {node,run}=setup(()=>{calls++;return wait.promise;});
   const first=run('save()');await run('save()');assert.equal(calls,1);assert.equal(node('save').disabled,true);
   node('code').value='newer';
-  wait.resolve({id:'saved',version:1,name:'Game',description:'',code:'old',allowed_player_counts:[2]});
+  wait.resolve({id:'saved',revision:1,base_version:0,name:'Game',description:'',code:'old',allowed_player_counts:[2]});
   await first;assert.equal(node('code').value,'newer');assert.equal(run('isDirty()'),true);
-  assert.match(node('agent-message').textContent,/Published version 1/);
-  assert.equal(node('play-game').href,'/portal#game=saved');
+  assert.match(node('agent-message').textContent,/Saved privately/);
+  assert.equal(node('play-game').hidden,true);
+  assert.equal(run('state.games.length'),0);
 });
 test('pending proposals prevent publishing older editor code',async()=>{
   let calls=0;const {node,run}=setup(async()=>{calls++;});
@@ -177,4 +178,59 @@ test('starting from a catalog game creates an attributed unpublished copy',async
   assert.equal(node('name').value,'Backgammon (copy)');assert.match(node('description').value,/Based on Backgammon v3/);
   assert.equal(run('state.selectedId'),'new');assert.equal(run('state.activeTab'),'edit');
   assert.equal(run('isDirty()'),true);
+});
+
+test('Save uses only private storage and reopens the saved draft',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path]);
+    return {...opts.body,id:'private',revision:1,base_version:0};
+  });
+  node('code').value='private code';await run('save()');
+  assert.deepEqual(calls,[['POST','/game-drafts']]);
+  assert.equal(run('isDirty()'),false);
+  assert.equal(node('play-game').hidden,true);
+  run('select("new");select("private")');
+  assert.equal(node('code').value,'private code');
+  assert.equal(run('isDirty()'),false);
+});
+
+test('Publish explicitly publishes the saved revision and shows the public link',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path,opts.body.expected_revision]);
+    return path.endsWith('/publish')
+      ? {id:'public',version:1,name:'Game',description:'',code:'public code',allowed_player_counts:[2]}
+      : {...opts.body,id:'public',revision:3,base_version:0};
+  });
+  await run('save(true)');
+  assert.deepEqual(calls,[['POST','/game-drafts',null],['POST','/game-drafts/public/publish',3]]);
+  assert.match(node('agent-message').textContent,/Published version 1/);
+  assert.equal(node('play-game').hidden,false);
+  assert.equal(node('play-game').href,'/portal#game=public');
+});
+
+test('failed publication preserves the successfully saved private draft',async()=>{
+  const {node,run}=setup(async(method,path,opts)=>{
+    if(path.endsWith('/publish'))throw new Error('server offline');
+    return {...opts.body,id:'private',revision:1,base_version:0};
+  });
+  await run('save(true)');
+  assert.equal(run('state.selectedId'),'private');
+  assert.equal(run('state.drafts.length'),1);
+  assert.equal(run('isDirty()'),false);
+  assert.equal(node('play-game').hidden,true);
+  assert.match(node('agent-message').textContent,/Draft saved privately, but publishing failed/);
+});
+
+test('saving edits to a public game leaves its public code and version untouched',async()=>{
+  const {node,run}=setup(async(method,path,opts)=>{
+    assert.equal(method,'PUT');assert.equal(path,'/game-drafts/public');
+    return {...opts.body,id:'public',revision:1,base_version:2};
+  });
+  run('state.games=[{id:"public",name:"Game",code:"published code",version:2}];state.selectedId="public"');
+  node('code').value='private change';await run('save()');
+  assert.equal(run('state.games[0].code'),'published code');
+  assert.equal(run('state.games[0].version'),2);
+  assert.equal(run('state.drafts[0].code'),'private change');
 });

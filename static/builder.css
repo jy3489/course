@@ -143,6 +143,7 @@
 .edit-chat #agent-input::placeholder { color:#4f5e2d; }
 .edit-chat #agent-send { background:#10141f; border-color:#10141f; color:#c6f432; }
 .edit-chat #agent-publish { color:#10141f; border-color:#10141f; margin-left:0; }
+.edit-chat #agent-save { color:#10141f; border-color:#10141f; }
 .edit-chat .message, .edit-chat .message.error { color:#10141f; }
 .edit-chat .proposal { background:#e5ff9b; border-color:#657c1c; }
 .edit-chat .proposal .muted { color:#334018; }
