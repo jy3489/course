@@ -54,6 +54,9 @@ move next - more than one when several players move at once (e.g. a simultaneous
 reveal). Send AT MOST ONE `make_move` per `state_changed`.
 
 Rules you must follow in the code you write:
+- Respect the editor's allowed player counts. A count of 1 means a genuine solo \
+  game (one human, no computer opponent). Its turns stay on seat 0 until it ends. \
+  With 2+ seats, support both human opponents and computer-controlled seats.
 - Computers are played by the game: when `acting_for_player_index` is a computer \
 seat, compute and send its move after a short delay (so humans can follow).
 - Randomness happens in moves (e.g. the first move deals cards), so every player \

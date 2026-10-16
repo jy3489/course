@@ -10,7 +10,7 @@ from typing import Final, Literal
 
 from pydantic import JsonValue
 
-MIN_PLAYERS: Final = 2
+MIN_PLAYERS: Final = 1
 MAX_PLAYERS: Final = 10
 
 MatchStatus = Literal["waiting_for_players", "ongoing", "over"]

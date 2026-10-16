@@ -4,7 +4,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const PLAYER_COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+const PLAYER_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // A minimal game showing the game API, used as the starting point for new games.
 const TEMPLATE_CODE = [
@@ -155,7 +155,7 @@ function fillEditor(values) {
         checked: values.allowed_player_counts.includes(count),
         onchange: renderTestSetup,
       }),
-      String(count)),
+      count === 1 ? "1 (solo)" : String(count)),
   ));
   $("allows-leave").checked = values.allows_leave_mid_match;
   $("allows-join").checked = values.allows_join_mid_match;
@@ -299,6 +299,20 @@ function renderTestSetup() {
   select.replaceChildren(...counts.map((count) => el("option", { value: count, textContent: count })));
   if (counts.includes(previous)) select.value = String(previous);
   renderSeatKinds();
+  $("test-mode-solo").disabled = !counts.includes(1);
+  $("test-mode-computer").disabled = !counts.some((count) => count >= 2);
+  $("test-mode-human").disabled = !counts.some((count) => count >= 2);
+}
+
+function setTestMode(mode) {
+  const counts = PLAYER_COUNTS.filter((count) => $(`count-${count}`)?.checked);
+  const count = mode === "solo" ? (counts.includes(1) ? 1 : null) : counts.find((count) => count >= 2);
+  if (!count) return;
+  $("test-count").value = String(count);
+  renderSeatKinds();
+  [...$("test-seats").querySelectorAll("select")].forEach((select, seat) => {
+    select.value = mode === "computer" && seat > 0 ? "computer" : "human";
+  });
 }
 
 function renderSeatKinds() {
@@ -593,6 +607,9 @@ async function main() {
   $("agent-discard").addEventListener("click", discardAgentProposal);
   $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
   $("agent-publish").addEventListener("click", save);
+  for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
+    $(id).addEventListener("click", () => setTestMode(mode));
+  }
   $("test-count").addEventListener("change", renderSeatKinds);
   $("test-start").addEventListener("click", startTest);
   $("test-undo").addEventListener("click", undoTestMove);

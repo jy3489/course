@@ -100,3 +100,16 @@ test('connected preview polls its job without repeating the paid request',async(
   assert.equal(run('state.agent.pending.code'),'<html>game</html>');
   assert.equal(node('agent-send').disabled,false);
 });
+
+test('a one-seat test keeps seat zero until the solo game ends',()=>{
+  const {node,run}=setup();
+  node('count-1').checked=true;node('count-2').checked=false;
+  run('renderTestSetup()');
+  assert.equal(node('test-mode-solo').disabled,false);
+  assert.equal(node('test-mode-computer').disabled,true);
+  run('state.test={players:[{name:"Solo",kind:"human"}],moves:[],state:null,turn:[0],status:"ongoing",awaiting:true}');
+  run('onTestMove({new_state:{score:1},next_turn_player_indices:[0]})');
+  assert.equal(run('state.test.status'),'ongoing');
+  run('onTestMove({new_state:{score:2},next_turn_player_indices:null})');
+  assert.equal(run('state.test.status'),'over');
+});

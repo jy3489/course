@@ -47,7 +47,7 @@
               <input id="name" spellcheck="false" />
               <label for="description">Description</label>
               <input id="description" />
-              <label>Player counts</label>
+              <label>Player counts (1 = solo)</label>
               <div id="counts" class="counts"></div>
               <label>Mid-match</label>
               <div class="inline-row">
@@ -69,6 +69,11 @@
             <div class="muted">
               Pass-and-play: you play every human seat, in turn, with the game's current
               code (saved or not). Moves stay in this page; nothing is sent to the server.
+            </div>
+            <div class="inline-row" aria-label="Playtest modes">
+              <button id="test-mode-solo" type="button">Solo</button>
+              <button id="test-mode-computer" type="button">Vs computer</button>
+              <button id="test-mode-human" type="button">Local multiplayer</button>
             </div>
             <div class="inline-row">
               <label class="inline">Players <select id="test-count"></select></label>
@@ -115,6 +120,6 @@
     </div>
     <script src="/static/common.js?v=2"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=9"></script>
+    <script src="/static/builder.js?v=10"></script>
   </body>
 </html>

@@ -1,4 +1,5 @@
 // Portal: list your matches, create, join, start, leave and delete them, and play them.
+
 // The selected match's game runs in a sandboxed iframe; the page polls the server and
 // sends the game state_changed whenever the match changes.
 // Identity comes from Auth (the account menu); data comes from the public and
@@ -216,10 +217,19 @@ function renderLists() {
     const chosen = requested || previous;
     if (games.some((game) => game.id === chosen)) select.value = chosen;
   }
+  updateComputerLimit();
   $("create").disabled = !user || games.length === 0;
 }
 
 // The selected match
+
+function updateComputerLimit() {
+  const game = state.games.find((game) => game.id === $("new-game").value);
+  const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
+  $("computers").max = String(maximum);
+  $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
+  $("computers").disabled = maximum === 0;
+}
 
 function selectMatch(id) {
   if (id === state.selectedId) return;
@@ -461,6 +471,7 @@ function main() {
     showMessage("");
     refresh();
   });
+  $("new-game").addEventListener("change", updateComputerLimit);
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);
   selectFromHash();

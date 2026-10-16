@@ -210,7 +210,7 @@ another of your accounts.
 | `DELETE /matches/{id}` | yes | Owner: delete the match. Other players: hide an ended match from their list |
 
 Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct, each in
-2..10), `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
+1..10), `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
 
 ### Game versions and deletion
 
@@ -654,3 +654,14 @@ live Muse latency.
 References: https://dev.meta.ai/docs/reasoning and
 https://dev.meta.ai/docs/protocols/chat-completions (reasoning effort, sampling,
 and the non-streaming time limit).
+
+### Solo and multiplayer games
+
+Allowed player counts now range from 1 to 10. Select **1 (solo)** for a true
+single-player game. A game may offer both solo and multiplayer by including 1
+and other supported counts. One human playing against a computer still uses at
+least two seats. In Playtest, the Solo, Vs computer, and Local multiplayer buttons
+configure seat types for supported counts. Online human matches use the portal.
+
+See `docs/deployment-and-builder-modes.md` for the deployment investigation,
+rollout requirements, and acceptance checks for the course assignment.
