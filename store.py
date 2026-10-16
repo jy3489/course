@@ -8,10 +8,18 @@ the service or the HTTP layer.
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from game_platform.models import Game, Match, User
+from game_platform.models import Game, GameDraft, Match, User
 
 
 class Store(Protocol):
+    def put_game_draft(self, draft: GameDraft) -> None: ...
+
+    def get_game_draft(self, draft_id: str) -> GameDraft | None: ...
+
+    def list_game_drafts(self, *, owner_user_id: str) -> list[GameDraft]: ...
+
+    def delete_game_draft(self, draft_id: str) -> None: ...
+
     def put_user(self, user: User) -> None: ...
 
     def get_user(self, user_id: str) -> User | None: ...
@@ -39,9 +47,11 @@ class Store(Protocol):
         """A specific version of a game, including deleted games."""
         ...
 
-    def list_games(self, *, owner_user_id: str | None) -> list[Game]:
+    def list_games(self, *, owner_user_id: str | None, include_unpublished: bool = False) -> list[Game]:
         """Latest versions of games that weren't deleted, oldest game first."""
         ...
+
+    def set_game_published(self, game_id: str, published: bool) -> None: ...
 
     def delete_game(self, game_id: str) -> None:
         """Marks the game deleted and hides it from [list_games]. Its versions are kept,
@@ -74,6 +84,9 @@ class Snapshot:
     game_versions: tuple[Game, ...]
     deleted_game_ids: tuple[str, ...]
     matches: tuple[Match, ...]
+    # Optional so existing data files load without a migration. Never public games.
+    game_drafts: tuple[GameDraft, ...] = ()
+    unpublished_game_ids: tuple[str, ...] = ()
 
 
 class InMemoryStore:
@@ -86,6 +99,8 @@ class InMemoryStore:
         self._game_versions: dict[str, list[Game]] = {}
         self._deleted_game_ids: set[str] = set()
         self._matches: dict[str, Match] = {}
+        self._game_drafts: dict[str, GameDraft] = {}
+        self._unpublished_game_ids: set[str] = set()
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -95,8 +110,11 @@ class InMemoryStore:
         for game in snapshot.game_versions:
             store.add_game_version(replace(game, deleted=False))
         store._deleted_game_ids.update(snapshot.deleted_game_ids)
+        store._unpublished_game_ids.update(snapshot.unpublished_game_ids)
         for match in snapshot.matches:
             store.put_match(match)
+        for draft in snapshot.game_drafts:
+            store.put_game_draft(draft)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -108,10 +126,24 @@ class InMemoryStore:
             ),
             deleted_game_ids=tuple(sorted(self._deleted_game_ids)),
             matches=tuple(self._matches.values()),
+            game_drafts=tuple(self._game_drafts.values()),
+            unpublished_game_ids=tuple(sorted(self._unpublished_game_ids)),
         )
 
     def put_user(self, user: User) -> None:
         self._users[user.id] = user
+
+    def put_game_draft(self, draft: GameDraft) -> None:
+        self._game_drafts[draft.id] = draft
+
+    def get_game_draft(self, draft_id: str) -> GameDraft | None:
+        return self._game_drafts.get(draft_id)
+
+    def list_game_drafts(self, *, owner_user_id: str) -> list[GameDraft]:
+        return [d for d in self._game_drafts.values() if d.owner_user_id == owner_user_id]
+
+    def delete_game_draft(self, draft_id: str) -> None:
+        self._game_drafts.pop(draft_id, None)
 
     def get_user(self, user_id: str) -> User | None:
         return self._users.get(user_id)
@@ -146,15 +178,23 @@ class InMemoryStore:
         return self._with_deleted_flag(versions[version - 1])
 
     def _with_deleted_flag(self, game: Game) -> Game:
-        return replace(game, deleted=game.id in self._deleted_game_ids)
+        return replace(game, deleted=game.id in self._deleted_game_ids,
+                       published=game.id not in self._unpublished_game_ids)
 
-    def list_games(self, *, owner_user_id: str | None) -> list[Game]:
+    def list_games(self, *, owner_user_id: str | None, include_unpublished: bool = False) -> list[Game]:
         return [
-            versions[-1]
+            self._with_deleted_flag(versions[-1])
             for game_id, versions in self._game_versions.items()
             if game_id not in self._deleted_game_ids
+            and (include_unpublished or game_id not in self._unpublished_game_ids)
             and (owner_user_id is None or versions[-1].owner_user_id == owner_user_id)
         ]
+
+    def set_game_published(self, game_id: str, published: bool) -> None:
+        if published:
+            self._unpublished_game_ids.discard(game_id)
+        else:
+            self._unpublished_game_ids.add(game_id)
 
     def delete_game(self, game_id: str) -> None:
         self._deleted_game_ids.add(game_id)

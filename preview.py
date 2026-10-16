@@ -45,7 +45,7 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
-    @app.api_route("/{path:path}", methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
+    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     async def preview(path: str, request: Request):
         if request.method == "GET" and path in ("", "builder", "portal", "privacy"):
             page = path or "builder"
@@ -62,7 +62,7 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
             if not job["task"].done():
                 return JSONResponse({"preview_job_id": job["id"]}, status_code=202)
             return job["task"].result()
-        if path.split("/", 1)[0] not in {"auth", "users", "games", "matches", "agent"}:
+        if path.split("/", 1)[0] not in {"auth", "users", "games", "game-drafts", "matches", "agent", "builder"}:
             return Response("This page is not available in the local preview.", status_code=404)
         # Forward only product API headers; the model key never enters the browser.
         headers = {key: request.headers[key] for key in ("content-type", "x-user-id", "x-user-password") if key in request.headers}
@@ -79,7 +79,8 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
             except httpx.HTTPError:
                 return JSONResponse({"detail": "The course backend connection failed. Your prompt is preserved; try again."}, status_code=502)
             return Response(upstream.content, status_code=upstream.status_code,
-                            headers={"content-type": upstream.headers.get("content-type", "application/json")})
+                            headers={"content-type": upstream.headers.get("content-type", "application/json"),
+                                     "cache-control": upstream.headers.get("cache-control", "private, no-store")})
 
         if path == "agent/chat" and request.method == "POST":
             owner = (headers.get("x-user-id", ""), headers.get("x-user-password", ""))

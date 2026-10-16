@@ -5,7 +5,7 @@
 This contribution changes the existing web portal and adds Dots & Boxes, Reversi,
 and Crazy Eights. It does not change backend APIs, builder code, native Android/iOS
 projects, configuration, or existing games. The latest builder/solo-game changes
-from main `376af44` are retained, including game deep links and computer limits.
+from main `674ae95` are retained, including game deep links and computer limits.
 
 ## Published games
 
@@ -81,7 +81,7 @@ Apple references: [Home Screen web apps](https://support.apple.com/guide/iphone/
 Run from the repository root:
 
 ```sh
-node --test tests/web/*.test.cjs test_builder.cjs
+node --test tests/web/*.test.cjs test_builder.cjs test_portal.cjs
 python -m pytest -q
 ```
 
@@ -91,8 +91,8 @@ accepted a human move and a computer reply offline, then synchronized exactly fo
 moves after resuming the backend. The pending count returned to zero; an independent
 server read confirmed four moves. No production server was paused or restarted.
 
-The final JavaScript run passed 31 tests (13 new game/offline checks and 18
-unchanged shared builder checks). Python: 183 passed, one existing stale
+The final JavaScript run passed 51 tests (13 game/offline checks, 27 builder checks, and 11 portal checks).
+The portal test harness includes the offline adapter. Python: 206 passed, one existing stale
 example-data fixture failure. No backend files differ from upstream main.
 
 The published game code also completed two-user cloud matches: Dots & Boxes

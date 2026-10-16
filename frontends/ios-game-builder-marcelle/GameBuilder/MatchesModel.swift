@@ -28,6 +28,8 @@ final class MatchesModel {
     /// The exact game version each match plays, by "gameId@version".
     private var versions: [String: Game] = GameCache.load("game-versions", as: [String: Game].self) ?? [:]
     private var names: [String: String] = GameCache.load("user-names", as: [String: String].self) ?? [:]
+    /// Matches deleted, hidden or left in this session: late refreshes must not bring them back.
+    private var removed: Set<String> = []
     /// A message to show, e.g. "your offline move was rejected".
     var notice: String?
     var isLoading = false
@@ -131,7 +133,7 @@ final class MatchesModel {
         await uploadMoves()
         if pendingMoves.contains(where: { $0.matchId == matchId }) { return } // offline: keep my copy
         do {
-            store(try await API.match(id: matchId))
+            store(try await API.match(id: matchId, as: app.account))
             app.isOffline = false
             if let m = match(id: matchId) { await downloadDetails(for: [m]) }
         } catch {
@@ -141,7 +143,7 @@ final class MatchesModel {
 
     private func downloadDetails(for matches: [Match]) async {
         for m in matches where game(for: m) == nil {
-            if let g = try? await API.gameVersion(id: m.gameId, version: m.gameVersion) {
+            if let g = try? await API.gameVersion(id: m.gameId, version: m.gameVersion, as: app.account) {
                 versions["\(m.gameId)@\(m.gameVersion)"] = g
             }
         }
@@ -154,6 +156,7 @@ final class MatchesModel {
 
     /// Puts a match from the server into the right list.
     private func store(_ m: Match) {
+        guard !removed.contains(m.id) else { return }
         if m.seat(of: me) != nil || m.ownerUserId == me {
             if let i = myMatches.firstIndex(where: { $0.id == m.id }) { myMatches[i] = m } else { myMatches.insert(m, at: 0) }
             otherMatches.removeAll { $0.id == m.id }
@@ -181,8 +184,31 @@ final class MatchesModel {
 
     // MARK: Creating, joining, starting (need the network)
 
+    /// Errors the server reports in its own words, said more clearly.
+    enum PublishError: LocalizedError {
+        case gameNotPublished(name: String, mine: Bool)
+        case matchGameUnpublished
+
+        var errorDescription: String? {
+            switch self {
+            case .gameNotPublished(let name, true):
+                "\u{201C}\(name)\u{201D} isn't published, so it can't be played online yet. Publish it from the web builder; until then you can still use \u{25B6}\u{FE0E} test play."
+            case .gameNotPublished(let name, false):
+                "\u{201C}\(name)\u{201D} isn't available online any more (its creator unpublished or deleted it)."
+            case .matchGameUnpublished:
+                "This match's game was unpublished by its creator, so nobody can join it now."
+            }
+        }
+    }
+
     func create(game: Game, computers: Int) async throws -> Match {
-        let m = try await API.createMatch(gameId: game.id, computers: computers, as: try account())
+        let m: Match
+        do {
+            m = try await API.createMatch(gameId: game.id, computers: computers, as: try account())
+        } catch let error as APIError where error.status == 404 {
+            // The server answers "game not found" for games that aren't published.
+            throw PublishError.gameNotPublished(name: game.name, mine: game.ownerUserId == me)
+        }
         versions["\(game.id)@\(m.gameVersion)"] = versions["\(game.id)@\(m.gameVersion)"] ?? (game.version == m.gameVersion ? game : nil)
         store(m)
         await downloadDetails(for: [m])
@@ -190,7 +216,13 @@ final class MatchesModel {
     }
 
     func join(matchId: String) async throws -> Match {
-        let m = try await API.joinMatch(id: matchId, as: try account())
+        let m: Match
+        do {
+            m = try await API.joinMatch(id: matchId, as: try account())
+        } catch let APIError.server(409, detail) where detail.contains("no longer published") {
+            throw PublishError.matchGameUnpublished
+        }
+        removed.remove(m.id) // joining again after leaving is fine
         store(m)
         await downloadDetails(for: [m])
         return m
@@ -200,7 +232,8 @@ final class MatchesModel {
     func open(linkOrId: String) async throws -> Match {
         let text = linkOrId.trimmingCharacters(in: .whitespacesAndNewlines)
         let id = text.components(separatedBy: "match=").last ?? text
-        let m = try await API.match(id: id)
+        let m = try await API.match(id: id, as: app.account)
+        removed.remove(m.id)
         store(m)
         await downloadDetails(for: [m])
         return m
@@ -212,6 +245,35 @@ final class MatchesModel {
 
     func setComputers(matchId: String, _ n: Int) async throws {
         store(try await API.setComputers(matchId: matchId, n, as: try account()))
+    }
+
+    // MARK: Delete, hide, leave (need the network; never queued)
+
+    enum Action {
+        case delete, hide, leave
+    }
+
+    /// The one action that makes sense for me: the owner deletes; other players hide a
+    /// finished match or leave one that isn't over. nil when I'm neither.
+    func action(for match: Match) -> Action? {
+        guard let me else { return nil }
+        if match.ownerUserId == me { return .delete }
+        if match.isOver { return .hide }
+        return match.seat(of: me) != nil ? .leave : nil
+    }
+
+    /// Asks the server, then forgets the match (list, saved copy, queued moves).
+    func perform(_ action: Action, on match: Match) async throws {
+        let account = try account()
+        switch action {
+        case .delete, .hide: try await API.deleteMatch(id: match.id, as: account)
+        case .leave: try await API.leaveMatch(id: match.id, as: account)
+        }
+        removed.insert(match.id)
+        myMatches.removeAll { $0.id == match.id }
+        otherMatches.removeAll { $0.id == match.id }
+        pendingMoves.removeAll { $0.matchId == match.id }
+        save()
     }
 
     private func account() throws -> Account {
@@ -263,7 +325,7 @@ final class MatchesModel {
                         ? "Your move in \(gameName) was too late: the match changed meanwhile. It was reloaded."
                         : "Your move in \(gameName) wasn't accepted (\(error.localizedDescription)). It was reloaded."
                 }
-                if let fresh = try? await API.match(id: move.matchId) { store(fresh) }
+                if let fresh = try? await API.match(id: move.matchId, as: app.account) { store(fresh) }
             }
             save()
         }

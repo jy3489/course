@@ -80,6 +80,24 @@ class Game:
     # Applies to the whole game, so it is set on every version read back from the store
     # once the game is deleted. Deleted games are kept because matches may use them.
     deleted: bool = False
+    # Current game-wide visibility, applied to every version read from the store.
+    published: bool = True
+
+
+@dataclass(frozen=True, kw_only=True)
+class GameDraft:
+    """Owner-only working copy. Its id becomes the public game id on publication."""
+
+    id: str
+    owner_user_id: str
+    name: str
+    description: str
+    rules: GameRules
+    code: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    base_version: int = 0
+    revision: int = 1
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -2,6 +2,7 @@ import GoogleSignIn
 import SwiftUI
 
 /// The Matches tab: my matches (saved on the phone), open matches to join, join by link.
+/// Swipe left on one of my matches to delete, hide or leave it.
 struct MatchesView: View {
     @Environment(AppModel.self) private var app
     @Environment(MatchesModel.self) private var model
@@ -9,46 +10,76 @@ struct MatchesView: View {
     @State private var path: [Route] = []
     @State private var link = ""
     @State private var error: String?
+    @State private var actionRequest: Match?
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    AppHeader()
-                    ThemeDivider()
-                    VStack(alignment: .leading, spacing: 20) {
-                        if app.isOffline { Notice(text: "Offline: showing saved matches. Moves are sent later.", systemImage: "wifi.slash") }
-                        if !model.pendingMoves.isEmpty {
-                            let n = model.pendingMoves.count
-                            Notice(text: "\(n) move\(n == 1 ? "" : "s") waiting to upload", systemImage: "arrow.up.circle")
-                                .accessibilityIdentifier("moves-pending")
-                        }
-                        if let notice = model.notice {
-                            Text(notice).font(Theme.font(14)).foregroundStyle(Theme.danger)
-                        }
-                        section("my matches", model.myMatches, empty: "Create a match from a game's page (\"play online\"), or join one below.")
-                        section("open matches", model.joinableMatches, empty: app.isOffline ? "Not available offline." : "No open matches right now.")
-                        joinByLink
+            List {
+                Group {
+                    VStack(spacing: 0) {
+                        AppHeader()
+                        ThemeDivider()
                     }
-                    .padding(20)
+                    .listRowInsets(EdgeInsets())
+                    if app.isOffline {
+                        Notice(text: "Offline: showing saved matches. Moves are sent later.", systemImage: "wifi.slash")
+                            .padding(.top, 12)
+                    }
+                    if !model.pendingMoves.isEmpty {
+                        let n = model.pendingMoves.count
+                        Notice(text: "\(n) move\(n == 1 ? "" : "s") waiting to upload", systemImage: "arrow.up.circle")
+                            .accessibilityIdentifier("moves-pending")
+                    }
+                    if let notice = model.notice {
+                        Text(notice).font(Theme.font(14)).foregroundStyle(Theme.danger)
+                    }
+                    section("my matches", model.myMatches, swipe: true,
+                            empty: "Create a match from a game's page (\"play online\"), or join one below.")
+                    section("open matches", model.joinableMatches, swipe: false,
+                            empty: app.isOffline ? "Not available offline." : "No open matches right now.")
+                    joinByLink.padding(.top, 16)
                 }
+                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                .listRowBackground(Theme.background)
+                .listRowSeparator(.hidden)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .background(Theme.background)
             .refreshable { await model.refreshList() }
             .task { await model.refreshList() }
             .onChange(of: scenePhase) { if scenePhase == .active { Task { await model.refreshList() } } }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { $0.destination }
+            .modifier(MatchActionFlow(request: $actionRequest))
         }
         .environment(\.navigate) { path.append($0) }
     }
 
-    private func section(_ title: String, _ matches: [Match], empty: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(title: title)
-            if matches.isEmpty { Text(empty).font(Theme.font(14)).foregroundStyle(Theme.muted) }
-            ForEach(matches) { m in
-                NavigationLink(value: Route.match(m.id)) { MatchRow(match: m) }.buttonStyle(.plain)
+    @ViewBuilder
+    private func section(_ title: String, _ matches: [Match], swipe: Bool, empty: String) -> some View {
+        SectionLabel(title: title).padding(.top, 16)
+        if matches.isEmpty { Text(empty).font(Theme.font(14)).foregroundStyle(Theme.muted) }
+        ForEach(matches) { m in
+            Button { path.append(.match(m.id)) } label: { MatchRow(match: m) }
+                .buttonStyle(.plain)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if swipe { swipeButton(m) }
+                }
+        }
+    }
+
+    /// The match's one action, or a disabled "needs internet" while offline.
+    @ViewBuilder
+    private func swipeButton(_ match: Match) -> some View {
+        if let action = model.action(for: match) {
+            if app.isOffline {
+                Button {} label: { Label("needs internet", systemImage: "wifi.slash") }
+                    .tint(Theme.surface2)
+                    .disabled(true)
+            } else {
+                Button { actionRequest = match } label: { Label(action.title, systemImage: action.systemImage) }
+                    .tint(action.tint)
             }
         }
     }

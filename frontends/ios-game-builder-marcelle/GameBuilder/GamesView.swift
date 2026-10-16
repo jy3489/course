@@ -119,6 +119,7 @@ private struct GameRow: View {
                 HStack(spacing: 6) {
                     Text(playersText(game)).foregroundStyle(Theme.muted)
                     if pending { Text("· not uploaded yet").foregroundStyle(Theme.warningText) }
+                    if !game.isPublished { UnpublishedTag() }
                 }
                 .font(Theme.mono(12, relativeTo: .caption))
             }
@@ -131,9 +132,22 @@ private struct GameRow: View {
 
 func playersText(_ game: Game) -> String {
     let counts = game.allowedPlayerCounts
+    if counts == [1] { return "1 player (solo)" }
     let range = counts.count > 2 && counts.last! - counts.first! == counts.count - 1
         ? "\(counts.first!)–\(counts.last!)" : counts.map(String.init).joined(separator: ", ")
     return "\(range) players"
+}
+
+/// Small pill for a game only its owner can see (unpublished from the web builder).
+struct UnpublishedTag: View {
+    var body: some View {
+        Text("unpublished")
+            .font(Theme.mono(11, bold: true))
+            .foregroundStyle(Theme.warningText)
+            .padding(.horizontal, 8).padding(.vertical, 2)
+            .background(Theme.warningBackground, in: Capsule())
+            .accessibilityIdentifier("unpublished-tag")
+    }
 }
 
 /// A game's page: test play, details, code, and (for my games) edit.
@@ -164,9 +178,12 @@ struct GameDetailView: View {
                     if !game.description.isEmpty {
                         Text(game.description).font(Theme.font(17)).foregroundStyle(Theme.muted)
                     }
-                    Text("\(playersText(game)) · \(model.isMine(game) ? "by you" : "class game")")
-                        .font(Theme.mono(12, relativeTo: .caption)).foregroundStyle(Theme.muted)
-                        .padding(.top, 4)
+                    HStack(spacing: 6) {
+                        Text("\(playersText(game)) · \(model.isMine(game) ? "by you" : "class game")")
+                            .font(Theme.mono(12, relativeTo: .caption)).foregroundStyle(Theme.muted)
+                        if !game.isPublished { UnpublishedTag() }
+                    }
+                    .padding(.top, 4)
                 }
 
                 NavigationLink("▶ test play", value: Route.playSetup(game))

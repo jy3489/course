@@ -1,7 +1,7 @@
 """Request and response bodies of the HTTP API."""
 
 import datetime as dt
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -18,6 +18,7 @@ from game_platform.models import (
     MIN_PLAYERS,
     EndReason,
     Game,
+    GameDraft,
     LinkedAccount,
     Match,
     MatchStatus,
@@ -258,6 +259,7 @@ class GameOut(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     deleted: bool
+    published: bool
 
     @classmethod
     def of(cls, game: Game) -> "GameOut":
@@ -274,6 +276,46 @@ class GameOut(BaseModel):
             created_at=game.created_at,
             updated_at=game.updated_at,
             deleted=game.deleted,
+            published=game.published,
+        )
+
+
+class GameDraftContent(_Request):
+    # Incomplete working copies can be saved; publication validates completeness.
+    name: Annotated[str, StringConstraints(max_length=200)] = ""
+    description: str = ""
+    allowed_player_counts: Annotated[list[PlayerCount], AfterValidator(_check_player_counts)]
+    allows_leave_mid_match: bool = False
+    allows_join_mid_match: bool = False
+    code: str
+
+
+class GameDraftSave(GameDraftContent):
+    expected_revision: Annotated[int, Field(ge=1)] | None = None
+
+
+class GameDraftPublish(_Request):
+    expected_revision: Annotated[int, Field(ge=1)]
+
+
+class GameDraftOut(GameDraftContent):
+    id: str
+    owner_user_id: str
+    revision: int
+    base_version: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @classmethod
+    def of(cls, draft: GameDraft) -> "GameDraftOut":
+        return cls(
+            id=draft.id, owner_user_id=draft.owner_user_id,
+            name=draft.name, description=draft.description, code=draft.code,
+            allowed_player_counts=list(draft.rules.allowed_player_counts),
+            allows_leave_mid_match=draft.rules.allows_leave_mid_match,
+            allows_join_mid_match=draft.rules.allows_join_mid_match,
+            revision=draft.revision, base_version=draft.base_version,
+            created_at=draft.created_at, updated_at=draft.updated_at,
         )
 
 
@@ -424,6 +466,8 @@ class AgentChatRequest(_Request):
     game_name: str = ""
     game_description: str = ""
     allowed_player_counts: list[int] = []
+    # Existing mobile clients keep their selected counts; web explicitly opts in.
+    player_count_mode: Literal["auto", "manual"] = "manual"
     code: str = ""
     messages: Annotated[list[AgentMessage], Field(min_length=1, max_length=50)]
 
@@ -434,6 +478,8 @@ class AgentChatResponse(BaseModel):
     code: str | None = None
     name: str | None = None
     description: str | None = None
+    # Applied with the proposed code, so solo code cannot retain a default two seats.
+    allowed_player_counts: PlayerCounts | None = None
     # Debug info about the model turn (optional; safe to show in the UI).
     # Chain-of-thought the model exposed for this turn, if any.
     thinking: str | None = None

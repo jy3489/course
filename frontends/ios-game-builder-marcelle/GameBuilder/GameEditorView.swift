@@ -22,7 +22,12 @@ struct GameEditorView: View {
 
     private var trimmedName: String { fields.name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// The server refuses edits to an unpublished game: those go through its private draft
+    /// in the web builder. Deleting still works.
+    private var isUnpublished: Bool { game.map { !$0.isPublished } ?? false }
+
     private var problem: String? {
+        if isUnpublished { return nil }
         if trimmedName.isEmpty { return "Give the game a name." }
         if trimmedName.count > 200 { return "The name can be at most 200 characters." }
         if fields.allowedPlayerCounts.isEmpty { return "Pick at least one player count." }
@@ -34,7 +39,11 @@ struct GameEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if model.isOffline {
+                    if isUnpublished {
+                        Notice(text: "This game is unpublished. Edit its private draft and publish it in the web builder; you can still delete it here.",
+                               systemImage: "eye.slash")
+                            .accessibilityIdentifier("unpublished-notice")
+                    } else if model.isOffline {
                         Notice(text: "You're offline. Changes are saved on the phone and uploaded later.",
                                systemImage: "wifi.slash")
                     }
@@ -76,7 +85,7 @@ struct GameEditorView: View {
                     }
                     Button(game == nil ? "+ create game" : "save changes", action: save)
                         .buttonStyle(.primary)
-                        .disabled(problem != nil)
+                        .disabled(problem != nil || isUnpublished)
                         .accessibilityIdentifier("save")
 
                     if game != nil {
@@ -131,13 +140,13 @@ struct GameEditorView: View {
     }
 }
 
-/// Multi-select pill chips for 2...10 players; at least one stays selected.
+/// Multi-select pill chips for 1...10 players (1 = a solo game); at least one stays selected.
 struct PlayerCountChips: View {
     @Binding var selection: [Int]
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 8)], alignment: .leading, spacing: 8) {
-            ForEach(2...10, id: \.self) { n in
+            ForEach(1...10, id: \.self) { n in
                 let on = selection.contains(n)
                 Button { toggle(n) } label: {
                     Text("\(n)")
@@ -148,7 +157,7 @@ struct PlayerCountChips: View {
                         .overlay(Capsule().strokeBorder(on ? Theme.accent : Theme.line))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(n) players")
+                .accessibilityLabel(n == 1 ? "1 player" : "\(n) players")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }

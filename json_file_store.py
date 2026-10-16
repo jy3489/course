@@ -18,15 +18,17 @@ from typing import Final
 
 from pydantic import TypeAdapter
 
-from game_platform.models import Game, Match, User
+from game_platform.models import Game, GameDraft, Match, User
 from game_platform.store import InMemoryStore, Snapshot
 
 logger = logging.getLogger(__name__)
 
 # Bump when the file layout changes incompatibly.
-FORMAT_VERSION: Final = 2
+FORMAT_VERSION: Final = 4
 # Version 1 stored each turn as a single player index; version 2 stores a set of
-# them. [read_snapshot] migrates version 1 files on load.
+# them. Version 3 adds private drafts; version 4 adds publication state. Older
+# servers must reject new formats rather than lose drafts or re-expose unpublished
+# games. Versions 1, 2 and 3 still load with all existing public games unchanged.
 _V1_FORMAT_VERSION: Final = 1
 
 
@@ -169,6 +171,24 @@ class JsonFileStore:
             self._inner.add_game_version(game)
             self._set_dirty()
 
+    def put_game_draft(self, draft: GameDraft) -> None:
+        with self._lock:
+            self._inner.put_game_draft(draft)
+            self._set_dirty()
+
+    def get_game_draft(self, draft_id: str) -> GameDraft | None:
+        with self._lock:
+            return self._inner.get_game_draft(draft_id)
+
+    def list_game_drafts(self, *, owner_user_id: str) -> list[GameDraft]:
+        with self._lock:
+            return self._inner.list_game_drafts(owner_user_id=owner_user_id)
+
+    def delete_game_draft(self, draft_id: str) -> None:
+        with self._lock:
+            self._inner.delete_game_draft(draft_id)
+            self._set_dirty()
+
     def put_game_version(self, game: Game) -> None:
         with self._lock:
             self._inner.put_game_version(game)
@@ -182,9 +202,14 @@ class JsonFileStore:
         with self._lock:
             return self._inner.get_game_version(game_id, version)
 
-    def list_games(self, *, owner_user_id: str | None) -> list[Game]:
+    def list_games(self, *, owner_user_id: str | None, include_unpublished: bool = False) -> list[Game]:
         with self._lock:
-            return self._inner.list_games(owner_user_id=owner_user_id)
+            return self._inner.list_games(owner_user_id=owner_user_id, include_unpublished=include_unpublished)
+
+    def set_game_published(self, game_id: str, published: bool) -> None:
+        with self._lock:
+            self._inner.set_game_published(game_id, published)
+            self._set_dirty()
 
     def delete_game(self, game_id: str) -> None:
         with self._lock:
@@ -227,7 +252,7 @@ def read_snapshot(path: Path) -> Snapshot:
             contents = _migrate_v1_to_v2(contents)
         except (KeyError, TypeError):
             pass  # fall through; validation below reports the real problem
-    elif format_version != FORMAT_VERSION:
+    elif format_version not in (2, 3, FORMAT_VERSION):
         raise ValueError(
             f"{path} has format version {format_version}, expected {FORMAT_VERSION}"
         )

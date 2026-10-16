@@ -20,9 +20,11 @@ Explain things to me in simple language; I demo this in class and must understan
   Login is Google only (`POST /auth/google {id_token}`); the iOS app's serverClientID is the
   website's client ID so the token's audience matches oauth.py. Guest login is a hidden debug
   option (`-guestLogin`) for UI tests.
-- Games: `POST /games`, `GET /games?owner_user_id=`, `GET /games/{id}`,
-  `GET /games/{id}/versions/{version}`, `PATCH /games/{id}`, `DELETE /games/{id}`.
-  Fields: `name`, `description`, `allowed_player_counts` (distinct, each 2..10),
+- Games: `POST /games`, `GET /games?owner_user_id=` (published games only),
+  `GET /builder/games` (my games, incl. unpublished; needs auth), `GET /games/{id}`,
+  `GET /games/{id}/versions/{version}` (send auth so my unpublished games load),
+  `PATCH /games/{id}` (refused for unpublished games), `DELETE /games/{id}`.
+  Fields: `name`, `description`, `allowed_player_counts` (distinct, each 1..10; 1 = solo),
   `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
 - AI chat: `POST /agent/chat` (needs auth). Request/response shapes are in `schemas.py`
   (`AgentChatRequest` / `AgentChatResponse`); the web builder's use is in `static/builder.js`.

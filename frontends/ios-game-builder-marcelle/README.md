@@ -11,23 +11,30 @@ Google login. Xcode downloads it on the first build.
   The token goes to `POST /auth/google`, which returns the account's id and password; they
   are saved in the iOS Keychain, so the app stays logged in after restarts. It's the same
   account as on the website. Tap your avatar (top right) → **Log out** to switch accounts.
-- **Games screen**: loads `GET /games` from buildplay.fun and saves the list (including each
-  game's HTML `code`) on the phone. Offline, the saved list is shown with an "Offline" banner.
+- **Games screen**: loads the class games (`GET /games`, which lists only published games)
+  plus my own games (`GET /builder/games` with my login, which includes my unpublished ones)
+  from buildplay.fun and saves the list (including each game's HTML `code`) on the phone. Offline, the saved list is shown with an "Offline" banner.
   Pull down to refresh. Tap a game to see its details.
 - **Test play** (game page → "▶ test play"): pick the number of players (from the game's
   `allowed_player_counts`) and which seats are computers, then play. The game's HTML runs in a
   sandboxed iframe inside a WKWebView, using the `state_changed` / `make_move` messages from
-  "Game API" in the root README. Computer seats are played by the game itself. With 2+ humans
+  "Game API" in the root README. Computer seats are played by the game itself. A solo game
+  (1 player) is just me: no computer seats and no handoff screen. With 2+ humans
   it's pass-and-play: a "Pass the phone to Player N" screen covers the game between human turns.
   Moves stay on the phone (nothing is sent to the server). **Undo** takes back moves until it's
   a human's turn again; **restart** starts over. Works offline, since each game's code is saved
   in the games list on the phone.
 - **My games**: the list is split into "// my games" (`owner_user_id` = me) and
   "// class games". **+ new game** opens the editor: name, description, player counts
-  (multi-select chips 2–10, at least one) and the code. New games start with a tiny working
+  (multi-select chips 1–10, at least one; 1 = a solo game) and the code. New games start with a tiny working
   game ("Race to 10") so they can be test-played right away. My games have **✎ edit game**,
   and the editor has **delete game** (with a confirmation). Saved with `POST`, `PATCH` and
   `DELETE /games`.
+- **Unpublished games**: a game unpublished in the web builder is visible only to me. It shows
+  an **unpublished** tag under "// my games". It loads because the app sends my login when
+  getting a game, a game version or a match. It can't be played online (the server answers
+  404, and the app says so clearly), and the server only lets me change it through its
+  private draft in the web builder, so the app's editor says that and only allows deleting.
 - **Offline edits**: every edit shows at once and goes into a queue saved on the phone
   ("N changes waiting to upload", "not uploaded yet" on the game). The queue is uploaded in
   order as soon as the network is back (also on pull-to-refresh and when the app opens).
@@ -48,6 +55,13 @@ Google login. Xcode downloads it on the first build.
   rejects it (someone moved first, or the match changed), that match's queued moves are
   dropped, a message says so, and the match is reloaded. A stale computer move is dropped
   silently (another player's app sent it first, which is normal).
+- **Delete, hide, leave**: swipe left on one of "// my matches" (or tap "⋯" on the match
+  screen) for the one action that applies: **delete** (red, owner only, asks first:
+  `DELETE /matches/{id}`), **hide** a finished match I don't own (the same endpoint hides it
+  just for me), or **leave** a match I play in (asks first, and says what happens: a computer
+  takes over if the game allows it, otherwise the match ends; `POST /matches/{id}/leave`).
+  The match disappears from the list and the phone once the server confirms. Offline these
+  are disabled ("needs internet"), never queued.
 
 ## Run
 1. Open `GameBuilder.xcodeproj` in Xcode.
@@ -82,6 +96,9 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
     on the web portal; start; take turns. Moves show up within 2 seconds.
 12. Airplane mode: Matches tab → open the match → move ("Offline: your move is saved…").
     Airplane mode off: the move is sent.
+13. Matches tab: swipe left on a match I created → **delete** → confirm: it's gone (also from
+    the web portal). On a finished match someone else created → **hide**. In an ongoing match
+    → "⋯" → **leave** → confirm. In airplane mode the swipe shows "needs internet".
 
 ## Files (`GameBuilder/`)
 - `GameBuilderApp.swift`: app entry; shows Login or Games.
@@ -99,6 +116,7 @@ xcodebuild -project GameBuilder.xcodeproj -scheme GameBuilder \
 - `MatchesModel.swift`: online matches: loading, saving on the phone, whose turn it is,
   the queue of moves and what happens when one is rejected.
 - `MatchesView.swift`: the Matches tab (my matches, open matches, join by link).
+- `MatchActions.swift`: delete / hide / leave: labels, confirmations, running them.
 - `MatchView.swift`: one match (waiting room with share link + QR, then the game), the
   "new online match" sheet, and the QR code.
 - `PlayView.swift`: test play: the setup screen (players, seats) and the play screen.
@@ -120,10 +138,13 @@ New Swift files dropped into `GameBuilder/` are picked up by Xcode automatically
   Poker from buildplay.fun: vs computer, undo, game over, restart, pass-and-play handoff, Poker
   with 3 players, and offline play. It only reads from buildplay.fun.
 - `GameBuilderUITests/MyGamesUITests.swift`: guest login, create / edit / test-play / delete,
-  and offline edits uploaded later.
+  offline edits uploaded later, an unpublished game (tag, clear "can't play online" message,
+  editor note), and a solo game (1-player chip, test play without handoff).
 - `GameBuilderUITests/MatchesUITests.swift`: a match vs a computer; a match with a second
   person (the test plays "Friend" through the REST API) including an offline move sent later;
-  and an offline move rejected as stale.
+  an offline move rejected as stale; the status chip colors; deleting my match (swipe),
+  hiding a finished match (swipe), leaving an ongoing Poker match ("⋯"; a computer takes the
+  seat), and "needs internet" offline.
 - The last two **write** games and matches, so they use the course backend
   running on the Mac (`http://localhost:8000`), never buildplay.fun. Start it first, from a
   folder outside the repo (the root README's "Running" section explains the steps):
@@ -152,6 +173,8 @@ xcodebuild test -project GameBuilder.xcodeproj -scheme GameBuilder \
   apart from buildplay.fun's.
 - `-guestLogin`: also show a guest login (name → `POST /users`) on the login screen. The UI
   tests use it, so they never need a Google account.
+- `-loginAs <id> <password>`: use an account a UI test created through the REST API (kept in
+  memory only, never saved in the Keychain).
 - `-resetLocalData`: forget this server's account, saved games and queue (fresh start).
 ```sh
 xcrun simctl launch booted edu.columbia.gamebuilder.marcelle -screenshotMode -openGame tictactoe

@@ -33,6 +33,7 @@ def test_create_and_get_a_game(api: Api) -> None:
         "created_at": "2026-01-01T00:02:00Z",
         "updated_at": "2026-01-01T00:02:00Z",
         "deleted": False,
+        "published": True,
     }
     assert api.ok("GET", f"/games/{game['id']}") == game
 

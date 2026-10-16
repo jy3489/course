@@ -16,7 +16,7 @@ function setup(request = async () => {}) {
     document:{getElementById:node}, window:{addEventListener(){}},
     Auth:{current:()=>({id:'user'})},
     GameFrame:class {load(code){this.lastCode=code;} unload(){} send(){}},
-    apiRequest:request, formatTime:()=>'', el:()=>node(Symbol()),
+    apiRequest:request, formatTime:()=>'', el:(tag,attrs={})=>Object.assign(attrs.id?node(attrs.id):node(Symbol()),attrs),
     stateChangedMessage: x=>x});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/, ''),ctx);
   const run = code=>vm.runInContext(code,ctx);
@@ -34,10 +34,11 @@ test('duplicate create requests are blocked and edits during save survive',async
   const {node,run}=setup(()=>{calls++;return wait.promise;});
   const first=run('save()');await run('save()');assert.equal(calls,1);assert.equal(node('save').disabled,true);
   node('code').value='newer';
-  wait.resolve({id:'saved',version:1,name:'Game',description:'',code:'old',allowed_player_counts:[2]});
+  wait.resolve({id:'saved',revision:1,base_version:0,name:'Game',description:'',code:'old',allowed_player_counts:[2]});
   await first;assert.equal(node('code').value,'newer');assert.equal(run('isDirty()'),true);
-  assert.match(node('agent-message').textContent,/Published version 1/);
-  assert.equal(node('play-game').href,'/portal#game=saved');
+  assert.match(node('agent-message').textContent,/Saved privately/);
+  assert.equal(node('play-game').hidden,true);
+  assert.equal(run('state.games.length'),0);
 });
 test('pending proposals prevent publishing older editor code',async()=>{
   let calls=0;const {node,run}=setup(async()=>{calls++;});
@@ -177,4 +178,114 @@ test('starting from a catalog game creates an attributed unpublished copy',async
   assert.equal(node('name').value,'Backgammon (copy)');assert.match(node('description').value,/Based on Backgammon v3/);
   assert.equal(run('state.selectedId'),'new');assert.equal(run('state.activeTab'),'edit');
   assert.equal(run('isDirty()'),true);
+});
+
+test('Save uses only private storage and reopens the saved draft',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path]);
+    return {...opts.body,id:'private',revision:1,base_version:0};
+  });
+  node('code').value='private code';await run('save()');
+  assert.deepEqual(calls,[['POST','/game-drafts']]);
+  assert.equal(run('isDirty()'),false);
+  assert.equal(node('play-game').hidden,true);
+  run('select("new");select("private")');
+  assert.equal(node('code').value,'private code');
+  assert.equal(run('isDirty()'),false);
+});
+
+test('Publish explicitly publishes the saved revision and shows the public link',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path,opts.body.expected_revision]);
+    return path.endsWith('/publish')
+      ? {id:'public',version:1,name:'Game',description:'',code:'public code',allowed_player_counts:[2]}
+      : {...opts.body,id:'public',revision:3,base_version:0};
+  });
+  await run('save(true)');
+  assert.deepEqual(calls,[['POST','/game-drafts',null],['POST','/game-drafts/public/publish',3]]);
+  assert.match(node('agent-message').textContent,/Published version 1/);
+  assert.equal(node('play-game').hidden,false);
+  assert.equal(node('play-game').href,'/portal#game=public');
+});
+
+test('failed publication preserves the successfully saved private draft',async()=>{
+  const {node,run}=setup(async(method,path,opts)=>{
+    if(path.endsWith('/publish'))throw new Error('server offline');
+    return {...opts.body,id:'private',revision:1,base_version:0};
+  });
+  await run('save(true)');
+  assert.equal(run('state.selectedId'),'private');
+  assert.equal(run('state.drafts.length'),1);
+  assert.equal(run('isDirty()'),false);
+  assert.equal(node('play-game').hidden,true);
+  assert.match(node('agent-message').textContent,/Draft saved privately, but publishing failed/);
+});
+
+test('saving edits to a public game leaves its public code and version untouched',async()=>{
+  const {node,run}=setup(async(method,path,opts)=>{
+    assert.equal(method,'PUT');assert.equal(path,'/game-drafts/public');
+    return {...opts.body,id:'public',revision:1,base_version:2};
+  });
+  run('state.games=[{id:"public",name:"Game",code:"published code",version:2}];state.selectedId="public"');
+  node('code').value='private change';await run('save()');
+  assert.equal(run('state.games[0].code'),'published code');
+  assert.equal(run('state.games[0].version'),2);
+  assert.equal(run('state.drafts[0].code'),'private change');
+});
+test('Muse solo counts apply with code, undo with code, and publish as one player',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,opts)=>{
+    calls.push([method,path,opts.body]);
+    if(path==='/agent/chat') return {message:'Solo Hanoi',code:'<html>Hanoi</html>',allowed_player_counts:[1]};
+    return {...opts.body,id:'solo',version:1};
+  });
+  node('agent-input').value='Tower of Hanoi'; await run('sendAgentMessage()');
+  assert.equal(calls[0][2].player_count_mode,'auto');
+  assert.match(node('agent-proposed-players').textContent,/1 \(solo\)/);
+  assert.equal(node('count-2').checked,true); // review before applying metadata
+  run('applyAgentProposal()');
+  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
+  await run('save()');
+  assert.deepEqual(Array.from(calls[1][2].allowed_player_counts),[1]);
+});
+
+test('undoing a solo proposal restores the previous player counts too',async()=>{
+  const {node,run}=setup(async()=>({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]}));
+  node('agent-input').value='Make it solo';await run('sendAgentMessage()');run('applyAgentProposal();undoAppliedChange()');
+  assert.equal(node('count-1').checked,false);assert.equal(node('count-2').checked,true);
+});
+
+test('advanced player-count lock sends the selected count as a manual constraint',async()=>{
+  let body;
+  const {node,run}=setup(async(method,path,opts)=>{body=opts.body;return {message:'done'};});
+  node('lock-player-counts').checked=true;node('count-1').checked=true;node('count-2').checked=false;
+  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
+  node('agent-input').value='Hanoi';await run('sendAgentMessage()');
+  assert.equal(body.player_count_mode,'manual');assert.deepEqual(Array.from(body.allowed_player_counts),[1]);
+});
+
+test('changing player-count lock during generation invalidates its proposal',async()=>{
+  const wait=deferred();const {node,run}=setup(()=>wait.promise);
+  node('agent-input').value='Hanoi';const request=run('sendAgentMessage()');
+  node('lock-player-counts').checked=true;
+  wait.resolve({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]});await request;
+  run('applyAgentProposal()');assert.notEqual(node('code').value,'<html>solo</html>');
+  assert.match(node('agent-message').textContent,/player count lock changed/);
+});
+
+test('Unpublish preserves unsaved edits and removes the public play link',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path)=>{
+    calls.push([method,path]);
+    if(path==='/builder/games')return [{id:'saved',version:1,name:'Game',allowed_player_counts:[2],published:false}];
+    if(path==='/game-drafts')return [];
+    return {id:'saved',published:false};
+  });
+  run('state.games=[{id:"saved",version:1,name:"Game",published:true}];state.selectedId="saved"');
+  node('code').value='unsaved source';await run('unpublishGame()');
+  assert.equal(node('code').value,'unsaved source');assert.equal(node('play-game').hidden,true);
+  assert.equal(run('selectedGame().published'),false);
+  assert.deepEqual(calls[0],['POST','/games/saved/unpublish']);
 });

@@ -18,6 +18,7 @@ from pydantic import JsonValue
 
 from game_platform.models import (
     Game,
+    GameDraft,
     GameRules,
     LinkedAccount,
     LinkedAccountKind,
@@ -421,6 +422,8 @@ class GamePlatform:
                 self._store.put_game_version(
                     replace(game, owner_user_id=into_user_id)
                 )
+        for draft in self._store.list_game_drafts(owner_user_id=from_user_id):
+            self._store.put_game_draft(replace(draft, owner_user_id=into_user_id))
         for match in self._store.list_all_matches():
             updated = match
             if match.owner_user_id == from_user_id:
@@ -480,14 +483,103 @@ class GamePlatform:
             return [
                 match
                 for match in self._store.list_all_matches()
-                if match.status == "waiting_for_players"
-                or (
+                if (game := self._store.get_game(match.game_id)) is not None
+                and game.published and not game.deleted
+                and (match.status == "waiting_for_players" or (
                     match.status == "ongoing"
                     and self._rules_of(match).allows_join_mid_match
-                )
+                ))
             ]
 
-    # Games
+    # Private working copies, kept outside all public game/version/match APIs.
+
+    def _owned_draft(self, *, caller_id: str, draft_id: str) -> GameDraft:
+        draft = self._store.get_game_draft(draft_id)
+        if draft is None or draft.owner_user_id != caller_id:
+            raise NotFoundError("draft not found")
+        return draft
+
+    def list_game_drafts(self, *, caller_id: str) -> list[GameDraft]:
+        with self._lock:
+            return self._store.list_game_drafts(owner_user_id=caller_id)
+
+    def get_game_draft(self, *, caller_id: str, draft_id: str) -> GameDraft:
+        with self._lock:
+            return self._owned_draft(caller_id=caller_id, draft_id=draft_id)
+
+    def save_game_draft(
+        self, *, caller_id: str, draft_id: str | None, name: str,
+        description: str, rules: GameRules, code: str,
+        expected_revision: int | None,
+    ) -> GameDraft:
+        with self._lock:
+            existing = self._store.get_game_draft(draft_id) if draft_id else None
+            game = self._store.get_game(draft_id) if draft_id else None
+            if existing is not None:
+                self._owned_draft(caller_id=caller_id, draft_id=existing.id)
+                if expected_revision != existing.revision:
+                    raise ConflictError("draft changed in another tab; reload before saving")
+            elif draft_id is not None:
+                if game is None or game.deleted or game.owner_user_id != caller_id:
+                    raise NotFoundError("game not found")
+                if expected_revision is not None:
+                    raise ConflictError("draft was discarded; reload before saving")
+            now = self._clock()
+            draft = GameDraft(
+                id=draft_id or self._new_id(), owner_user_id=caller_id,
+                name=name, description=description, rules=rules, code=code,
+                created_at=existing.created_at if existing else now, updated_at=now,
+                base_version=existing.base_version if existing else game.version if game else 0,
+                revision=existing.revision + 1 if existing else 1,
+            )
+            self._store.put_game_draft(draft)
+            return draft
+
+    def delete_game_draft(self, *, caller_id: str, draft_id: str) -> None:
+        with self._lock:
+            self._owned_draft(caller_id=caller_id, draft_id=draft_id)
+            self._store.delete_game_draft(draft_id)
+
+    def publish_game_draft(
+        self, *, caller_id: str, draft_id: str, expected_revision: int,
+    ) -> Game:
+        with self._lock:
+            draft = self._owned_draft(caller_id=caller_id, draft_id=draft_id)
+            if draft.revision != expected_revision:
+                raise ConflictError("draft changed in another tab; reload before publishing")
+            if not draft.name.strip() or not draft.rules.allowed_player_counts:
+                raise InvalidRequestError("give the game a name and select player counts before publishing")
+            current = self._store.get_game(draft_id)
+            if current is None:
+                if draft.base_version != 0:
+                    raise ConflictError("published game is no longer available")
+                game = Game(
+                    id=draft.id, version=1, owner_user_id=caller_id,
+                    name=draft.name.strip(), description=draft.description,
+                    rules=draft.rules, code=draft.code,
+                    created_at=self._clock(), updated_at=self._clock(),
+                )
+                self._store.add_game_version(game)
+            else:
+                if current.deleted or current.owner_user_id != caller_id:
+                    raise ConflictError("published game is no longer available")
+                if current.version != draft.base_version:
+                    raise ConflictError("public version changed; reload it before publishing this draft")
+                game = self.update_game(
+                    caller_id=caller_id, game_id=draft_id, name=draft.name.strip(),
+                    description=draft.description, code=draft.code,
+                    allowed_player_counts=draft.rules.allowed_player_counts,
+                    allows_leave_mid_match=draft.rules.allows_leave_mid_match,
+                    allows_join_mid_match=draft.rules.allows_join_mid_match,
+                    _publishing=True,
+                )
+            self._store.set_game_published(game.id, True)
+            game = self._get_game(game.id)
+            # Keep the working copy; repeat publication cannot create duplicate games.
+            self._store.put_game_draft(replace(draft, base_version=game.version))
+            return game
+
+    # Games (public versions; existing clients continue to publish with POST/PATCH).
 
     def create_game(
         self,
@@ -514,18 +606,45 @@ class GamePlatform:
             self._store.add_game_version(game)
             return game
 
-    def get_game(self, game_id: str) -> Game:
+    def get_game(self, game_id: str, *, caller_id: str | None = None) -> Game:
         with self._lock:
-            return self._get_game(game_id)
+            game = self._get_game(game_id)
+            if not game.published and caller_id != game.owner_user_id:
+                raise NotFoundError("game not found")
+            return game
 
-    def get_game_version(self, game_id: str, version: int) -> Game:
+    def get_game_version(self, game_id: str, version: int, *, caller_id: str | None = None) -> Game:
         """Old versions stay available, even after the game is deleted, because matches
         created with them still need their code."""
         with self._lock:
             game = self._store.get_game_version(game_id, version)
             if game is None:
                 raise NotFoundError("game version not found")
+            if not game.published and caller_id != game.owner_user_id:
+                if caller_id is None or not any(
+                    match.game_id == game_id and match.game_version == version
+                    for match in self._store.list_matches_involving(caller_id)
+                ):
+                    raise NotFoundError("game version not found")
             return game
+
+    def list_owned_games(self, *, caller_id: str) -> list[Game]:
+        with self._lock:
+            return self._store.list_games(owner_user_id=caller_id, include_unpublished=True)
+
+    def unpublish_game(self, *, caller_id: str, game_id: str) -> Game:
+        with self._lock:
+            game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
+            if game.deleted:
+                raise NotFoundError("game not found")
+            if self._store.get_game_draft(game_id) is None:
+                self.save_game_draft(
+                    caller_id=caller_id, draft_id=game_id, name=game.name,
+                    description=game.description, code=game.code,
+                    rules=game.rules, expected_revision=None,
+                )
+            self._store.set_game_published(game_id, False)
+            return self._get_game(game_id)
 
     def list_games(self, *, owner_user_id: str | None) -> list[Game]:
         with self._lock:
@@ -542,6 +661,7 @@ class GamePlatform:
         allows_leave_mid_match: bool | None = None,
         allows_join_mid_match: bool | None = None,
         code: str | None = None,
+        _publishing: bool = False,
     ) -> Game:
         """Creates a new version of the game, unless nothing changes.
 
@@ -549,6 +669,8 @@ class GamePlatform:
         """
         with self._lock:
             game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
+            if not game.published and not _publishing:
+                raise ConflictError("game is unpublished; edit its private draft and Publish to share it")
             rules = game.rules
             updated = replace(
                 game,
@@ -581,6 +703,7 @@ class GamePlatform:
         with self._lock:
             self._get_owned_game(caller_id=caller_id, game_id=game_id)
             self._store.delete_game(game_id)
+            self._store.delete_game_draft(game_id)
 
     # Matches
 
@@ -589,6 +712,8 @@ class GamePlatform:
     ) -> Match:
         with self._lock:
             game = self._get_live_game(game_id)
+            if not game.published:
+                raise NotFoundError("game not found")
             self._check_fits(game.rules, num_players=1 + num_computer_opponents)
             now = self._clock()
             match = Match(
@@ -612,9 +737,15 @@ class GamePlatform:
             self._store.put_match(match)
             return match
 
-    def get_match(self, match_id: str) -> Match:
+    def get_match(self, match_id: str, *, caller_id: str | None = None) -> Match:
         with self._lock:
-            return self._get_match(match_id)
+            match = self._get_match(match_id)
+            game = self._get_game(match.game_id)
+            if not game.published and caller_id != game.owner_user_id and (
+                caller_id is None or not match.involves(caller_id)
+            ):
+                raise NotFoundError("match not found")
+            return match
 
     def list_matches(
         self, *, caller_id: str, status: MatchStatus | None, game_id: str | None
@@ -657,6 +788,8 @@ class GamePlatform:
             match = self._get_match(match_id)
             if match.seat_of(caller_id) is not None:
                 raise ConflictError("you are already a player in this match")
+            if not self._get_game(match.game_id).published:
+                raise ConflictError("this game is no longer published")
             if match.status == "over":
                 raise ConflictError("the match is over")
             if match.status == "ongoing":
@@ -933,19 +1066,22 @@ class GamePlatform:
         like a creator's delete). Elsewhere, they leave the matches they're seated in."""
         with self._lock:
             self._require_user(user_id)
-            for game in self._store.list_games(owner_user_id=user_id):
+            for game in self._store.list_games(owner_user_id=user_id, include_unpublished=True):
                 self._store.delete_game(game.id)
             for match in self._store.list_matches_involving(user_id):
                 if match.owner_user_id == user_id:
                     self._store.delete_match(match.id)
                 elif match.status != "over" and match.seat_of(user_id) is not None:
                     self.leave_match(caller_id=user_id, match_id=match.id)
+            for draft in self._store.list_game_drafts(owner_user_id=user_id):
+                self._store.delete_game_draft(draft.id)
             self._store.delete_user(user_id)
 
     def admin_delete_game(self, game_id: str) -> None:
         with self._lock:
             self._get_live_game(game_id)
             self._store.delete_game(game_id)
+            self._store.delete_game_draft(game_id)
 
     def admin_delete_match(self, match_id: str) -> None:
         with self._lock:
