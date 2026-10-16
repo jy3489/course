@@ -35,7 +35,7 @@ test('creating a solo-only game starts one human immediately',async()=>{
   assert.equal(calls[1][1],'/matches/match/start');
   assert.deepEqual(Array.from(calls[1][2].first_turn_player_indices),[0]);
   assert.equal(run('state.selectedId'),'match');
-  assert.equal(node('computers').disabled,true);assert.equal(node('create').textContent,'Play solo');
+  assert.equal(node('computers').disabled,true);assert.equal(node('create').textContent,'Play solo ↗');
 });
 
 test('multiplayer and mixed-mode games retain their lobby',async()=>{
@@ -61,4 +61,13 @@ test('a valid one-seat lobby says ready instead of waiting for another player',(
   run('renderMatch()');assert.equal(node('match-status').textContent,'ready to start');
   assert.match(node('waiting').textContent,/Ready to start with 1 player/);
   assert.doesNotMatch(node('waiting').textContent,/wait for others/i);
+});
+
+test('polling preserves collapsed groups and unchanged match buttons',()=>{
+  const {node,run}=setup();run('renderLists()');
+  const original=node('list-over').children;
+  node('group-open').open=false;node('group-over').open=false;
+  run('renderLists()');
+  assert.equal(node('group-open').open,false);assert.equal(node('group-over').open,false);
+  assert.equal(node('list-over').children,original);
 });

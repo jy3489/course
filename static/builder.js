@@ -107,7 +107,7 @@ async function onUserChanged() {
 async function loadGames() {
   const user = me();
   const [games, drafts] = user ? await Promise.all([
-    apiRequest("GET", `/games?owner_user_id=${encodeURIComponent(user.id)}`),
+    apiRequest("GET", "/builder/games", {user}),
     apiRequest("GET", "/game-drafts", {user}),
   ]) : [[], []];
   if (me()?.id !== user?.id) return;
@@ -127,7 +127,7 @@ function renderGames() {
         "aria-selected": String(game.id === state.selectedId),
         onclick: () => select(game.id),
       },
-      el("div", { class: "title" }, game.name || "Untitled game", el("span", { class: "badge", textContent: game.version ? `Public · v${game.version}` : game.base_version ? `Private draft · public v${game.base_version}` : "Private draft" })),
+      el("div", { class: "title" }, game.name || "Untitled game", el("span", { class: "badge", textContent: libraryVisibility(game) })),
       el("div", {
         class: "sub",
         textContent: `${game.allowed_player_counts.join(", ")} players · updated ${formatTime(game.updated_at)}`,
@@ -152,6 +152,12 @@ function selectedGame() {
 
 function selectedDraft() {
   return state.drafts.find((draft) => draft.id === state.selectedId) ?? null;
+}
+
+function libraryVisibility(item) {
+  const game = state.games.find((g) => g.id === item.id);
+  if (game?.published === false) return "Unpublished · private";
+  return item.version ? `Public · v${item.version}` : game ? `Private draft · public v${game.version}` : "Private draft";
 }
 
 function editorValues() {
@@ -225,7 +231,7 @@ function saveMessage(text, kind = "") {
 }
 
 function updateSaveControls() {
-  for (const id of ["save", "agent-save", "publish", "agent-publish", "discard-draft", "delete", "revert", "new-game"]) {
+  for (const id of ["save", "agent-save", "publish", "agent-publish", "unpublish", "discard-draft", "delete", "revert", "new-game"]) {
     $(id).disabled = state.saving;
   }
   renderDraftControls();
@@ -302,9 +308,28 @@ async function discardSavedDraft() {
     resetAgent();
     state.draftUndo = [];
     stopTest();
-    saveMessage("Private draft discarded. Public version loaded.", "ok");
+    saveMessage(`Private draft discarded. ${selectedGame()?.published === false ? "Unpublished" : "Public"} version loaded.`, "ok");
   } catch (error) {
     saveMessage(`Couldn't discard draft: ${error.message}`, "error");
+  } finally {
+    state.saving = false;
+    updateSaveControls();
+    render();
+  }
+}
+
+async function unpublishGame() {
+  if (state.saving || state.restoring || !selectedGame() || selectedGame().published === false) return;
+  const user = me(), id = state.selectedId;
+  state.saving = true;
+  updateSaveControls();
+  try {
+    await apiRequest("POST", `/games/${encodeURIComponent(id)}/unpublish`, {user});
+    if (me()?.id !== user.id || state.selectedId !== id) return;
+    await loadGames();
+    saveMessage("Unpublished. Hidden from the catalog; no new matches or players can join. Your private draft is kept. Existing participants can finish their matches.", "ok");
+  } catch (error) {
+    if (me()?.id === user.id && state.selectedId === id) saveMessage(`Couldn't unpublish: ${error.message}`, "error");
   } finally {
     state.saving = false;
     updateSaveControls();
@@ -323,7 +348,9 @@ async function deleteGame() {
   }
   if (!state.deleteArmed) {
     state.deleteArmed = true;
-    setMessage("edit-message", selectedGame()
+    setMessage("edit-message", selectedGame()?.published === false
+      ? "Click Delete again to delete this unpublished game and your draft. Existing participants keep their match history."
+      : selectedGame()
       ? "Click Delete again to delete the public game and your draft. Existing matches keep working; new ones can't be created."
       : "Click Delete again to delete this private draft. It has never been published.", "error");
     return;
@@ -345,13 +372,14 @@ function renderEditorMeta() {
   const game = selectedGame();
   const draft = selectedDraft();
   $("game-meta").textContent = game
-    ? `Public version ${game.version}${draft ? " · private working copy" : ""} · id ${game.id}`
+    ? `${game.published === false ? "Unpublished" : "Public"} version ${game.version}${draft ? " · private working copy" : ""} · id ${game.id}`
     : draft ? "Private draft · visible only to your account" : "Unsaved draft · Save keeps it private, Publish makes it public";
   $("save").textContent = "Save draft";
-  $("publish").textContent = game ? "Publish new version" : "Publish game";
+  $("publish").textContent = game && game.published !== false ? "Publish new version" : "Publish game";
   $("agent-publish").textContent = $("publish").textContent;
   $("revert").textContent = draft ? "Revert to saved draft" : "Revert to published";
   $("discard-draft").hidden = !draft || !game;
+  $("unpublish").hidden = !game || game.published === false;
   $("delete").textContent = state.selectedId === "new" ? "Discard" : "Delete";
 }
 
@@ -398,8 +426,12 @@ function renderDraftControls() {
   $("undo-ai-change").disabled = state.draftUndo.length === 0 || state.agentSending || Boolean(state.agent?.pending) || state.saving || state.restoring;
   const game = selectedGame();
   const draft = selectedDraft();
-  const sameAsPublic = game && draft && Object.keys(editorValues()).every((key) => JSON.stringify(game[key]) === JSON.stringify(draft[key]));
-  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Unsaved changes — Save keeps them private" : sameAsPublic ? `Published v${game.version} — draft also saved` : draft ? "Draft saved privately — Publish shares it with everyone" : game ? "Published version loaded" : "New game — not saved or published";
+  const sameAsPublic = game && game.published !== false && draft && Object.keys(editorValues()).every((key) => JSON.stringify(game[key]) === JSON.stringify(draft[key]));
+  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Unsaved changes — Save keeps them private" : sameAsPublic ? `Published v${game.version} — draft also saved` : draft ? "Draft saved privately — Publish shares it with everyone" : game ? (game.published === false ? "Unpublished game loaded — only you can edit it" : "Published version loaded") : "New game — not saved or published";
+  const counts = editorValues().allowed_player_counts;
+  $("agent-player-summary").textContent = state.selectedId === "new" && !state.agent?.messages.length
+    ? "Muse sets player counts from your prompt. Tell it if you want a specific number."
+    : `Current draft: ${counts.length === 1 && counts[0] === 1 ? "1 player · solo" : counts.join(", ") + " players"}`;
   const versions = game ? Array.from({length: Math.min(game.version, 6)}, (_, i) => game.version - i) : [];
   $("published-versions").replaceChildren(...versions.map((version) => el("button", {
     type: "button", textContent: `Load v${version}${version === game.version ? " (latest)" : ""}`,
@@ -847,7 +879,7 @@ function render() {
   $("new-game").disabled = !me() || state.saving;
   $("starter-options").hidden = state.selectedId !== "new";
   if (showWorkspace) { renderEditorMeta(); renderDraftControls(); }
-  $("play-game").hidden = !selectedGame();
+  $("play-game").hidden = !selectedGame() || selectedGame().published === false;
   if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
 }
 
@@ -865,6 +897,7 @@ async function main() {
   $("agent-save").addEventListener("click", () => save());
   $("publish").addEventListener("click", () => save(true));
   $("discard-draft").addEventListener("click", discardSavedDraft);
+  $("unpublish").addEventListener("click", unpublishGame);
   $("undo-ai-change").addEventListener("click", undoAppliedChange);
   for (const id of ["name", "description", "code", "allows-leave", "allows-join"]) {
     $(id).addEventListener("input", renderDraftControls);

@@ -374,14 +374,24 @@ def list_games(platform: Platform, owner_user_id: str | None = None) -> list[Gam
     ]
 
 
+@router.get("/builder/games")
+def list_owned_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
+    return [GameOut.of(g) for g in platform.list_owned_games(caller_id=caller_id)]
+
+
+@router.post("/games/{game_id}/unpublish")
+def unpublish_game(platform: Platform, caller_id: CallerId, game_id: str) -> GameOut:
+    return GameOut.of(platform.unpublish_game(caller_id=caller_id, game_id=game_id))
+
+
 @router.get("/games/{game_id}")
-def get_game(platform: Platform, game_id: str) -> GameOut:
-    return GameOut.of(platform.get_game(game_id))
+def get_game(platform: Platform, game_id: str, caller_id: OptionalCallerId) -> GameOut:
+    return GameOut.of(platform.get_game(game_id, caller_id=caller_id))
 
 
 @router.get("/games/{game_id}/versions/{version}")
-def get_game_version(platform: Platform, game_id: str, version: int) -> GameOut:
-    return GameOut.of(platform.get_game_version(game_id, version))
+def get_game_version(platform: Platform, game_id: str, version: int, caller_id: OptionalCallerId) -> GameOut:
+    return GameOut.of(platform.get_game_version(game_id, version, caller_id=caller_id))
 
 
 @router.patch("/games/{game_id}")
@@ -442,8 +452,8 @@ def list_open_matches(platform: Platform) -> list[MatchOut]:
 
 
 @router.get("/matches/{match_id}")
-def get_match(platform: Platform, match_id: str) -> MatchOut:
-    return MatchOut.of(platform.get_match(match_id))
+def get_match(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchOut:
+    return MatchOut.of(platform.get_match(match_id, caller_id=caller_id))
 
 
 @router.patch("/matches/{match_id}")
@@ -507,8 +517,8 @@ def make_move(
 
 
 @router.get("/matches/{match_id}/moves")
-def list_moves(platform: Platform, match_id: str) -> list[MoveOut]:
-    return [MoveOut.of(move) for move in platform.get_match(match_id).moves]
+def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> list[MoveOut]:
+    return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
 
 
 # Debugging tools: an API console and a browser of all data. They're hidden from the
@@ -661,7 +671,7 @@ async def _revalidate_pages(
     """Makes browsers check for newer pages and scripts on every load. Otherwise they
     may keep using a cached old script with a new page, which breaks it."""
     response = await call_next(request)
-    if request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
+    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
         response.headers["Cache-Control"] = "private, no-store"
     elif request.method == "GET" and not response.headers.get(
         "content-type", ""

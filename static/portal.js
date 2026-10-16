@@ -25,6 +25,7 @@ const state = {
   refreshing: false,
   refreshAgain: false,
   creating: false,
+  revealedMatch: null,
 };
 
 const frame = new GameFrame($("game-box"), (move) => onMakeMove(move), (problem) => showMessage(problem, "error"));
@@ -67,6 +68,7 @@ function isJoinable(match, userId) {
   if (!userId || seatOf(match, userId)) return false;
   const game = gameOf(match.game_id, match.game_version);
   if (!game) return false;
+  if (game.published === false) return false;
   const max = Math.max(...game.allowed_player_counts);
   if (match.status === "waiting_for_players") return match.players.length < max;
   if (match.status === "ongoing" && game.allows_join_mid_match) {
@@ -104,7 +106,7 @@ async function ensureDetails() {
         try {
           state.gameCache.set(
             key,
-            await apiRequest("GET", `/games/${key.slice(0, at)}/versions/${key.slice(at + 1)}`)
+            await apiRequest("GET", `/games/${key.slice(0, at)}/versions/${key.slice(at + 1)}`, {user: me()})
           );
         } catch {
           state.gameCache.set(key, null);
@@ -133,7 +135,7 @@ async function refresh() {
     state.openMatches = openMatches;
     if (state.selectedId) {
       try {
-        state.match = await apiRequest("GET", `/matches/${state.selectedId}`);
+        state.match = await apiRequest("GET", `/matches/${state.selectedId}`, {user});
       } catch (error) {
         if (error.status !== 404) throw error;
         showMessage("This match no longer exists.", "error");
@@ -179,32 +181,27 @@ function matchItem(match) {
 function renderLists() {
   const user = me();
   const groups = [
-    ["Your move", (m) => user && actingFor(m, user.id) !== null],
-    ["Ongoing", (m) => m.status === "ongoing"],
-    ["Waiting for players", (m) => m.status === "waiting_for_players"],
-    ["Over", (m) => m.status === "over"],
+    ["turn", (m) => user && actingFor(m, user.id) !== null],
+    ["ongoing", (m) => m.status === "ongoing"],
+    ["waiting", (m) => m.status === "waiting_for_players"],
+    ["over", (m) => m.status === "over"],
   ];
   const shown = new Set();
-  const children = [];
-  for (const [title, predicate] of groups) {
+  for (const [id, predicate] of groups) {
     const matches = state.myMatches.filter((m) => !shown.has(m.id) && predicate(m));
     matches.forEach((m) => shown.add(m.id));
-    children.push(el("div", { class: "section-title", textContent: `${title} (${matches.length})` }));
-    if (matches.length) children.push(...matches.map(matchItem));
+    $("count-" + id).textContent = String(matches.length);
+    renderMatchList($("list-" + id), matches);
+    if (matches.some((m) => m.id === state.selectedId) && state.revealedMatch !== state.selectedId) {
+      $("group-" + id).open = true;
+      state.revealedMatch = state.selectedId;
+    }
   }
-  if (!user) {
-    children.push(
-      el("div", { class: "empty-note" },
-        "Log in at the top right to see your matches. ",
-        el("button", { type: "button", class: "link", textContent: "Log in", onclick: () => Auth.openDialog("login") }))
-    );
-  }
-  $("my-matches").replaceChildren(...children);
+  $("portal-login-note").hidden = Boolean(user);
 
   const open = user ? state.openMatches.filter((m) => isJoinable(m, user.id)) : state.openMatches;
-  $("open-matches").replaceChildren(
-    ...(open.length ? open.map(matchItem) : [el("div", { class: "empty-note", textContent: "None right now." })]),
-  );
+  $("count-open").textContent = String(open.length);
+  renderMatchList($("open-matches"), open);
 
   const games = state.games;
   const select = $("new-game");
@@ -222,6 +219,17 @@ function renderLists() {
   $("create").disabled = !user || games.length === 0 || state.creating;
 }
 
+function renderMatchList(node, matches) {
+  // Keep the native details/summary nodes stable: polling must not reopen groups,
+  // move keyboard focus, or replace unchanged buttons while someone is clicking.
+  const key = JSON.stringify([matches, state.selectedId, [...state.nameCache],
+    matches.map((m) => gameOf(m.game_id, m.game_version)?.name)]);
+  if (node.dataset.key === key) return;
+  node.dataset.key = key;
+  node.replaceChildren(...(matches.length ? matches.map(matchItem)
+    : [el("div", {class: "empty-note", textContent: "No matches here."})]));
+}
+
 // The selected match
 
 function updateComputerLimit() {
@@ -230,7 +238,14 @@ function updateComputerLimit() {
   $("computers").max = String(maximum);
   $("computers").value = String(Math.min(maximum, Math.max(0, Number($("computers").value) || 0)));
   $("computers").disabled = maximum === 0;
-  $("create").textContent = game?.allowed_player_counts.length === 1 && maximum === 0 ? "Play solo" : "Create";
+  const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
+  $("create").textContent = solo ? "Play solo ↗" : "Create match ↗";
+  $("computer-setting").hidden = !game || solo;
+  $("selected-game-card").hidden = !game;
+  $("selected-game-name").textContent = game?.name || "Choose a game";
+  $("selected-game-description").textContent = game?.description || "";
+  $("selected-game-mode").textContent = solo ? "1 player · solo" : game ? `${game.allowed_player_counts.join(", ")} players` : "";
+  $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "With 0 computers, invite friends using your match link. Start once everyone is seated." : "Publish a game in the builder to make it available here.";
 }
 
 function selectMatch(id) {
@@ -239,6 +254,7 @@ function selectMatch(id) {
   state.match = null;
   state.armed = null;
   state.lastSent = null;
+  $("match-creator").open = false;
   showMessage("");
   history.replaceState(null, "", id ? `#match=${id}` : "#");
   refresh();
@@ -283,8 +299,8 @@ function renderMatch() {
   $("placeholder").hidden = Boolean(match);
   if (!match) {
     $("placeholder").textContent = user
-      ? "Pick a match on the left, or create one."
-      : "Log in at the top right, then pick or create a match.";
+      ? "Your match will open here. You can also select a match from the sidebar."
+      : "Log in at the top right, then choose a game above.";
     return;
   }
   const game = gameOf(match.game_id, match.game_version);
@@ -296,6 +312,7 @@ function renderMatch() {
   const meta = [`owner ${ownerName}`, `${match.move_count} moves`, `created ${formatTime(match.created_at)}`];
   if (match.end_reason) meta.push(match.end_reason === "finished" ? "ended by the game" : "ended because a player left");
   if (game && game.deleted) meta.push("this game has been deleted");
+  else if (game?.published === false) meta.push("unpublished · existing participants only");
   $("match-meta").textContent = meta.join(" · ");
 
   const mySeat = user ? seatOf(match, user.id) : null;
@@ -381,7 +398,7 @@ async function gameCode(match) {
   const key = `${match.game_id}@${match.game_version}`;
   let game = state.gameCache.get(key);
   if (!game) {
-    game = await apiRequest("GET", `/games/${match.game_id}/versions/${match.game_version}`);
+    game = await apiRequest("GET", `/games/${match.game_id}/versions/${match.game_version}`, {user: me()});
     state.gameCache.set(key, game);
   }
   return game.code;
@@ -498,10 +515,19 @@ function main() {
     Auth.renderMenu($("account-menu"));
     state.armed = null;
     state.lastSent = null;
+    state.gameCache.clear();
+    state.nameCache.clear();
+    frame.unload();
+    state.loaded = null;
     showMessage("");
     refresh();
   });
   $("new-game").addEventListener("change", updateComputerLimit);
+  $("show-creator").addEventListener("click", () => {
+    $("match-creator").open = true;
+    $("match-creator").scrollIntoView({behavior: "smooth", block: "start"});
+    $("new-game").focus({preventScroll: true});
+  });
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);
   selectFromHash();

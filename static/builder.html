@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Builder</title>
     <link rel="stylesheet" href="/static/common.css?v=4" />
-    <link rel="stylesheet" href="/static/builder.css?v=7" />
+    <link rel="stylesheet" href="/static/builder.css?v=8" />
   </head>
   <body>
     <header class="topbar">
@@ -54,6 +54,8 @@
               <input id="name" spellcheck="false" />
               <label for="description">Description</label>
               <input id="description" />
+              <label class="inline">Advanced player mode <select id="generation-player-mode"><option value="auto">Auto — from your prompt</option><option value="solo">Solo — 1 player</option><option value="multiplayer">Multiplayer — 2+ players</option><option value="custom">Use selected player counts</option></select></label>
+              <p class="muted">Muse normally sets counts from your prompt. Override here only when you need to constrain generation.</p>
               <label>Player counts (1 = solo)</label>
               <div id="counts" class="counts"></div>
               <label>Mid-match</label>
@@ -65,7 +67,7 @@
             <label for="code" class="muted">Code: the HTML document the game's iframe runs (see the game API in README.md)</label>
             <textarea id="code" spellcheck="false"></textarea>
             </details>
-            <div class="inline-row"><button id="revert" type="button">Revert to saved draft</button><button id="discard-draft" type="button" hidden>Discard private draft</button><button id="delete" type="button" class="danger">Delete</button><span id="edit-message" class="message" role="status"></span></div>
+            <div class="inline-row"><button id="revert" type="button">Revert to saved draft</button><button id="discard-draft" type="button" hidden>Discard private draft</button><button id="unpublish" type="button" hidden>Unpublish game</button><button id="delete" type="button" class="danger">Delete</button><span id="edit-message" class="message" role="status"></span></div>
           </section>
           <section id="test-panel" class="work" role="tabpanel" aria-labelledby="tab-test" hidden>
             <h3 class="panel-heading">Take it for a spin<span class="panel-tag">THE PLAYGROUND</span></h3>
@@ -102,7 +104,7 @@
             </div>
             <details id="starter-options"><summary>Start from a published game</summary><p class="muted">Load an existing game immediately, then ask Muse to change its rules. This creates an unpublished copy; it does not run AI generation.</p><div class="inline-row"><button id="load-starters" type="button">Load game catalog</button><select id="starter-game" aria-label="Published starting game"></select><button id="use-starter" type="button" disabled>Use as starting point</button></div></details>
             <div id="agent-home"><div id="agent-tools">
-            <label class="inline">Player mode <select id="generation-player-mode"><option value="auto">Auto — from your prompt</option><option value="solo">Solo — 1 player</option><option value="multiplayer">Multiplayer — 2+ players</option><option value="custom">Use selected player counts</option></select></label>
+            <div id="agent-player-summary" class="muted"></div>
             <div class="inline-row" style="margin-top: var(--space-sm)">
               <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
             </div>
@@ -134,6 +136,6 @@
     </div>
     <script src="/static/common.js?v=3"></script>
     <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=17"></script>
+    <script src="/static/builder.js?v=18"></script>
   </body>
 </html>

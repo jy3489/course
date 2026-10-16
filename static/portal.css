@@ -1,0 +1,88 @@
+/* The builder's navy, lime, pink and cyan palette, below the shared top bar. */
+.portal-shell {
+  --color-bg-0:#10141f; --color-bg-1:#171c2a; --color-bg-2:#1c2233; --color-bg-3:#26304a;
+  --color-text-primary:#eef0f5; --color-text-secondary:#c9cfdc; --color-text-tertiary:#a5aec2;
+  --color-text-quaternary:#a5aec2; --color-border-1:#2a3247; --color-border-2:#343e55;
+  --color-border-3:#44506b; --color-border-4:#8897b8; --color-accent:#c6f432;
+  --color-accent-hover:#d5ff53; --color-focus-ring:#c6f432; --color-error:#ff9393;
+  --color-ok:#c6f432; background:#10141f; color:#eef0f5;
+  font-family:'Trebuchet MS','Segoe UI',sans-serif; grid-template-columns:275px minmax(0,1fr);
+}
+.portal-shell [hidden] { display:none!important; }
+.portal-sidebar { padding:28px 18px; background:#131825; display:flex; flex-direction:column; gap:16px; }
+.portal-brand { display:flex; align-items:center; gap:10px; font-size:21px; font-weight:800; letter-spacing:-.6px; }
+.portal-brand > span { color:#c6f432; font-size:44px; line-height:1; }
+.portal-shell button { min-height:40px; border-radius:6px; padding:9px 14px; font-weight:600; box-shadow:none; }
+.portal-shell button.primary { color:#10141f; background:#c6f432; border-color:#c6f432; }
+.portal-shell button.primary:hover { background:#d5ff53; }
+.portal-shell button:disabled { opacity:.5; cursor:not-allowed; }
+.portal-shell button:focus-visible, .portal-shell summary:focus-visible { outline:2px solid #c6f432; outline-offset:3px; }
+#show-creator { margin:8px 0; }
+.match-group { border-bottom:1px solid #2a3247; }
+.match-group > summary { display:flex; align-items:center; gap:8px; padding:16px 2px; cursor:pointer; list-style:none; font-size:12px; font-weight:700; color:#c9cfdc; }
+.match-group > summary::-webkit-details-marker { display:none; }
+.match-group > summary::before { content:'›'; font-size:22px; color:#8897b8; width:12px; transition:transform .15s; }
+.match-group[open] > summary::before { transform:rotate(90deg); }
+.group-count { margin-left:auto; background:#26304a; padding:2px 7px; border-radius:5px; color:#a5aec2; font:11px/1.5 var(--font-mono); }
+#group-turn > summary { color:#c6f432; } #group-turn .group-count { color:#c6f432; }
+.open-group > summary { color:#5fd4ff; }
+.portal-sidebar .list-item { padding:13px 10px; border:1px solid transparent; border-left:3px solid transparent; border-radius:6px; margin-bottom:6px; }
+.portal-sidebar .list-item:hover { background:#1c2233; }
+.portal-sidebar .list-item[aria-selected=true] { background:#222a3d; border-left-color:#ff5fa2; }
+.portal-sidebar .title { flex-wrap:wrap; font-size:13px; gap:6px; overflow-wrap:anywhere; }
+.portal-sidebar .sub { margin-top:7px; font-size:10px; }
+.portal-shell .badge { white-space:normal; font-size:10px; border-radius:4px; }
+.portal-shell .badge.turn { color:#c6f432; background:#25321a; border-color:#647d2c; }
+.portal-shell .badge.ongoing { color:#5fd4ff; background:#172b3b; border-color:#32536a; }
+.portal-shell .badge.waiting_for_players { color:#ffce99; background:#34271d; border-color:#6c5134; }
+.portal-sidebar .empty-note { padding:2px 10px 16px; font-size:12px; }
+.builder-link { margin-top:auto; padding:24px 4px 4px; color:#b49bff; text-decoration:none; font-size:12px; }
+.portal-main { padding:36px clamp(20px,4vw,60px) 48px; gap:24px; align-items:stretch; min-width:0; }
+.match-creator { width:100%; max-width:900px; margin:0 auto; background:#171c2a; border:1px solid #343e55; border-top:3px solid #b49bff; border-radius:12px; flex:none; }
+.match-creator > summary { display:flex; align-items:center; justify-content:space-between; padding:28px 32px; cursor:pointer; list-style:none; }
+.match-creator > summary::-webkit-details-marker { display:none; }
+.creator-title { font-size:34px; font-weight:800; letter-spacing:-1px; }
+.creator-toggle { color:#b49bff; font-size:30px; line-height:1; }
+.match-creator[open] .creator-toggle { transform:rotate(45deg); }
+.creator-content { padding:0 32px 30px; }
+.creator-description { color:#a5aec2; font-size:14px; margin:0 0 28px; line-height:1.6; }
+.game-label { display:block; color:#c9cfdc; font-size:12px; font-weight:700; margin-bottom:10px; }
+.portal-shell select, .portal-shell input { background:#10141f; color:#eef0f5; border:1px solid #44506b; border-radius:6px; }
+#new-game { width:100%; min-height:54px; padding:12px 16px; font:600 16px 'Trebuchet MS','Segoe UI',sans-serif; }
+.selected-game-card { display:flex; align-items:center; gap:20px; padding:24px; margin:20px 0 24px; background:#1b2d3b; border:1px solid #36576b; border-radius:9px; }
+.game-symbol { flex:none; width:64px; height:64px; display:grid; place-items:center; background:#5fd4ff; color:#10141f; font-size:43px; border-radius:12px; transform:rotate(-7deg); }
+.selected-game-card h2 { font-size:24px; letter-spacing:-.6px; line-height:1.2; margin:0 0 9px; overflow-wrap:anywhere; }
+.selected-game-card p { margin:0 0 12px; color:#b9cbd8; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.mode-label { display:inline-block; padding:4px 8px; font:11px var(--font-mono); background:#112331; color:#5fd4ff; border:1px solid #36576b; border-radius:4px; }
+.create-controls { display:flex; align-items:end; justify-content:space-between; flex-wrap:wrap; gap:18px; }
+.computer-setting { display:flex; align-items:center; gap:12px; color:#c9cfdc; font-size:13px; }
+#computers { width:76px; min-height:48px; padding:8px 12px; font-size:17px; }
+#create { min-width:200px; min-height:52px; font-size:16px; margin-left:auto; }
+#create-hint { font-size:12px; line-height:1.6; margin:16px 0 0; }
+#create-message:empty { display:none; }
+#create-message { margin-top:14px; }
+.portal-main > #placeholder { text-align:center; padding:16px; font-size:12px; }
+.match-stage { background:#171c2a; border:1px solid #343e55; border-top:3px solid #ff5fa2; border-radius:12px; padding:26px; flex:none; }
+.match-header h2 { display:flex; align-items:center; flex-wrap:wrap; gap:12px; font-size:24px; letter-spacing:-.5px; line-height:1.3; margin:0 0 10px; }
+.match-header .badge { font:11px var(--font-mono); letter-spacing:0; padding:5px 9px; }
+#match-meta { font:11px/1.6 var(--font-mono); }
+#seats { margin:20px 0; }
+.portal-shell .seat-chip { border-radius:6px; font-size:12px; }
+.portal-shell .seat-chip.turn { border-color:#647d2c; color:#c6f432; background:#25321a; }
+#actions { margin-bottom:14px; }
+.waiting-note { border:1px dashed #657d36; background:#202b1d; border-radius:8px; padding:24px; color:#d2e8ad; line-height:1.7; }
+.portal-shell .frame-box { margin-top:20px; min-height:420px; border:1px solid #44506b; border-radius:9px; background:#fff; }
+.portal-shell .game-frame { min-height:420px; }
+.portal-shell .message { overflow-wrap:anywhere; font-size:13px; line-height:1.6; }
+@media(max-width:1050px) { .portal-shell { grid-template-columns:230px minmax(0,1fr); }.portal-main { padding:24px; }.creator-content { padding:0 24px 24px; }.match-creator > summary { padding:24px; }.creator-title { font-size:30px; } }
+@media(max-width:760px) {
+  .portal-shell { grid-template-columns:minmax(0,1fr); overflow:auto; }
+  .portal-sidebar { overflow:visible; border-right:0; border-bottom:1px solid #343e55; padding:18px; gap:8px; }
+  .portal-brand { font-size:19px; }.portal-brand > span { font-size:32px; }
+  #show-creator { align-self:flex-start; }.builder-link { padding:14px 4px 4px; }
+  .portal-main { overflow:visible; padding:22px 14px 36px; }
+  .creator-title { font-size:28px; }.creator-content { padding:0 20px 24px; }.match-creator > summary { padding:22px 20px; }
+  .selected-game-card { padding:18px; gap:14px; }.game-symbol { width:48px; height:48px; font-size:34px; }.selected-game-card h2 { font-size:21px; }
+  .create-controls { align-items:stretch; flex-direction:column; } #create { width:100%; margin-left:0; }
+  .match-stage { padding:18px 14px; }.match-header h2 { font-size:21px; }
+}

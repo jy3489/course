@@ -274,3 +274,18 @@ test('changing player mode during generation invalidates its proposal',async()=>
   run('applyAgentProposal()');assert.notEqual(node('code').value,'<html>solo</html>');
   assert.match(node('agent-message').textContent,/player mode changed/);
 });
+
+test('Unpublish preserves unsaved edits and removes the public play link',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path)=>{
+    calls.push([method,path]);
+    if(path==='/builder/games')return [{id:'saved',version:1,name:'Game',allowed_player_counts:[2],published:false}];
+    if(path==='/game-drafts')return [];
+    return {id:'saved',published:false};
+  });
+  run('state.games=[{id:"saved",version:1,name:"Game",published:true}];state.selectedId="saved"');
+  node('code').value='unsaved source';await run('unpublishGame()');
+  assert.equal(node('code').value,'unsaved source');assert.equal(node('play-game').hidden,true);
+  assert.equal(run('selectedGame().published'),false);
+  assert.deepEqual(calls[0],['POST','/games/saved/unpublish']);
+});
