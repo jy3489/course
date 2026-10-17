@@ -7,14 +7,26 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
-    <link rel="stylesheet" href="/static/common.css?v=6" />
+    <link rel="stylesheet" href="/static/common.css?v=7" />
     <link rel="stylesheet" href="/static/portal.css?v=5" />
   </head>
   <body>
+    <header class="topbar">
+      <h1>Game platform</h1>
+      <nav aria-label="Game platform">
+        <a href="/portal" aria-current="page">Portal</a>
+        <a href="/builder">Builder</a>
+        <a href="/console">API console</a>
+        <a href="/browse">Browse data</a>
+        <a href="/stats">Statistics</a>
+        <a href="/docs">OpenAPI docs</a>
+      </nav>
+      <span class="spacer"></span>
+      <span id="account-menu"></span>
+    </header>
     <div class="app portal-shell">
       <aside class="sidebar portal-sidebar">
         <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✳</span><span class="app-brand-name">Game Portal</span></div>
-        <nav class="app-nav" aria-label="Game platform"><a href="/static/portal.html" aria-current="page">Play</a><a href="/builder">Build</a></nav>
         <button id="show-creator" type="button" class="primary">+ New match</button>
         <div id="portal-login-note" class="muted" hidden>Log in to see your matches.</div>
         <div id="my-matches">
@@ -24,7 +36,7 @@
           <details id="group-over" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
         </div>
         <details id="group-open" class="match-group open-group"><summary>Open matches you can join <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
-        <div class="sidebar-footer"><div id="account-menu"></div><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button">Retry sync</button></div></div>
+        <div class="sidebar-footer"><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button">Retry sync</button></div></div>
       </aside>
       <main class="work portal-main">
         <details id="match-creator" class="match-creator" open>
@@ -81,6 +93,6 @@
     <script src="/static/common.js?v=4"></script>
     <script src="/static/auth.js?v=1"></script>
     <script src="/static/portal-offline.js?v=1"></script>
-    <script src="/static/portal.js?v=10"></script>
+    <script src="/static/portal.js?v=11"></script>
   </body>
 </html>

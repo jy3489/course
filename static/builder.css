@@ -24,6 +24,12 @@
 .starter-card{width:100%;max-width:760px;margin:auto;padding:40px;background:#171c2a;border:1px solid #343e55;border-top:3px solid #b49bff;border-radius:14px;}
 .starter-card h1{font-size:34px;letter-spacing:-1px;margin:0 0 12px;}
 .starter-card>p{color:#a5aec2;line-height:1.7;margin:0 0 26px;}
+.starter-options{margin-top:30px;padding-top:24px;border-top:1px solid #343e55;display:flex;flex-direction:column;gap:12px;}
+.starter-options h2{margin:0;font-size:20px;}
+.starter-options p{margin:0;color:#a5aec2;line-height:1.6;font-size:13px;}
+.starter-options input,.starter-options select{width:100%;background:#10141f;color:#eef0f5;border:1px solid #44506b;border-radius:6px;padding:10px;}
+.starter-options option{padding:8px;}
+.starter-options .message{font-size:12px;}
 #agent-tools{display:flex;flex-direction:column;gap:14px;min-height:0;}
 #agent-input{width:100%;min-height:120px;resize:vertical;font:15px/1.6 'Trebuchet MS','Segoe UI',sans-serif;background:#10141f;border:1px solid #647b2c;border-radius:8px;color:#eef0f5;padding:14px;}
 #agent-input::placeholder{color:#a5aec2;}
