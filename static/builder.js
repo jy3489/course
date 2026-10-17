@@ -340,7 +340,7 @@ async function sendAgentMessage() {
           allows_leave_mid_match:reply.allows_leave_mid_match ?? state.editor.allows_leave_mid_match,
           allows_join_mid_match:reply.allows_join_mid_match ?? state.editor.allows_join_mid_match,
           name:reply.name || state.editor.name || input.split("\n")[0].slice(0,80),description:reply.description ?? state.editor.description};
-        state.aiOpen=true;render();renderPlayModes();startTest();scheduleAutosave();
+        render();renderPlayModes();startTest();scheduleAutosave();
         agentLog("system","Updated the game. Play it now, ask for another change, or publish a version when ready.");
       }
     }

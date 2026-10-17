@@ -142,3 +142,8 @@ test('reload resumes the last saved workspace automatically',async()=>{
   const t=setup();await t.choose();t.run('rememberWork();state.selectedId=null;state.editor=copy(EMPTY);state.baseline=null');await t.run('resumeWorkspace()');
   assert.equal(t.run('state.selectedId'),'game');assert.equal(t.run('state.editor.code'),game.code);
 });
+test('a completed AI update respects a panel closed while the request was running',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Update';const pending=t.run('sendAgentMessage()');
+  t.run('state.aiOpen=false;render()');wait.resolve({message:'Updated',code:'<html>new</html>',allowed_player_counts:[1]});await pending;
+  assert.equal(t.run('state.editor.code'),'<html>new</html>');assert.equal(t.node('ai-panel').hidden,true);assert.equal(t.node('open-ai').hidden,false);
+});
