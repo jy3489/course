@@ -339,23 +339,22 @@ def test_linking_a_login_owned_by_someone_else_merges_the_accounts(
     game_id = api.new_game(owner=google_id)
     match_id = api.new_match(game_id=game_id, owner=google_id)
     bob = api.new_user("bob")
+    # Bob is a guest, so the Google account survives and Bob is replaced by it.
     response = api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=bob)
-    assert response["user_id"] == bob
-    assert response["merged_from_user_id"] == google_id
-    # The old account is gone and its stuff moved to bob.
-    assert error(api.request("GET", f"/users/{google_id}")) == (
-        404,
-        "user not found",
-    )
-    assert api.ok("GET", f"/games/{game_id}")["owner_user_id"] == bob
-    assert api.ok("GET", f"/matches/{match_id}")["owner_user_id"] == bob
+    assert response["user_id"] == google_id
+    assert response["merged_from_user_id"] == bob
+    # Bob's account was not deleted: every use of it resolves to the survivor.
+    assert api.ok("GET", f"/users/{bob}")["id"] == google_id
+    assert api.ok("GET", "/auth/me", as_user=bob)["user_id"] == google_id
+    assert api.ok("GET", f"/games/{game_id}")["owner_user_id"] == google_id
+    assert api.ok("GET", f"/matches/{match_id}")["owner_user_id"] == google_id
     assert ("google", "sub-1") in [
         (account["kind"], account["identifier"])
         for account in response["linked_accounts"]
     ]
 
 
-def test_merge_moves_everything_and_deletes_the_source(
+def test_merge_moves_everything_and_marks_the_source_replaced(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     api = _google_api(monkeypatch)
@@ -366,21 +365,30 @@ def test_merge_moves_everything_and_deletes_the_source(
     assert ann_auth["user_id"] == ann
     game_id = api.new_game(owner=ann)
     match_id = api.new_match(game_id=game_id, owner=ann)
-    merged = api.ok("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
-    assert merged["id"] == bob
-    assert error(api.request("GET", f"/users/{ann}")) == (404, "user not found")
-    assert api.ok("GET", f"/games/{game_id}")["owner_user_id"] == bob
+    bob_game_id = api.new_game(owner=bob)
+    # Bob is a guest, so he is the one merged away (into Ann), whatever the URL.
+    merged = api.ok(
+        "POST", f"/users/{bob}/merge", json={"into_user_id": ann}, as_user=bob
+    )
+    assert merged["id"] == ann
+    # Bob's account was not deleted: it resolves to Ann and his stuff moved over.
+    assert api.ok("GET", f"/users/{bob}")["id"] == ann
+    assert api.ok("GET", "/auth/me", as_user=bob)["user_id"] == ann
+    assert api.ok("GET", f"/games/{game_id}")["owner_user_id"] == ann
+    assert api.ok("GET", f"/games/{bob_game_id}")["owner_user_id"] == ann
     match = api.ok("GET", f"/matches/{match_id}")
-    assert match["owner_user_id"] == bob
-    assert match["players"][0]["user_id"] == bob
+    assert match["owner_user_id"] == ann
+    assert match["players"][0]["user_id"] == ann
     assert ("google", "sub-1") in [
         (account["kind"], account["identifier"])
-        for account in api.ok("GET", "/auth/me", as_user=bob)["linked_accounts"]
+        for account in api.ok("GET", "/auth/me", as_user=ann)["linked_accounts"]
     ]
 
 
-def test_merge_requires_authenticating_as_the_source() -> None:
-    api = Api()
+def test_merge_requires_authenticating_as_the_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _google_api(monkeypatch)
     ann = api.new_user("ann")
     bob = api.new_user("bob")
     # Bob can't absorb Ann's account.
@@ -403,6 +411,13 @@ def test_merge_requires_authenticating_as_the_source() -> None:
     assert error(
         api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob})
     )[0] == 401
+    # The rank rule decides who is merged away: Ann's Google login outranks guest
+    # Bob, so Ann asking to merge herself into Bob is refused — Bob is the
+    # replaced party, not her.
+    api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=ann)
+    assert error(
+        api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
+    ) == (403, "only the merged-away user can request the merge")
 
 
 def test_merge_rewrites_match_seats_and_hidden_flags() -> None:
@@ -419,9 +434,11 @@ def test_merge_rewrites_match_seats_and_hidden_flags() -> None:
     api.ok("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
     match = api.ok("GET", f"/matches/{match_id}")
     assert match["players"][1]["user_id"] == bob
-    # Bob's own list hides it now, Ann's credentials are dead.
+    # Bob's own list hides it now; Ann's old credentials keep working as Bob.
     assert match_id not in [m["id"] for m in api.ok("GET", "/matches", as_user=bob)]
-    assert error(api.request("GET", "/matches", as_user=ann))[0] == 401
+    assert [m["id"] for m in api.ok("GET", "/matches", as_user=ann)] == [
+        m["id"] for m in api.ok("GET", "/matches", as_user=bob)
+    ]
 
 
 def test_merge_does_not_duplicate_an_already_linked_login(
@@ -436,13 +453,14 @@ def test_merge_does_not_duplicate_an_already_linked_login(
         api_module, "verify_google_id_token", lambda token, cid: ("sub-2", "Bea", "bea@example.com", "")
     )
     api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=bob)
-    # Merge Ann into Bob: Bob keeps both logins, no duplicates.
+    # Merge Ann into Bob: Bob keeps both logins, no duplicates; Ann is replaced.
     api.ok("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
     kinds = [
         (account["kind"], account["identifier"])
         for account in api.ok("GET", "/auth/me", as_user=bob)["linked_accounts"]
     ]
     assert sorted(kinds) == [("google", "sub-1"), ("google", "sub-2")]
+    assert api.ok("GET", f"/users/{ann}")["id"] == bob
 
 
 def test_merge_works_through_the_file_backed_store(tmp_path: Path) -> None:
@@ -469,9 +487,142 @@ def test_merge_works_through_the_file_backed_store(tmp_path: Path) -> None:
         )
         assert merged.id == bob.id
         assert store.get_game(game.id).owner_user_id == bob.id  # type: ignore[union-attr]
-        assert store.get_user(ann.id) is None
+        raw_ann = store.get_user(ann.id)
+        assert raw_ann is not None
+        assert raw_ann.replaced_by_user_id == bob.id
+        assert raw_ann.replaced_user_ids == ()
+        assert raw_ann.linked_accounts == ()
+        raw_bob = store.get_user(bob.id)
+        assert raw_bob is not None
+        assert raw_bob.replaced_user_ids == (ann.id,)
     finally:
         store.close()
+
+
+# Replacement (never-delete) semantics
+
+
+def test_authenticate_as_replaced_user_returns_the_survivor() -> None:
+    api = Api()
+    ann = api.new_user("ann")
+    bob = api.new_user("bob")
+    api.ok("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
+    # Ann's old credentials still work, acting as Bob everywhere.
+    me = api.ok("GET", "/auth/me", as_user=ann)
+    assert me["user_id"] == bob
+    assert api.ok("GET", f"/users/{ann}")["id"] == bob
+
+
+def test_replacement_is_flattened_to_one_hop() -> None:
+    platform = GamePlatform(store=InMemoryStore(), clock=Clock())
+    ann = platform.create_user(display_name="ann")
+    bob = platform.create_user(display_name="bob")
+    cat = platform.create_user(display_name="cat")
+    ann_password = ann.password
+    platform.merge_users(caller_id=ann.id, from_user_id=ann.id, into_user_id=bob.id)
+    platform.merge_users(caller_id=bob.id, from_user_id=bob.id, into_user_id=cat.id)
+    # No chain: Ann points directly at Cat in one hop, and Cat lists both.
+    raw_ann = platform._store.get_user(ann.id)
+    raw_bob = platform._store.get_user(bob.id)
+    raw_cat = platform._store.get_user(cat.id)
+    assert raw_ann is not None and raw_ann.replaced_by_user_id == cat.id
+    assert raw_bob is not None and raw_bob.replaced_by_user_id == cat.id
+    assert raw_cat is not None and raw_cat.replaced_by_user_id is None
+    assert raw_cat.replaced_user_ids == (bob.id, ann.id)
+    assert platform.get_user(ann.id).id == cat.id
+    assert platform.authenticate(user_id=ann.id, password=ann_password).id == cat.id
+    # Merging an already-replaced user merges its survivor instead; the caller
+    # must authenticate as that survivor (the replaced party).
+    dan = platform.create_user(display_name="dan")
+    merged = platform.merge_users(
+        caller_id=cat.id, from_user_id=ann.id, into_user_id=dan.id
+    )
+    assert merged.id == dan.id
+    assert platform.get_user(ann.id).id == dan.id
+    assert platform.get_user(bob.id).id == dan.id
+    assert platform.get_user(cat.id).id == dan.id
+    raw_dan = platform._store.get_user(dan.id)
+    assert raw_dan is not None
+    assert raw_dan.replaced_user_ids == (cat.id, bob.id, ann.id)
+    # Once everything resolves to the same user, merging is a self-merge (400).
+    with pytest.raises(InvalidRequestError):
+        platform.merge_users(
+            caller_id=dan.id, from_user_id=ann.id, into_user_id=bob.id
+        )
+
+
+def test_replaced_user_holds_no_data_but_keeps_working_credentials() -> None:
+    platform = GamePlatform(store=InMemoryStore(), clock=Clock())
+    ann = platform.create_user(display_name="ann")
+    bob = platform.create_user(display_name="bob")
+    ann_password, ann_name = ann.password, ann.display_name
+    platform.merge_users(caller_id=ann.id, from_user_id=ann.id, into_user_id=bob.id)
+    raw = platform._store.get_user(ann.id)
+    assert raw is not None
+    assert raw.replaced_by_user_id == bob.id
+    assert raw.replaced_user_ids == ()
+    assert raw.linked_accounts == ()
+    assert raw.password == ann_password
+    assert raw.display_name == ann_name
+    assert not any(
+        game.owner_user_id == ann.id
+        for game in platform._store.list_all_game_versions()
+    )
+    assert not any(
+        match.owner_user_id == ann.id
+        or any(seat.user_id == ann.id for seat in match.seats)
+        for match in platform._store.list_all_matches()
+    )
+
+
+def test_guest_merging_with_google_user_always_replaces_the_guest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _google_api(monkeypatch)
+    gina = _track(api, api.ok("POST", "/auth/google", json={"id_token": "token"}))
+    guest = api.new_user("guest")
+    # Explicit merge, Google user named first: the rank rule still replaces the guest.
+    merged = api.ok(
+        "POST", f"/users/{gina}/merge", json={"into_user_id": guest}, as_user=guest
+    )
+    assert merged["id"] == gina
+    assert api.ok("GET", f"/users/{guest}")["id"] == gina
+    assert api.ok("GET", "/auth/me", as_user=guest)["user_id"] == gina
+
+
+def test_email_user_merging_with_google_user_replaces_the_email_user() -> None:
+    platform = GamePlatform(store=InMemoryStore(), clock=Clock())
+    google_user = platform.login_with_linked_account(
+        kind="google", identifier="sub-1", display_name="Gina"
+    )[0]
+    email_user = platform.login_with_linked_account(
+        kind="email", identifier="em@example.com", display_name="Em"
+    )[0]
+    # The email user links the Google credential owned by the Google user.
+    survivor, merged_from = platform.login_with_linked_account(
+        kind="google",
+        identifier="sub-1",
+        display_name="Gina",
+        as_user_id=email_user.id,
+    )
+    assert survivor.id == google_user.id
+    assert merged_from == email_user.id
+    assert platform.get_user(email_user.id).id == google_user.id
+    assert ("email", "em@example.com") in [
+        (account.kind, account.identifier)
+        for account in platform.get_user(google_user.id).linked_accounts
+    ]
+
+
+def test_equal_rank_merge_keeps_the_requested_direction() -> None:
+    platform = GamePlatform(store=InMemoryStore(), clock=Clock())
+    ann = platform.create_user(display_name="ann")
+    bob = platform.create_user(display_name="bob")
+    merged = platform.merge_users(
+        caller_id=ann.id, from_user_id=ann.id, into_user_id=bob.id
+    )
+    assert merged.id == bob.id
+    assert platform.get_user(ann.id).id == bob.id
 
 
 # Open matches
