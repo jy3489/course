@@ -1,6 +1,7 @@
 """FastAPI routes for the game platform."""
 
 import secrets
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import JsonValue
 
 from game_platform.models import GameRules, MatchStatus
@@ -22,6 +24,9 @@ from game_platform.schemas import (
     AuthResponse,
     EmailStart,
     GameCreate,
+    GameDraftSave,
+    GameDraftPublish,
+    GameDraftOut,
     GameOut,
     GameUpdate,
     GoogleLogin,
@@ -50,7 +55,7 @@ from game_platform.service import (
     PlatformError,
     UnauthorizedError,
 )
-from game_platform.agent import AgentError, chat_with_agent
+from game_platform.agent import GENERATION_BUDGET_SECONDS, AgentError, chat_with_agent
 from game_platform.config import AuthConfig, ModelApiConfig
 from game_platform.model_api import ModelApiClient
 from game_platform.models import LinkedAccountKind
@@ -299,6 +304,53 @@ def email_verify(
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
 
+# Private drafts: every route requires authentication and owner checks.
+
+
+@router.get("/game-drafts")
+def list_game_drafts(platform: Platform, caller_id: CallerId) -> list[GameDraftOut]:
+    return [GameDraftOut.of(d) for d in platform.list_game_drafts(caller_id=caller_id)]
+
+
+@router.get("/game-drafts/{draft_id}")
+def get_game_draft(platform: Platform, caller_id: CallerId, draft_id: str) -> GameDraftOut:
+    return GameDraftOut.of(platform.get_game_draft(caller_id=caller_id, draft_id=draft_id))
+
+
+def _save_draft(platform: GamePlatform, caller_id: str, draft_id: str | None, body: GameDraftSave) -> GameDraftOut:
+    return GameDraftOut.of(platform.save_game_draft(
+        caller_id=caller_id, draft_id=draft_id, name=body.name,
+        description=body.description, code=body.code, expected_revision=body.expected_revision,
+        rules=GameRules(
+            allowed_player_counts=tuple(body.allowed_player_counts),
+            allows_leave_mid_match=body.allows_leave_mid_match,
+            allows_join_mid_match=body.allows_join_mid_match,
+        ),
+    ))
+
+
+@router.post("/game-drafts", status_code=HTTPStatus.CREATED)
+def create_game_draft(platform: Platform, caller_id: CallerId, body: GameDraftSave) -> GameDraftOut:
+    return _save_draft(platform, caller_id, None, body)
+
+
+@router.put("/game-drafts/{draft_id}")
+def save_game_draft(platform: Platform, caller_id: CallerId, draft_id: str, body: GameDraftSave) -> GameDraftOut:
+    return _save_draft(platform, caller_id, draft_id, body)
+
+
+@router.delete("/game-drafts/{draft_id}", status_code=HTTPStatus.NO_CONTENT)
+def delete_game_draft(platform: Platform, caller_id: CallerId, draft_id: str) -> None:
+    platform.delete_game_draft(caller_id=caller_id, draft_id=draft_id)
+
+
+@router.post("/game-drafts/{draft_id}/publish")
+def publish_game_draft(platform: Platform, caller_id: CallerId, draft_id: str, body: GameDraftPublish) -> GameOut:
+    return GameOut.of(platform.publish_game_draft(
+        caller_id=caller_id, draft_id=draft_id, expected_revision=body.expected_revision,
+    ))
+
+
 # Games
 
 
@@ -325,14 +377,24 @@ def list_games(platform: Platform, owner_user_id: str | None = None) -> list[Gam
     ]
 
 
+@router.get("/builder/games")
+def list_owned_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
+    return [GameOut.of(g) for g in platform.list_owned_games(caller_id=caller_id)]
+
+
+@router.post("/games/{game_id}/unpublish")
+def unpublish_game(platform: Platform, caller_id: CallerId, game_id: str) -> GameOut:
+    return GameOut.of(platform.unpublish_game(caller_id=caller_id, game_id=game_id))
+
+
 @router.get("/games/{game_id}")
-def get_game(platform: Platform, game_id: str) -> GameOut:
-    return GameOut.of(platform.get_game(game_id))
+def get_game(platform: Platform, game_id: str, caller_id: OptionalCallerId) -> GameOut:
+    return GameOut.of(platform.get_game(game_id, caller_id=caller_id))
 
 
 @router.get("/games/{game_id}/versions/{version}")
-def get_game_version(platform: Platform, game_id: str, version: int) -> GameOut:
-    return GameOut.of(platform.get_game_version(game_id, version))
+def get_game_version(platform: Platform, game_id: str, version: int, caller_id: OptionalCallerId) -> GameOut:
+    return GameOut.of(platform.get_game_version(game_id, version, caller_id=caller_id))
 
 
 @router.patch("/games/{game_id}")
@@ -393,8 +455,8 @@ def list_open_matches(platform: Platform) -> list[MatchOut]:
 
 
 @router.get("/matches/{match_id}")
-def get_match(platform: Platform, match_id: str) -> MatchOut:
-    return MatchOut.of(platform.get_match(match_id))
+def get_match(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchOut:
+    return MatchOut.of(platform.get_match(match_id, caller_id=caller_id))
 
 
 @router.patch("/matches/{match_id}")
@@ -458,8 +520,8 @@ def make_move(
 
 
 @router.get("/matches/{match_id}/moves")
-def list_moves(platform: Platform, match_id: str) -> list[MoveOut]:
-    return [MoveOut.of(move) for move in platform.get_match(match_id).moves]
+def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> list[MoveOut]:
+    return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
 
 
 # Debugging tools: an API console and a browser of all data. They're hidden from the
@@ -570,7 +632,7 @@ def admin_delete_match(platform: Platform, match_id: str) -> None:
 
 
 @debug_router.post("/agent/chat")
-def agent_chat(
+async def agent_chat(
     request: Request, caller_id: CallerId, body: AgentChatRequest
 ) -> AgentChatResponse:
     """One turn of conversation with the game-building agent (backs the builder's
@@ -587,7 +649,11 @@ def agent_chat(
             "configured on the server.",
         )
     try:
-        return chat_with_agent(client, body)
+        return await asyncio.wait_for(
+            run_in_threadpool(chat_with_agent, client, body), timeout=GENERATION_BUDGET_SECONDS
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Muse did not finish within two minutes. Try a smaller game or change.") from exc
     except AgentError as exc:
         raise HTTPException(
             status_code=HTTPStatus.BAD_GATEWAY, detail=str(exc)
@@ -608,7 +674,9 @@ async def _revalidate_pages(
     """Makes browsers check for newer pages and scripts on every load. Otherwise they
     may keep using a cached old script with a new page, which breaks it."""
     response = await call_next(request)
-    if request.method == "GET" and not response.headers.get(
+    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
+        response.headers["Cache-Control"] = "private, no-store"
+    elif request.method == "GET" and not response.headers.get(
         "content-type", ""
     ).startswith("application/json"):
         response.headers["Cache-Control"] = "no-cache"
