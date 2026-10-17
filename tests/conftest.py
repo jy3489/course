@@ -1,6 +1,6 @@
 import pytest
 
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 
 @pytest.fixture

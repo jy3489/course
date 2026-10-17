@@ -4,7 +4,7 @@ from pathlib import Path
 import httpx
 from fastapi.testclient import TestClient
 
-spec = importlib.util.spec_from_file_location('course_preview', Path(__file__).with_name('preview.py'))
+spec = importlib.util.spec_from_file_location('course_preview', Path(__file__).resolve().parents[1] / 'preview.py')
 preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 

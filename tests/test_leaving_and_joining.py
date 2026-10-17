@@ -1,6 +1,6 @@
 import httpx
 
-from game_platform.testing import Api, error
+from game_platform.tests.helpers import Api, error
 
 
 def test_leaving_a_waiting_match_frees_the_seat(api: Api) -> None:

@@ -1,10 +1,11 @@
 const { test } = require("node:test"),
   assert = require("node:assert/strict"),
   fs = require("node:fs"),
-  vm = require("node:vm");
+  vm = require("node:vm"),
+  path = require("node:path");
 function logic(name) {
   const code = fs
-    .readFileSync(`games/playroom/${name}.html`, "utf8")
+    .readFileSync(path.join(__dirname, `../../games/playroom/${name}.html`), "utf8")
     .match(/<script>([\s\S]*?)<\/script>/)[1];
   return vm.runInNewContext(code + ";Logic", { structuredClone, Math });
 }

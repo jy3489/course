@@ -81,7 +81,7 @@ Apple references: [Home Screen web apps](https://support.apple.com/guide/iphone/
 Run from the repository root:
 
 ```sh
-node --test tests/web/*.test.cjs test_builder.cjs test_portal.cjs
+node --test tests/web
 python -m pytest -q
 ```
 

@@ -10,7 +10,7 @@ from game_platform.json_file_store import JsonFileStore
 from game_platform.config import Config
 from game_platform.main import purge_example_data, warn_about_insecure_setup
 from game_platform.service import GamePlatform
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 
 def test_stats_count_users_games_and_matches(api: Api) -> None:

@@ -1,6 +1,6 @@
 import httpx
 
-from game_platform.testing import Api, error
+from game_platform.tests.helpers import Api, error
 
 
 def test_create_a_match_with_computer_opponents(api: Api) -> None:

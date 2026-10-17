@@ -22,7 +22,7 @@ from game_platform.service import (
     NotFoundError,
 )
 from game_platform.store import InMemoryStore
-from game_platform.testing import Api, error
+from game_platform.tests.helpers import Api, error
 
 
 class Clock:

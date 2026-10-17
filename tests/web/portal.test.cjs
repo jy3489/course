@@ -17,7 +17,7 @@ function setup(request=async()=>{}) {
     location:{hash:''},history:{replaceState(){}},
     Auth:{current:()=>({id:'owner'})},GameFrame:class{load(){}unload(){}send(){}},
     apiRequest:request,formatTime:()=>'',shortId:x=>x,showPageError(){},el:(tag,attrs={},...children)=>({...attrs,children})});
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'static/portal.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/portal.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
   run('refresh=async()=>{};state.games=[{id:"game",version:2,name:"Hanoi",allowed_player_counts:[1]}]');
   node('new-game').value='game';node('computers').value='0';

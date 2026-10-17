@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from game_platform.testing import Api, error, validation_errors
+from game_platform.tests.helpers import Api, error, validation_errors
 
 POKER: dict[str, Any] = {
     "name": "Poker",

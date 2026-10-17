@@ -6,7 +6,7 @@ from game_platform import example_data
 from game_platform.json_file_store import JsonFileStore, read_snapshot
 from game_platform.models import Match
 from game_platform.store import Snapshot
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 
 def _build() -> Snapshot:

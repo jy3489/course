@@ -18,7 +18,7 @@ function setup(request=async()=>{},catalog=async()=>[]) {
     Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}},
     apiRequest:(method,url,options)=>url==='/games'?catalog():request(method,url,options),showPageError(){},stateChangedMessage:x=>x,
     el:(tag,attrs={},...children)=>({...attrs,children})});
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
   const choose=async()=>{run('state.games='+JSON.stringify([game]));await run('select("game")');};
   return {node,run,storage,choose,setUser:value=>{user=value;}};

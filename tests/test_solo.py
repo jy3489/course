@@ -1,4 +1,4 @@
-from game_platform.testing import Api, error
+from game_platform.tests.helpers import Api, error
 
 
 def test_solo_game_can_start_continue_and_finish_with_one_human(api: Api):
