@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
 const game={id:'game',version:1,name:'Counter',description:'Add to ten',code:'<html>counter</html>',allowed_player_counts:[1],allows_leave_mid_match:false,allows_join_mid_match:false,published:true};
-function setup(request=async()=>{}) {
+function setup(request=async()=>{},catalog=async()=>[]) {
   const nodes=new Map(),storage=new Map();let user={id:'owner'},timer=0;
   function node(id){if(!nodes.has(id))nodes.set(id,{value:'',hidden:false,disabled:false,style:{},children:[],textContent:'',parentNode:null,
     replaceChildren(...items){this.children=items;for(const item of items)if(item&&typeof item==='object')item.parentNode=this;},
@@ -16,7 +16,7 @@ function setup(request=async()=>{}) {
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:(fn,ms)=>{if(ms===1500)Promise.resolve().then(fn);return ++timer;},clearTimeout(){},setInterval:()=>++timer,clearInterval(){},
     Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}},
-    apiRequest:request,showPageError(){},stateChangedMessage:x=>x,
+    apiRequest:(method,url,options)=>url==='/games'?catalog():request(method,url,options),showPageError(){},stateChangedMessage:x=>x,
     el:(tag,attrs={},...children)=>({...attrs,children})});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
@@ -146,4 +146,38 @@ test('a completed AI update respects a panel closed while the request was runnin
   const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Update';const pending=t.run('sendAgentMessage()');
   t.run('state.aiOpen=false;render()');wait.resolve({message:'Updated',code:'<html>new</html>',allowed_player_counts:[1]});await pending;
   assert.equal(t.run('state.editor.code'),'<html>new</html>');assert.equal(t.node('ai-panel').hidden,true);assert.equal(t.node('open-ai').hidden,false);
+});
+
+test('an existing public game becomes an autosaved independent copy without an AI request',async()=>{
+  const calls=[],source=JSON.stringify(game);
+  const t=setup(async(method,url,{body})=>{calls.push([method,url,body]);return saved(body,'copy-id');},async()=>[game]);
+  await t.run('select("new")');assert.equal(t.node('starter-game').value,'game');t.run('useStarter()');
+  assert.equal(t.run('state.editor.name'),'Counter (copy)');assert.equal(t.run('state.editor.code'),game.code);
+  assert.equal(t.node('starter-view').hidden,true);assert.equal(t.run('state.test.players.length'),1);
+  await t.run('flushAutosave()');assert.equal(calls.length,1);assert.equal(calls[0][1],'/game-drafts');
+  assert.equal(t.run('state.selectedId'),'copy-id');assert.equal(t.run('state.games.length'),0);assert.equal(JSON.stringify(game),source);
+});
+
+test('the starting-game catalog shows all games and filters names and descriptions',async()=>{
+  const catalog=Array.from({length:41},(_,i)=>({...game,id:'g'+i,name:'Game '+i,description:i===40?'Special puzzle':'Counter'}));
+  const t=setup(undefined,async()=>catalog);await t.run('select("new")');assert.equal(t.node('starter-game').children.length,41);
+  t.node('starter-search').value='SPECIAL';t.run('renderStarters()');assert.equal(t.node('starter-game').children.length,1);assert.equal(t.node('starter-game').value,'g40');
+  t.node('starter-search').value='absent';t.run('renderStarters()');assert.equal(t.node('use-starter').disabled,true);
+});
+
+test('catalog failure allows retry without overwriting a game',async()=>{
+  let attempts=0;const t=setup(undefined,async()=>{if(++attempts===1)throw new Error('offline');return [game];});
+  await t.run('select("new")');assert.match(t.node('starter-message').textContent,/offline/);assert.equal(t.node('load-starters').disabled,false);
+  await t.run('loadStarters()');assert.equal(t.node('use-starter').disabled,false);assert.equal(t.run('state.editor.code'),'');
+});
+
+test('a late catalog cannot replace a selected game',async()=>{
+  const wait=deferred(),t=setup(undefined,()=>wait.promise);const loading=t.run('select("new")');await t.choose();
+  wait.resolve([game]);await loading;t.run('useStarter()');assert.equal(t.run('state.selectedId'),'game');assert.equal(t.run('state.editor.name'),'Counter');
+});
+
+test('a late catalog response is ignored after switching accounts',async()=>{
+  const wait=deferred(),t=setup(async()=>[],()=>wait.promise);const loading=t.run('select("new")');
+  t.setUser({id:'other'});await t.run('onUserChanged()');wait.resolve([game]);await loading;
+  assert.equal(t.run('state.starters.length'),0);assert.equal(t.run('state.editor.code'),'');assert.equal(t.run('state.starterLoading'),false);
 });

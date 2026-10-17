@@ -698,16 +698,23 @@ keep compatible backups when deploying backend changes.
 
 ### Navigation
 
-Builder and Portal share sidebar **Play / Build** navigation and an account menu.
-The former upper navigation bar is removed on both pages. Portal offline status and
-Retry sync are in its sidebar footer. Diagnostic pages remain accessible by their
-existing URLs. The service-worker shell cache must be bumped with its asset list
+New game also offers **Start from an existing game**: browse the full public catalog
+or search names and descriptions, then **Use as starting point**. This opens a
+playable independent copy and autosaves it under your account without requesting
+AI generation or changing the original. Ask AI to customize it; Publish releases
+your copy as a new public game.
+
+Builder and Portal retain the shared global top bar, including the account menu
+and links to Portal, Builder, API console, Browse data, Statistics and OpenAPI docs.
+Only the Builder's former three-step tab strip is removed. Portal offline status
+and Retry sync are in its sidebar footer. Existing diagnostic authentication stays
+unchanged. The service-worker shell cache must be bumped with its asset list
 whenever the Portal shell changes.
 
 ### Portal
 
-The portal uses the builder's navy, lime, cyan and pink palette with shared sidebar
-navigation. New match is a large central card with a searchable game combobox,
+The portal uses the builder's navy, lime, cyan and pink palette below the shared
+top bar. New match is a large central card with a searchable game combobox,
 game details and a direct solo start button. Type a name to filter the catalog;
 use arrow keys/Enter or click a result. The sidebar contains collapsible Your turn, Ongoing, Waiting,
 Finished and Open matches sections. Native disclosure nodes and unchanged list

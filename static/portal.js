@@ -515,7 +515,7 @@ function renderMatch() {
   if (!match) {
     $("placeholder").textContent = user
       ? "Your match will open here. You can also select a match from the sidebar."
-      : "Sign in from the sidebar, then choose a game above.";
+      : "Sign in at the top right, then choose a game above.";
     return;
   }
   const game = gameOf(match.game_id, match.game_version);

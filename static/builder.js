@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const EMPTY = {name:"",description:"",code:"",allowed_player_counts:[2],allows_leave_mid_match:false,allows_join_mid_match:false};
 const content = value => Object.fromEntries(Object.keys(EMPTY).map(key => [key, value[key] ?? EMPTY[key]]));
 const copy = value => JSON.parse(JSON.stringify(value));
-const state = {games:[],drafts:[],selectedId:null,editor:copy(EMPTY),baseline:null,session:0,
+const state = {games:[],drafts:[],starters:[],starterLoading:false,starterRequest:0,selectedId:null,editor:copy(EMPTY),baseline:null,session:0,
   savePromise:null,saveTimer:null,saveError:"",publishing:false,restoring:false,deleteArmed:false,
   agentRequest:null,agentSending:false,agentDebug:false,messages:[],log:[],undo:[],test:null,
   aiOpen:true,panelPosition:null,saveWarning:"",ownerId:null};
@@ -64,6 +64,41 @@ async function select(id) {
   try {localStorage.setItem("game-platform.builder.last.v2."+me().id,id);} catch {}
   if (state.editor.code) {renderPlayModes();startTest();}
   if (isDirty()) scheduleAutosave();
+  if (id === "new" && !state.editor.code) {$("starter-search").value="";await loadStarters();}
+}
+function renderStarters() {
+  const query=$("starter-search").value.trim().toLocaleLowerCase();
+  const games=state.starters.filter(game=>(game.name+" "+(game.description || "")).toLocaleLowerCase().includes(query));
+  const previous=$("starter-game").value;
+  $("starter-game").replaceChildren(...games.map(game=>el("option",{value:game.id,textContent:game.name+" · v"+game.version})));
+  $("starter-game").value=games.some(game=>game.id===previous)?previous:games[0]?.id || "";
+  $("load-starters").disabled=state.starterLoading;
+  $("starter-game").disabled=state.starterLoading;
+  $("use-starter").disabled=state.starterLoading || !games.length || state.agentSending || state.publishing || state.restoring || Boolean(state.savePromise);
+}
+async function loadStarters() {
+  const request=++state.starterRequest,user=me();
+  state.starterLoading=true;renderStarters();setMessage("starter-message","Loading games…");
+  try {
+    const games=await apiRequest("GET","/games");
+    if (request!==state.starterRequest || me()?.id!==user?.id) return;
+    state.starters=games;
+    setMessage("starter-message",games.length?"Browse all "+games.length+" games or search to narrow the list.":"No games are available yet.");
+  } catch(error) {
+    if(request===state.starterRequest)setMessage("starter-message","Couldn't load games: "+error.message,"error");
+  } finally {
+    if(request===state.starterRequest){state.starterLoading=false;renderStarters();}
+  }
+}
+function useStarter() {
+  if (!me() || state.selectedId!=="new" || state.editor.code || state.agentSending || state.publishing || state.restoring || state.savePromise || state.starterLoading) return;
+  const game=state.starters.find(item=>item.id===$("starter-game").value);
+  if (!game) return;
+  state.editor=content({...game,name:game.name+" (copy)",description:(game.description || game.name)+" · Based on "+game.name+" v"+game.version+"."});
+  state.messages=[];state.log=[];state.undo=[];state.aiOpen=true;
+  render();renderPlayModes();startTest();scheduleAutosave();
+  agentLog("system","Started your own copy of "+game.name+" v"+game.version+". Ask AI to change it, or publish when ready.");
+  rememberWork();
 }
 function scheduleAutosave() {
   state.deleteArmed=false;
@@ -151,6 +186,7 @@ function renderStatus() {
   $("open-ai").hidden=!state.editor.code || state.aiOpen;
   $("open-ai").textContent=state.agentSending?"AI is working…":"Ask AI";
   $("agent-stop").hidden=!state.agentSending;
+  renderStarters();
   $("game-summary").textContent=state.editor.description;
   $("game-version").textContent=game ? "v"+game.version:"First version";
   $("play-game").hidden=!game || game.published===false;
@@ -411,6 +447,7 @@ function initFloatingPanel() {
 }
 async function onUserChanged() {
   clearTimeout(state.saveTimer);clearAgent();state.session++;
+  state.starterRequest++;state.starterLoading=false;state.starters=[];
   state.selectedId=null;state.baseline=null;state.editor=copy(EMPTY);state.savePromise=null;state.saveError="";state.saveWarning="";
   state.ownerId=null;state.publishing=false;state.restoring=false;state.games=[];state.drafts=[];
   state.messages=[];state.log=[];state.undo=[];stopTest();render();
@@ -431,6 +468,8 @@ async function main() {
   $("play-mode").addEventListener("change",startTest);$("restart").addEventListener("click",startTest);
   $("undo-move").addEventListener("click",undoTestMove);$("load-version").addEventListener("click",restoreVersion);
   $("delete-game").addEventListener("click",deleteGame);$("agent-send").addEventListener("click",sendAgentMessage);
+  $("load-starters").addEventListener("click",loadStarters);$("use-starter").addEventListener("click",useStarter);
+  $("starter-search").addEventListener("input",renderStarters);
   $("agent-stop").addEventListener("click",stopAgentWaiting);
   $("agent-input").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey))sendAgentMessage();});
   document.addEventListener("auth-changed",()=>{Auth.renderMenu($("account-menu"));onUserChanged();});
