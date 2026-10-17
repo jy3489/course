@@ -88,6 +88,11 @@ or null when the code is unchanged.
   REQUIRED whenever returning code. Use [1] for a true solo game; [2] for a \
   two-seat game (humans or a human plus a computer); [1,2] only if code supports both. \
   For discussion without code, use null. Metadata and code MUST agree.
+- "allows_leave_mid_match" and "allows_join_mid_match": booleans describing \
+  whether players may leave (a computer takes over) or join during play. Follow \
+  the user's requested rules, make the code support these seat changes, and \
+  preserve the current values for unrelated edits. Return both with code; use \
+  null for discussion without changes.
 
 Only return "code" when the user asked for a game or a change to it; for \
 questions and discussion, return "code": null and answer in "message"."""
@@ -104,6 +109,8 @@ class _GameContext:
     allowed_player_counts: list[int]
     code: str
     player_count_mode: str
+    allows_leave_mid_match: bool
+    allows_join_mid_match: bool
 
 
 def _context_block(context: _GameContext) -> str:
@@ -113,6 +120,8 @@ def _context_block(context: _GameContext) -> str:
         f"- description: {context.description or '(none)'}",
         f"- allowed player counts: {', '.join(map(str, context.allowed_player_counts)) or '(none)'}",
         f"- player count mode: {context.player_count_mode}",
+        f"- allows leave mid-match: {context.allows_leave_mid_match}",
+        f"- allows join mid-match: {context.allows_join_mid_match}",
     ]
     if context.code.strip():
         lines.append("- current code (the full HTML document the iframe runs):")
@@ -132,6 +141,8 @@ def build_prompt_messages(
         allowed_player_counts=list(request.allowed_player_counts),
         code=request.code,
         player_count_mode=request.player_count_mode,
+        allows_leave_mid_match=request.allows_leave_mid_match,
+        allows_join_mid_match=request.allows_join_mid_match,
     )
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
     history = [{"role": m.role, "content": m.content} for m in request.messages]
@@ -175,6 +186,9 @@ def _parse_reply(raw: str) -> AgentChatResponse:
     name = data.get("name")
     description = data.get("description")
     counts = data.get("allowed_player_counts")
+    flags = {key: data.get(key) for key in ("allows_leave_mid_match", "allows_join_mid_match")}
+    if any(value is not None and type(value) is not bool for value in flags.values()):
+        raise AgentError("The agent returned invalid mid-match rules (expected booleans).")
     if counts is not None:
         try:
             counts = TypeAdapter(PlayerCounts).validate_python(counts, strict=True)
@@ -188,6 +202,7 @@ def _parse_reply(raw: str) -> AgentChatResponse:
         if isinstance(description, str) and description.strip()
         else None,
         allowed_player_counts=counts,
+        **flags,
     )
 
 

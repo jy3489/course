@@ -25,7 +25,9 @@ function showPageError(text) {
   let banner = document.getElementById("page-error");
   if (!banner) {
     banner = el("div", { id: "page-error", class: "page-error" });
-    document.querySelector(".topbar")?.after(banner);
+    const header = document.querySelector(".topbar");
+    if (header) header.after(banner);
+    else document.body.prepend(banner);
   }
   banner.textContent = text;
   banner.hidden = !text;

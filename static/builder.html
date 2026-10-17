@@ -1,142 +1,50 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game platform · Builder</title>
-    <link rel="stylesheet" href="/static/common.css?v=5" />
-    <link rel="stylesheet" href="/static/builder.css?v=10" />
-  </head>
-  <body>
-    <header class="topbar">
-      <h1>Game platform</h1>
-      <nav>
-        <a href="/portal">Portal</a>
-        <a href="/builder" aria-current="page">Builder</a>
-        <a href="/console">API console</a>
-        <a href="/browse">Browse data</a>
-        <a href="/stats">Statistics</a>
-        <a href="/docs">OpenAPI docs</a>
-      </nav>
-      <span class="spacer"></span>
-      <span id="account-menu"></span>
-    </header>
-    <div class="app builder-shell">
-      <aside class="sidebar">
-        <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✳</span><span class="app-brand-name">Game Builder</span></div>
-        <div class="section-title">
-          Your library <span class="spacer"></span>
-          <button id="new-game" type="button">+ New game</button>
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game platform · Builder</title>
+  <link rel="stylesheet" href="/static/common.css?v=6" />
+  <link rel="stylesheet" href="/static/builder.css?v=11" />
+</head>
+<body>
+<div class="app builder-shell">
+  <aside class="sidebar">
+    <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✳</span><span class="app-brand-name">Game Builder</span></div>
+    <nav class="app-nav" aria-label="Game platform"><a href="/portal">Play</a><a href="/builder" aria-current="page">Build</a></nav>
+    <button id="new-game" type="button" class="primary">+ New game</button>
+    <div class="library-label">Your games</div><div id="games"></div>
+    <div class="sidebar-footer"><div id="account-menu"></div></div>
+  </aside>
+  <main class="work builder-main">
+    <section id="welcome" class="starter-card"><h1>Game Builder</h1><p>Make a game, play it, and keep improving it.</p><button id="welcome-action" type="button" class="primary">Sign in</button></section>
+    <div id="workspace" hidden>
+      <section id="starter-view" class="starter-card"><h1>Create a game</h1><p>Describe the game you want to play. AI handles the rules and player counts.</p><div id="starter-agent-home">
+        <div id="agent-tools">
+          <div id="agent-log" role="log" aria-label="AI conversation" hidden></div>
+          <div id="agent-activity" role="status" aria-live="polite" hidden><progress aria-label="Waiting for server response"></progress><strong id="agent-phase"></strong><span id="agent-elapsed"></span><p id="agent-wait-note"></p></div>
+          <label class="sr-only" for="agent-input">Describe a game or change</label>
+          <textarea id="agent-input" rows="4" placeholder="Describe the game you want to play…"></textarea>
+          <div class="agent-actions"><button id="agent-send" class="primary" type="button">Create game</button><button id="agent-stop" type="button" hidden>Stop waiting</button></div>
+          <div id="agent-message" class="message" role="status"></div>
         </div>
-        <div id="games"></div>
-      </aside>
-      <main class="work builder-main">
-        <div id="no-user" class="muted">Log in at the top right to see and build your games.</div>
-        <div id="workspace" hidden>
-          <a id="play-game" href="/portal" hidden>Play this game</a>
-          <div class="tabs" role="tablist">
-            <button id="tab-agent" type="button" role="tab" aria-selected="false" aria-controls="agent-panel"><span>01</span> Describe &amp; change</button>
-            <button id="tab-test" type="button" role="tab" aria-selected="false" aria-controls="test-panel"><span>02</span> Playtest</button>
-            <button id="tab-edit" type="button" role="tab" aria-selected="true" aria-controls="edit-panel"><span>03</span> Edit &amp; publish</button>
-          </div>
-          <section id="edit-panel" class="work" role="tabpanel" aria-labelledby="tab-edit">
-            <div class="edit-heading"><div><h3>Change the game</h3><div id="game-meta" class="muted"></div></div><div class="inline-row"><button id="save" type="button">Save draft</button><button id="publish" type="button" class="primary">Publish game</button></div></div>
-            <p class="muted">Save keeps your draft private to your account. Publish makes this version available to everyone.</p>
-            <div class="change-layout">
-              <div class="edit-preview"><h4>Play the current draft</h4><div id="edit-test-host"></div></div>
-              <aside class="edit-chat"><h4>Describe your change</h4><p>Change the rules, add a feature, or ask Muse to fix a bug. Review its proposal, apply it, then play the updated draft.</p><div id="edit-chat-host"></div></aside>
-            </div>
-            <div class="draft-toolbar"><button id="undo-ai-change" type="button" disabled>Undo applied change</button><span id="draft-status" class="muted"></span></div>
-            <div class="version-section"><h4>Published versions</h4><div id="published-versions" class="inline-row"></div><p class="muted">Loading a version changes your draft. Publish to make it the latest version.</p></div>
-            <details id="advanced-editor"><summary>Player settings &amp; source code</summary>
-            <div class="form-grid">
-              <label for="name">Name</label>
-              <input id="name" spellcheck="false" />
-              <label for="description">Description</label>
-              <input id="description" />
-              <label class="inline"><input id="lock-player-counts" type="checkbox" /> Lock the player counts below for AI generation</label>
-              <p class="muted">Leave unlocked to let Muse follow your prompt. Checking a player count below locks it; uncheck this lock to let prompts change modes again.</p>
-              <label>Player counts (1 = solo)</label>
-              <div id="counts" class="counts"></div>
-              <label>Mid-match</label>
-              <div class="inline-row">
-                <label class="inline"><input type="checkbox" id="allows-leave" /> players may leave (a computer takes over)</label>
-                <label class="inline"><input type="checkbox" id="allows-join" /> players may join</label>
-              </div>
-            </div>
-            <label for="code" class="muted">Code: the HTML document the game's iframe runs (see the game API in README.md)</label>
-            <textarea id="code" spellcheck="false"></textarea>
-            </details>
-            <div class="inline-row"><button id="revert" type="button">Revert to saved draft</button><button id="discard-draft" type="button" hidden>Discard private draft</button><button id="unpublish" type="button" hidden>Unpublish game</button><button id="delete" type="button" class="danger">Delete</button><span id="edit-message" class="message" role="status"></span></div>
-          </section>
-          <section id="test-panel" class="work" role="tabpanel" aria-labelledby="tab-test" hidden>
-            <h3 class="panel-heading">Take it for a spin<span class="panel-tag">THE PLAYGROUND</span></h3>
-            <div id="test-home"><div id="test-tools">
-            <div class="muted">
-              Pass-and-play: you play every human seat, in turn, with the game's current
-              code (saved or not). Moves stay in this page; nothing is sent to the server.
-            </div>
-            <div class="inline-row" aria-label="Playtest modes">
-              <button id="test-mode-solo" type="button">Solo</button>
-              <button id="test-mode-computer" type="button">Vs computer</button>
-              <button id="test-mode-human" type="button">Local multiplayer</button>
-            </div>
-            <div class="inline-row">
-              <label class="inline">Players <select id="test-count"></select></label>
-              <span id="test-seats" class="inline-row"></span>
-              <button id="test-start" type="button" class="primary">Start test</button>
-              <button id="test-undo" type="button">Undo last move</button>
-            </div>
-            <div class="test-layout">
-              <div id="test-frame" class="frame-box"></div>
-              <div>
-                <div id="test-status" class="message"></div>
-                <div id="test-log"></div>
-              </div>
-            </div>
-            </div></div>
-          </section>
-          <section id="agent-panel" class="work" role="tabpanel" aria-labelledby="tab-agent" hidden>
-            <h3 class="panel-heading">What are we playing?<span class="panel-tag">YOUR AI CO-CREATOR</span></h3>
-            <div class="muted">
-              Describe your idea or ask for a change. Apply the proposal, playtest it,
-              then Save to keep it private or Publish to share it with everyone.
-            </div>
-            <details id="starter-options"><summary>Start from a published game</summary><p class="muted">Load an existing game immediately, then ask Muse to change its rules. This creates an unpublished copy; it does not run AI generation.</p><div class="inline-row"><button id="load-starters" type="button">Load game catalog</button><select id="starter-game" aria-label="Published starting game"></select><button id="use-starter" type="button" disabled>Use as starting point</button></div></details>
-            <div id="agent-home"><div id="agent-tools">
-            <div id="agent-player-summary" class="muted"></div>
-            <button id="open-player-settings" type="button">Player settings &amp; code</button>
-            <div class="inline-row" style="margin-top: var(--space-sm)">
-              <label class="inline"><input type="checkbox" id="agent-debug" /> Show generation details</label>
-            </div>
-            <div id="agent-activity" hidden role="status" aria-live="polite"><progress aria-label="Waiting for server response"></progress><strong id="agent-phase">Sending request</strong><span id="agent-elapsed" aria-live="off"></span><p id="agent-wait-note">No game code has returned yet.</p></div>
-            <div id="agent-log"></div>
-            <div id="agent-proposal" class="proposal" hidden>
-              <div class="muted">Review this change before applying it. Nothing is published yet.</div>
-              <div id="agent-proposed-players" class="muted"></div>
-              <details><summary>Review proposed code</summary><pre id="agent-proposed-code"></pre></details>
-              <div class="inline-row">
-                <button id="agent-apply" type="button" class="primary">Apply</button>
-                <button id="agent-discard" type="button">Discard</button>
-              </div>
-            </div>
-            <div class="inline-row">
-              <textarea id="agent-input" rows="3" placeholder="Describe a game or a change, e.g. make the board 4×4 and require four in a row…"></textarea>
-            </div>
-            <div class="inline-row">
-              <button id="agent-send" type="button" class="primary">Let’s build ↗</button>
-              <button id="agent-stop" type="button" hidden>Stop waiting</button>
-              <button id="agent-save" type="button">Save draft</button>
-              <button id="agent-publish" type="button">Publish game</button>
-              <span id="agent-message" class="message"></span>
-            </div>
-            </div></div>
-          </section>
-        </div>
-      </main>
+      </div></section>
+      <section id="play-view" hidden>
+        <div class="workspace-heading"><div class="game-heading"><label class="sr-only" for="game-name">Game name</label><input id="game-name" aria-label="Game name" placeholder="Untitled game" /><span id="game-version"></span></div><button id="publish" class="primary" type="button">Publish</button></div>
+        <div class="workspace-meta"><span id="save-status" role="status"></span><button id="retry-save" type="button" hidden>Retry autosave</button><a id="play-game" href="/portal" hidden>Play online ↗</a></div>
+        <p id="game-summary"></p>
+        <div class="play-toolbar"><label for="play-mode" class="sr-only">Play mode</label><select id="play-mode" aria-label="Play mode"></select><button id="restart" type="button">Restart</button><button id="undo-move" type="button">Undo move</button><span class="toolbar-spacer"></span><button id="undo-ai-change" type="button">Undo AI change</button></div>
+        <div id="test-frame" class="frame-box"></div><div id="test-status" class="message" role="status"></div>
+        <details class="game-history"><summary>Version history</summary><div id="version-history" class="history-controls"><label class="sr-only" for="versions">Published version</label><select id="versions" aria-label="Published version"></select><button id="load-version" type="button">Load version</button></div><button id="delete-game" type="button" class="danger">Delete game</button></details>
+        <div id="workspace-message" class="message" role="status"></div>
+      </section>
     </div>
-    <script src="/static/common.js?v=3"></script>
-    <script src="/static/auth.js?v=1"></script>
-    <script src="/static/builder.js?v=20"></script>
-  </body>
+  </main>
+</div>
+<aside id="ai-panel" aria-label="AI game assistant" hidden>
+  <div class="ai-panel-heading"><button id="ai-drag-handle" type="button" aria-label="Move AI panel" title="Drag to move. Arrow keys move the panel when focused.">✳ AI assistant <span aria-hidden="true">⠿</span></button><button id="close-ai" type="button" aria-label="Close AI assistant">×</button></div>
+  <div id="ai-panel-body"></div>
+</aside>
+<button id="open-ai" type="button" hidden>Ask AI</button>
+<script src="/static/common.js?v=4"></script><script src="/static/auth.js?v=1"></script><script src="/static/builder.js?v=21"></script>
+</body>
 </html>

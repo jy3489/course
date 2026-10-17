@@ -1,291 +1,144 @@
-const {test} = require('node:test');
-const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const fs = require('node:fs');
-const path = require('node:path');
-function setup(request = async () => {}) {
-  const nodes = new Map();
-  const node = id => {
-    if (!nodes.has(id)) nodes.set(id, {value:'', checked:false, disabled:false, hidden:false,
-      textContent:'', children:[], replaceChildren(...items){this.children=items;},
-      append(...items){this.children.push(...items);}, prepend(...items){this.children.unshift(...items);}, querySelectorAll(){return [];},
-      setAttribute(){}, addEventListener(){}});
-    return nodes.get(id);
-  };
-  const ctx = vm.createContext({console, URLSearchParams, Set, AbortController, setInterval, clearInterval, setTimeout: fn=>fn(),
-    document:{getElementById:node}, window:{addEventListener(){}},
-    Auth:{current:()=>({id:'user'})},
-    GameFrame:class {load(code){this.lastCode=code;} unload(){} send(){}},
-    apiRequest:request, formatTime:()=>'', el:(tag,attrs={})=>Object.assign(attrs.id?node(attrs.id):node(Symbol()),attrs),
-    stateChangedMessage: x=>x});
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/, ''),ctx);
-  const run = code=>vm.runInContext(code,ctx);
-  run('select("new");');
-  node('name').value='Game';
-  node('count-2').checked=true;
-  return {node,run};
-}
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const fs=require('node:fs');
+const path=require('node:path');
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
-test('selecting the current game preserves unsaved edits',()=>{
-  const {node,run}=setup(); node('code').value='unsaved';run('select("new")');assert.equal(node('code').value,'unsaved');
-});
-test('duplicate create requests are blocked and edits during save survive',async()=>{
-  const wait=deferred();let calls=0;
-  const {node,run}=setup(()=>{calls++;return wait.promise;});
-  const first=run('save()');await run('save()');assert.equal(calls,1);assert.equal(node('save').disabled,true);
-  node('code').value='newer';
-  wait.resolve({id:'saved',revision:1,base_version:0,name:'Game',description:'',code:'old',allowed_player_counts:[2]});
-  await first;assert.equal(node('code').value,'newer');assert.equal(run('isDirty()'),true);
-  assert.match(node('agent-message').textContent,/Saved privately/);
-  assert.equal(node('play-game').hidden,true);
-  assert.equal(run('state.games.length'),0);
-});
-test('pending proposals prevent publishing older editor code',async()=>{
-  let calls=0;const {node,run}=setup(async()=>{calls++;});
-  run('agentHistory().pending={code:"proposal"}');await run('save()');
-  assert.equal(calls,0);assert.match(node('agent-message').textContent,/apply or discard/);
-});
-test('late agent replies are ignored after switching conversations',async()=>{
-  const wait=deferred();const {node,run}=setup(()=>wait.promise);
-  node('agent-input').value='build chess';const first=run('sendAgentMessage()');
-  run('state.baseline=JSON.stringify(editorValues()); select("other")');
-  wait.resolve({message:'old reply',code:'<html>old</html>'});await first;
-  assert.equal(node('agent-log').children.length,0);assert.equal(run('state.agent'),null);
-  assert.equal(node('agent-send').disabled,false);
-});
-test('keyboard send cannot start concurrent agent requests',async()=>{
-  const wait=deferred();let calls=0;const {node,run}=setup(()=>{calls++;return wait.promise;});
-  node('agent-input').value='first';const first=run('sendAgentMessage()');
-  node('agent-input').value='second';await run('sendAgentMessage()');assert.equal(calls,1);
-  wait.resolve({message:'done'});await first;
-});
-test('local tests reject duplicate and out-of-range next seats',()=>{
-  const {run}=setup();
-  run('state.test={players:[{name:"A",kind:"human"},{name:"B",kind:"human"}],moves:[],state:null,turn:[0],status:"ongoing",awaiting:true}');
-  run('onTestMove({new_state:{},next_turn_player_indices:[1,1]})');assert.equal(run('state.test.moves.length'),0);
-  run('onTestMove({new_state:{},next_turn_player_indices:[2]})');assert.equal(run('state.test.moves.length'),0);
-  run('onTestMove({new_state:{},next_turn_player_indices:[1]})');assert.equal(run('state.test.moves.length'),1);
-});
+const game={id:'game',version:1,name:'Counter',description:'Add to ten',code:'<html>counter</html>',allowed_player_counts:[1],allows_leave_mid_match:false,allows_join_mid_match:false,published:true};
+function setup(request=async()=>{}) {
+  const nodes=new Map(),storage=new Map();let user={id:'owner'},timer=0;
+  function node(id){if(!nodes.has(id))nodes.set(id,{value:'',hidden:false,disabled:false,style:{},children:[],textContent:'',parentNode:null,
+    replaceChildren(...items){this.children=items;for(const item of items)if(item&&typeof item==='object')item.parentNode=this;},
+    append(...items){this.children.push(...items);for(const item of items)if(item&&typeof item==='object')item.parentNode=this;},
+    focus(){},setAttribute(){},getBoundingClientRect(){return {x:100,y:100,width:420,height:500};},addEventListener(){}});return nodes.get(id);}
+  const ctx=vm.createContext({console,Set,Map,AbortController,Date,JSON,structuredClone,
+    document:{getElementById:node,addEventListener(){}},window:{addEventListener(){},innerWidth:1280,innerHeight:720},
+    localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
+    setTimeout:(fn,ms)=>{if(ms===1500)Promise.resolve().then(fn);return ++timer;},clearTimeout(){},setInterval:()=>++timer,clearInterval(){},
+    Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}},
+    apiRequest:request,showPageError(){},stateChangedMessage:x=>x,
+    el:(tag,attrs={},...children)=>({...attrs,children})});
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
+  const run=code=>vm.runInContext(code,ctx);
+  const choose=async()=>{run('state.games='+JSON.stringify([game]));await run('select("game")');};
+  return {node,run,storage,choose,setUser:value=>{user=value;}};
+}
+function saved(body,id='new-id',revision=1){return {...body,id,revision,base_version:0};}
 
-test('publish failures are visible in both tabs and unlock retry',async()=>{
-  const {node,run}=setup(async()=>{throw new Error('offline');});
-  await run('save()');
-  assert.match(node('agent-message').textContent,/offline/);
-  assert.equal(node('edit-message').textContent,node('agent-message').textContent);
-  assert.equal(node('save').disabled,false);
+test('selecting the same game preserves current work',async()=>{
+  const t=setup();await t.choose();t.run('state.editor.name="New name"');await t.run('select("game")');assert.equal(t.run('state.editor.name'),'New name');
 });
-test('late agent failures cannot overwrite a new conversation input',async()=>{
-  const wait=deferred();const {node,run}=setup(()=>wait.promise);
-  node('agent-input').value='old prompt';const first=run('sendAgentMessage()');
-  run('resetAgent()');node('agent-input').value='new prompt';
-  wait.reject(new Error('old failure'));await first;
-  assert.equal(node('agent-input').value,'new prompt');
-  assert.equal(node('agent-message').textContent,'');
+test('autosave writes a working copy without publishing a version',async()=>{
+  const calls=[];const t=setup(async(method,url,{body})=>{calls.push([method,url,body]);return saved(body);});
+  await t.run('select("new")');t.run('state.editor={...state.editor,name:"New game",code:"new code"};scheduleAutosave()');
+  assert.equal(calls.length,0);assert.equal(await t.run('flushAutosave()'),true);
+  assert.equal(calls.length,1);assert.equal(calls[0][1],'/game-drafts');assert.equal(t.run('state.selectedId'),'new-id');
+  assert.equal(t.run('isDirty()'),false);assert.equal(t.run('state.games.length'),0);
 });
-
-test('leaving warns for drafts and proposals but not clean saved games',()=>{
-  const {run}=setup();
-  assert.equal(run('let warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),true);
-  assert.equal(run('state.baseline=JSON.stringify(editorValues()); warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),false);
-  assert.equal(run('agentHistory().pending={code:"draft"}; warned=false; protectUnsavedChanges({preventDefault(){warned=true;}}); warned'),true);
+test('edits made during autosave serialize into a second write without duplicate creation',async()=>{
+  const wait=deferred(),calls=[];const t=setup(async(method,url,{body})=>{calls.push([url,body]);return calls.length===1?wait.promise:saved(body,'new-id',2);});
+  await t.run('select("new")');t.run('state.editor.name="First"');const first=t.run('flushAutosave()');
+  t.run('state.editor.name="Second"');const second=t.run('flushAutosave()');
+  wait.resolve(saved(calls[0][1]));await first;await second;
+  assert.equal(calls.length,2);assert.equal(calls[1][0],'/game-drafts/new-id');assert.equal(calls[1][1].expected_revision,1);
+  assert.equal(t.run('selectedDraft().name'),'Second');assert.equal(t.run('isDirty()'),false);
 });
-
-test('connected preview polls its job without repeating the paid request',async()=>{
-  const calls=[];
-  const {node,run}=setup(async(method,path)=>{
-    calls.push([method,path]);
-    return method==='POST' ? {preview_job_id:'job-1'} : {message:'Muse finished',code:'<html>game</html>'};
-  });
-  node('agent-input').value='backgammon';await run('sendAgentMessage()');
-  assert.deepEqual(calls,[['POST','/agent/chat'],['GET','/preview/jobs/job-1']]);
-  assert.equal(run('state.agent.pending.code'),'<html>game</html>');
-  assert.equal(node('agent-send').disabled,false);
+test('Publish waits for autosave and releases the saved revision once',async()=>{
+  const wait=deferred(),calls=[];const t=setup(async(method,url,{body})=>{calls.push([url,body]);return url.endsWith('/publish')?{...game,id:'new-id',name:'New'}:wait.promise;});
+  await t.run('select("new")');t.run('state.editor={...state.editor,name:"New",code:"code"}');
+  const publish=t.run('publishVersion()');await t.run('publishVersion()');assert.equal(calls.length,1);
+  wait.resolve(saved(calls[0][1]));await publish;
+  assert.equal(calls.length,2);assert.equal(calls[1][0],'/game-drafts/new-id/publish');assert.equal(calls[1][1].expected_revision,1);
+  assert.equal(t.run('state.games.length'),1);
 });
-
-test('a one-seat test keeps seat zero until the solo game ends',()=>{
-  const {node,run}=setup();
-  node('count-1').checked=true;node('count-2').checked=false;
-  run('renderTestSetup()');
-  assert.equal(node('test-mode-solo').disabled,false);
-  assert.equal(node('test-mode-computer').disabled,true);
-  run('state.test={players:[{name:"Solo",kind:"human"}],moves:[],state:null,turn:[0],status:"ongoing",awaiting:true}');
-  run('onTestMove({new_state:{score:1},next_turn_player_indices:[0]})');
-  assert.equal(run('state.test.status'),'ongoing');
-  run('onTestMove({new_state:{score:2},next_turn_player_indices:null})');
-  assert.equal(run('state.test.status'),'over');
+test('autosave failure blocks publication and keeps a local recovery copy',async()=>{
+  const calls=[];const t=setup(async(method,url)=>{calls.push(url);throw new Error('network unavailable');});await t.choose();
+  t.run('state.editor.name="Recover me";scheduleAutosave()');await t.run('publishVersion()');
+  assert.deepEqual(calls,['/game-drafts/game']);assert.match(t.node('save-status').textContent,/Autosave failed/);
+  const record=JSON.parse(t.storage.get('game-platform.builder.work.v2.owner.game'));assert.equal(record.values.name,'Recover me');
 });
-
-test('applied AI changes are drafts, open the editing workspace, and can be undone',()=>{
-  const {node,run}=setup();node('code').value='original';
-  run('state.baseline=JSON.stringify(editorValues()); agentHistory().pending={code:"updated",name:"Renamed game",base:JSON.stringify(editorValues())}; applyAgentProposal()');
-  assert.equal(node('code').value,'updated');assert.equal(node('name').value,'Renamed game');
-  assert.equal(run('state.activeTab'),'edit');assert.equal(run('isDirty()'),true);
-  run('undoAppliedChange()');assert.equal(node('code').value,'original');assert.equal(node('name').value,'Game');
-  assert.equal(run('isDirty()'),false);
+test('a failed publish keeps the successfully autosaved game',async()=>{
+  const t=setup(async(method,url,{body})=>{if(url.endsWith('/publish'))throw new Error('temporary outage');return saved(body,'game');});await t.choose();
+  t.run('state.editor.name="Changed"');await t.run('publishVersion()');
+  assert.equal(t.run('selectedDraft().name'),'Changed');assert.equal(t.run('state.games[0].name'),'Counter');assert.match(t.node('save-status').textContent,/Couldn't publish/);
 });
-
-test('follow-up prompts send the latest applied game code and conversation',async()=>{
-  const bodies=[];
-  const {node,run}=setup(async(method,path,opts)=>{
-    bodies.push(opts.body);
-    return {message:'Changed',code:bodies.length===1?'first draft':'second draft'};
-  });
-  node('code').value='initial';node('agent-input').value='Change the win rule';
-  await run('sendAgentMessage()');run('applyAgentProposal()');
-  node('agent-input').value='Now add a score counter';await run('sendAgentMessage()');
-  assert.equal(bodies[1].code,'first draft');assert.equal(bodies[1].messages.length,3);
-  assert.equal(bodies[1].messages[2].content,'Now add a score counter');
-  assert.equal(node('code').value,'first draft'); // review is required before replacing it
+test('AI updates automatically apply code and inferred counts and open the playable workspace',async()=>{
+  const calls=[];const t=setup(async(method,url,{body})=>{calls.push([url,body]);return {message:'Ready',name:'Solo counter',code:'<html>solo</html>',allowed_player_counts:[1]};});
+  await t.run('select("new")');t.node('agent-input').value='Make a solo counter';await t.run('sendAgentMessage()');
+  assert.equal(calls[0][1].player_count_mode,'auto');assert.equal(t.run('state.editor.code'),'<html>solo</html>');
+  assert.equal(t.run('state.editor.allowed_player_counts[0]'),1);assert.equal(t.node('starter-view').hidden,true);assert.equal(t.node('play-view').hidden,false);
+  assert.equal(t.run('state.test.players.length'),1);assert.equal(t.run('isDirty()'),true);assert.equal(t.run('state.undo.length'),1);
 });
-
-test('an outdated proposal cannot overwrite edits made during generation',async()=>{
-  const wait=deferred();const {node,run}=setup(()=>wait.promise);
-  node('agent-input').value='change rules';const request=run('sendAgentMessage()');
-  node('code').value='my newer edit';wait.resolve({message:'done',code:'outdated proposal'});await request;
-  run('applyAgentProposal()');assert.equal(node('code').value,'my newer edit');
-  assert.match(node('agent-message').textContent,/draft changed/);
+test('missing or invalid AI player counts cannot overwrite the game',async()=>{
+  for(const counts of [undefined,[],[0],[2,2],['1']]){
+    const t=setup(async()=>({message:'Ready',code:'bad update',allowed_player_counts:counts}));await t.choose();t.node('agent-input').value='Change it';await t.run('sendAgentMessage()');
+    assert.equal(t.run('state.editor.code'),game.code);assert.match(t.node('agent-message').textContent,/valid player counts/);
+  }
 });
-
-test('loading a published version creates an undoable unpublished draft',async()=>{
-  const paths=[];
-  const {node,run}=setup(async(method,path)=>{paths.push(path);return {name:'Game',description:'',code:'version one',allowed_player_counts:[2]};});
-  run('state.games=[{id:"saved",version:2}];state.selectedId="saved";state.baseline=JSON.stringify(editorValues())');
-  await run('restorePublishedVersion(1)');
-  assert.equal(paths[0],'/games/saved/versions/1');assert.equal(node('code').value,'version one');
-  assert.equal(run('isDirty()'),true);assert.equal(run('state.draftUndo.length'),1);
+test('a rename during generation is preserved instead of applying stale code',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Change it';const pending=t.run('sendAgentMessage()');
+  t.run('state.editor.name="Keep my edit"');wait.resolve({message:'Done',code:'stale',allowed_player_counts:[1]});await pending;
+  assert.equal(t.run('state.editor.name'),'Keep my edit');assert.equal(t.run('state.editor.code'),game.code);
 });
-
-test('switching between test and edit preserves the running test snapshot',()=>{
-  const {node,run}=setup();node('code').value='edited after test began';
-  run('state.test={code:"running code",players:[{kind:"human",name:"A"}],moves:[],turn:[0],state:{score:4},status:"ongoing"};showTab("edit")');
-  assert.equal(run('frame.lastCode'),'running code');assert.equal(run('state.test.state.score'),4);
+test('late replies cannot overwrite a different selected game',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Update';const pending=t.run('sendAgentMessage()');
+  await t.run('select("new")');wait.resolve({message:'Late',code:'stale',allowed_player_counts:[1]});await pending;
+  assert.equal(t.run('state.editor.code'),'');assert.equal(t.run('state.selectedId'),'new');
 });
-
-test('stopping a request preserves the prompt and ignores its eventual reply',async()=>{
-  const wait=deferred();const {node,run}=setup(()=>wait.promise);
-  node('agent-input').value='implement backgammon';const first=run('sendAgentMessage()');
-  assert.equal(node('agent-stop').hidden,false);run('stopAgentWaiting()');
-  wait.resolve({message:'late',code:'late code'});await first;
-  assert.equal(node('agent-input').value,'implement backgammon');
-  assert.equal(run('state.agent.pending'),null);assert.equal(run('state.agentSending'),false);
-  assert.match(node('agent-message').textContent,/Stopped waiting/);
+test('duplicate generation and publication during generation are blocked',async()=>{
+  const wait=deferred();let calls=0;const t=setup(()=>{calls++;return wait.promise;});await t.choose();t.node('agent-input').value='Update';const pending=t.run('sendAgentMessage()');
+  t.node('agent-input').value='Again';await t.run('sendAgentMessage()');await t.run('publishVersion()');assert.equal(calls,1);
+  wait.resolve({message:'No changes'});await pending;
 });
-
-test('starting from a catalog game creates an attributed unpublished copy',async()=>{
-  let calls=0;const {node,run}=setup(async()=>{calls++;return [{id:'bg',version:3,name:'Backgammon',description:'Board game',code:'published code',allowed_player_counts:[2]}];});
-  await run('loadStarters()');node('starter-game').value='bg';run('useStarter()');
-  assert.equal(calls,1);assert.equal(node('code').value,'published code');
-  assert.equal(node('name').value,'Backgammon (copy)');assert.match(node('description').value,/Based on Backgammon v3/);
-  assert.equal(run('state.selectedId'),'new');assert.equal(run('state.activeTab'),'edit');
-  assert.equal(run('isDirty()'),true);
+test('Undo restores code and player counts together and queues an autosave',async()=>{
+  const t=setup();await t.choose();t.run('state.undo.push(editorValues());state.editor.code="new";state.editor.allowed_player_counts=[2];undoAppliedChange()');
+  assert.equal(t.run('state.editor.code'),game.code);assert.deepEqual(Array.from(t.run('state.editor.allowed_player_counts')),[1]);assert.ok(t.storage.has('game-platform.builder.work.v2.owner.game'));
 });
-
-test('Save uses only private storage and reopens the saved draft',async()=>{
-  const calls=[];
-  const {node,run}=setup(async(method,path,opts)=>{
-    calls.push([method,path]);
-    return {...opts.body,id:'private',revision:1,base_version:0};
-  });
-  node('code').value='private code';await run('save()');
-  assert.deepEqual(calls,[['POST','/game-drafts']]);
-  assert.equal(run('isDirty()'),false);
-  assert.equal(node('play-game').hidden,true);
-  run('select("new");select("private")');
-  assert.equal(node('code').value,'private code');
-  assert.equal(run('isDirty()'),false);
+test('solo preview accepts seat zero until the game ends',async()=>{
+  const t=setup();await t.choose();t.run('onTestMove({new_state:{n:1},next_turn_player_indices:[0]})');assert.equal(t.run('state.test.state.n'),1);
+  t.run('onTestMove({new_state:{n:2},next_turn_player_indices:null})');assert.equal(t.run('state.test.status'),'over');
+  t.run('onTestMove({new_state:{n:9},next_turn_player_indices:[0]})');assert.equal(t.run('state.test.state.n'),2);
 });
-
-test('Publish explicitly publishes the saved revision and shows the public link',async()=>{
-  const calls=[];
-  const {node,run}=setup(async(method,path,opts)=>{
-    calls.push([method,path,opts.body.expected_revision]);
-    return path.endsWith('/publish')
-      ? {id:'public',version:1,name:'Game',description:'',code:'public code',allowed_player_counts:[2]}
-      : {...opts.body,id:'public',revision:3,base_version:0};
-  });
-  await run('save(true)');
-  assert.deepEqual(calls,[['POST','/game-drafts',null],['POST','/game-drafts/public/publish',3]]);
-  assert.match(node('agent-message').textContent,/Published version 1/);
-  assert.equal(node('play-game').hidden,false);
-  assert.equal(node('play-game').href,'/portal#game=public');
+test('preview rejects duplicate and nonexistent next seats',async()=>{
+  const t=setup();await t.choose();for(const next of ['[0,0]','[1]','[]']){t.run('onTestMove({new_state:{bad:true},next_turn_player_indices:'+next+'})');assert.equal(t.run('state.test.moves.length'),0);}
 });
-
-test('failed publication preserves the successfully saved private draft',async()=>{
-  const {node,run}=setup(async(method,path,opts)=>{
-    if(path.endsWith('/publish'))throw new Error('server offline');
-    return {...opts.body,id:'private',revision:1,base_version:0};
-  });
-  await run('save(true)');
-  assert.equal(run('state.selectedId'),'private');
-  assert.equal(run('state.drafts.length'),1);
-  assert.equal(run('isDirty()'),false);
-  assert.equal(node('play-game').hidden,true);
-  assert.match(node('agent-message').textContent,/Draft saved privately, but publishing failed/);
+test('closing the floating panel preserves a running request and reopening preserves the prompt',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Update';const pending=t.run('sendAgentMessage()');
+  t.run('state.aiOpen=false;render()');assert.equal(t.node('ai-panel').hidden,true);assert.equal(t.node('open-ai').hidden,false);assert.equal(t.run('state.agentRequest.cancelled'),false);
+  t.node('agent-input').value='Next idea';t.run('state.aiOpen=true;render()');assert.equal(t.node('agent-input').value,'Next idea');
+  wait.resolve({message:'Done'});await pending;
 });
-
-test('saving edits to a public game leaves its public code and version untouched',async()=>{
-  const {node,run}=setup(async(method,path,opts)=>{
-    assert.equal(method,'PUT');assert.equal(path,'/game-drafts/public');
-    return {...opts.body,id:'public',revision:1,base_version:2};
-  });
-  run('state.games=[{id:"public",name:"Game",code:"published code",version:2}];state.selectedId="public"');
-  node('code').value='private change';await run('save()');
-  assert.equal(run('state.games[0].code'),'published code');
-  assert.equal(run('state.games[0].version'),2);
-  assert.equal(run('state.drafts[0].code'),'private change');
+test('floating panel movement is clamped to accessible viewport coordinates',()=>{
+  const t=setup();assert.equal(t.run('clampPanel(-100,-100,420,500,1280,720).x'),8);assert.equal(t.run('clampPanel(9999,9999,420,500,1280,720).x'),852);assert.equal(t.run('clampPanel(9999,9999,420,500,1280,720).y'),212);
 });
-test('Muse solo counts apply with code, undo with code, and publish as one player',async()=>{
-  const calls=[];
-  const {node,run}=setup(async(method,path,opts)=>{
-    calls.push([method,path,opts.body]);
-    if(path==='/agent/chat') return {message:'Solo Hanoi',code:'<html>Hanoi</html>',allowed_player_counts:[1]};
-    return {...opts.body,id:'solo',version:1};
-  });
-  node('agent-input').value='Tower of Hanoi'; await run('sendAgentMessage()');
-  assert.equal(calls[0][2].player_count_mode,'auto');
-  assert.match(node('agent-proposed-players').textContent,/1 \(solo\)/);
-  assert.equal(node('count-2').checked,true); // review before applying metadata
-  run('applyAgentProposal()');
-  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
-  await run('save()');
-  assert.deepEqual(Array.from(calls[1][2].allowed_player_counts),[1]);
+test('stopping a request aborts its wait and restores the submitted prompt',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Original prompt';const pending=t.run('sendAgentMessage()');
+  t.run('stopAgentWaiting()');assert.equal(t.run('state.agentRequest.controller.signal.aborted'),true);wait.reject(new Error('aborted'));await pending;
+  assert.equal(t.node('agent-input').value,'Original prompt');assert.equal(t.run('state.editor.code'),game.code);
 });
-
-test('undoing a solo proposal restores the previous player counts too',async()=>{
-  const {node,run}=setup(async()=>({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]}));
-  node('agent-input').value='Make it solo';await run('sendAgentMessage()');run('applyAgentProposal();undoAppliedChange()');
-  assert.equal(node('count-1').checked,false);assert.equal(node('count-2').checked,true);
+test('preview jobs are polled without submitting another paid generation',async()=>{
+  const calls=[];const t=setup(async(method,url)=>{calls.push([method,url]);return method==='POST'?{preview_job_id:'job'}:{message:'Done'};});await t.choose();t.node('agent-input').value='Update';await t.run('sendAgentMessage()');
+  assert.deepEqual(calls,[['POST','/agent/chat'],['GET','/preview/jobs/job']]);
 });
-
-test('advanced player-count lock sends the selected count as a manual constraint',async()=>{
-  let body;
-  const {node,run}=setup(async(method,path,opts)=>{body=opts.body;return {message:'done'};});
-  node('lock-player-counts').checked=true;node('count-1').checked=true;node('count-2').checked=false;
-  assert.equal(node('count-1').checked,true);assert.equal(node('count-2').checked,false);
-  node('agent-input').value='Hanoi';await run('sendAgentMessage()');
-  assert.equal(body.player_count_mode,'manual');assert.deepEqual(Array.from(body.allowed_player_counts),[1]);
+test('switching accounts cannot save the old editor into the new account namespace',async()=>{
+  const t=setup(async()=>[]);await t.choose();t.run('state.editor.name="Old account work";rememberWork()');t.setUser({id:'other'});await t.run('onUserChanged()');
+  assert.equal(t.storage.has('game-platform.builder.work.v2.other.game'),false);assert.equal(t.run('state.editor.name'),'');
 });
-
-test('changing player-count lock during generation invalidates its proposal',async()=>{
-  const wait=deferred();const {node,run}=setup(()=>wait.promise);
-  node('agent-input').value='Hanoi';const request=run('sendAgentMessage()');
-  node('lock-player-counts').checked=true;
-  wait.resolve({message:'Solo',code:'<html>solo</html>',allowed_player_counts:[1]});await request;
-  run('applyAgentProposal()');assert.notEqual(node('code').value,'<html>solo</html>');
-  assert.match(node('agent-message').textContent,/player count lock changed/);
+test('an in-flight autosave cannot replace a new account workspace',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.run('state.editor.name="Old"');const saving=t.run('flushAutosave()');
+  t.setUser({id:'other'});t.run('state.session++;state.ownerId="other";state.editor=copy(EMPTY);state.selectedId="new";state.savePromise=null');wait.resolve(saved({...game,name:'Old'},'game'));await saving;
+  assert.equal(t.run('state.selectedId'),'new');assert.equal(t.run('state.editor.name'),'');
 });
-
-test('Unpublish preserves unsaved edits and removes the public play link',async()=>{
-  const calls=[];
-  const {node,run}=setup(async(method,path)=>{
-    calls.push([method,path]);
-    if(path==='/builder/games')return [{id:'saved',version:1,name:'Game',allowed_player_counts:[2],published:false}];
-    if(path==='/game-drafts')return [];
-    return {id:'saved',published:false};
-  });
-  run('state.games=[{id:"saved",version:1,name:"Game",published:true}];state.selectedId="saved"');
-  node('code').value='unsaved source';await run('unpublishGame()');
-  assert.equal(node('code').value,'unsaved source');assert.equal(node('play-game').hidden,true);
-  assert.equal(run('selectedGame().published'),false);
-  assert.deepEqual(calls[0],['POST','/games/saved/unpublish']);
+test('recovering local edits preserves the server revision check and conversation',async()=>{
+  const t=setup();await t.choose();t.run('state.editor.name="Recovered";state.messages=[{role:"user",content:"Change"}];rememberWork();state.selectedId=null');await t.run('select("game")');
+  assert.equal(t.run('state.editor.name'),'Recovered');assert.equal(t.run('state.messages[0].content'),'Change');assert.equal(t.run('isDirty()'),true);
+});
+test('AI updates include platform join/leave rules without a settings form',async()=>{
+  const t=setup(async()=>({message:'Done',code:'<html>new</html>',allowed_player_counts:[2,3],allows_join_mid_match:true,allows_leave_mid_match:true}));await t.choose();t.node('agent-input').value='Let players join and leave';await t.run('sendAgentMessage()');
+  assert.equal(t.run('state.editor.allows_join_mid_match'),true);assert.equal(t.run('state.editor.allows_leave_mid_match'),true);
+  t.run('undoAppliedChange()');assert.equal(t.run('state.editor.allows_join_mid_match'),false);
+});
+test('reload resumes the last saved workspace automatically',async()=>{
+  const t=setup();await t.choose();t.run('rememberWork();state.selectedId=null;state.editor=copy(EMPTY);state.baseline=null');await t.run('resumeWorkspace()');
+  assert.equal(t.run('state.selectedId'),'game');assert.equal(t.run('state.editor.code'),game.code);
 });

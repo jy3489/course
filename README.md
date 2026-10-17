@@ -632,18 +632,16 @@ The connected preview submits Muse generation as a background job and polls for
 the result. This avoids relying on one long browser HTTP request for large games.
 The preview process must stay running; jobs remain in its memory until completion.
 It returns the real backend response and does not retry paid generation requests
-automatically. Refreshing the page still clears the current editor/chat session.
+automatically. The builder autosaves its working copy and restores the last workspace and conversation on this device after reload.
 
 The waiting panel distinguishes sending the request from waiting for an accepted
 preview job. Its elapsed timer and indeterminate indicator do not represent model
 progress. **Stop waiting** aborts the browser request/polling and restores the
 prompt; it cannot cancel computation already running on the course server.
 
-For an immediate playable starting point, choose **New game → Start from a
-published game → Load game catalog**, select a game, and choose **Use as starting
-point**. This loads an attributed, unpublished copy into the editor and playtest;
-it does not generate a new game or change the original. Subsequent rule-change
-prompts still use the real Muse endpoint and depend on its response time.
+**New game** opens a focused description prompt. When Muse returns complete code,
+the builder applies it, autosaves it, and opens the playable workspace automatically.
+Follow-up prompts use the current game code and conversation.
 
 ### Builder generation latency
 
@@ -666,87 +664,49 @@ References: https://dev.meta.ai/docs/reasoning and
 https://dev.meta.ai/docs/protocols/chat-completions (reasoning effort, sampling,
 and the non-streaming time limit).
 
-### Solo and multiplayer games
+### Building and publishing versions
 
-Allowed player counts now range from 1 to 10. Select **1 (solo)** for a true
-single-player game. A game may offer both solo and multiplayer by including 1
-and other supported counts. One human playing against a computer still uses at
-least two seats. In Playtest, the Solo, Vs computer, and Local multiplayer buttons
-configure seat types for supported counts. Online human matches use the portal.
+The web builder is a single playable workspace. **New game** starts with a prompt;
+complete AI responses open the game immediately. The AI assistant becomes a floating
+panel that can be dragged by its header, moved with arrow keys while that header is
+focused, closed, and reopened with **Ask AI**. Closing it does not cancel a request.
+There are no numbered editing tabs, player-settings form, or manual source editor.
 
-Muse normally infers player counts from your prompt and proposes them alongside
-the complete code. Applying a solo proposal
-also selects **1 (solo)**, instead of leaving the new-game default at two seats.
-Ask for a specific number directly in your prompt. A manual **Lock the player
-counts below for AI generation** checkbox is available with the counts under
-**Game settings & source code**; no player-mode dropdown appears in the main flow.
-Proposals without valid counts are retried; counts and code
-are reviewed, applied, undone and published together. Existing mobile clients
-retain manual-count behavior unless they opt into Auto.
+The AI infers player counts (1..10) and join/leave rules from prompts and keeps them
+with the matching code. Ask for solo, a specific number of players, or changes to
+mid-match joining/leaving directly. The runtime still validates this metadata.
+Solo games use one human seat; multiplayer previews offer computers or pass and play.
 
-The portal labels solo-only games and **Play solo** creates and starts a one-human
-match immediately. Games offering both solo and multiplayer keep their lobby and
-Start choice; a valid one-seat lobby says **Ready to start**, not that another
-player is needed. Old matches keep their original game version. If a newer solo
-version exists, **Play latest solo version** creates a fresh match with it without
-rewriting the old match's history.
+Edits autosave to an authenticated working-copy endpoint after a short debounce.
+A local recovery copy and conversation are also kept per account and game on this
+device. Saves are serialized, use revision checks, and preserve changes made while a
+write is in flight. A failed autosave is visible with **Retry autosave** and blocks
+publication. Account switching clears the old preview and rejects stale responses.
 
-See `docs/deployment-and-builder-modes.md` for the deployment investigation,
-rollout requirements, and acceptance checks for the course assignment.
+**Publish** is the single release action: it waits for autosave, then creates the
+next public game version. Autosaving an intermediate change does not replace the
+released version or create a version on every keystroke. There is no public/private
+visibility switch, Save draft button, or Unpublish control in the web UI. Version
+history can load an earlier version for further editing; Publish releases those
+changes as the next version. Existing matches remain pinned to their original version.
+**Undo AI change** restores code and game rules together and autosaves that change.
 
-### Change a game through prompts
+The existing working-copy, publication-state and legacy API routes remain compatible
+with other clients and stored data. This UI change does not publish, delete or
+rewrite previously stored records automatically. Persistence remains format 4;
+keep compatible backups when deploying backend changes.
 
-Selecting a saved game opens **Edit & publish**, with the playable draft and the
-lime **Describe your change** panel together. Ask for rule changes, features, or
-bug fixes, review the proposed source, and choose **Apply**. The preview
-restarts with the new draft; follow-up prompts receive that current code and the
-conversation. Nothing is published until **Publish new version** is clicked.
+### Navigation
 
-**Undo applied change** restores the previous local draft. The last six published
-versions can be loaded as drafts and republished as a new version. Settings and
-manual source editing remain under **Game settings & source code**. Proposals
-based on a draft that changed during generation are rejected to preserve newer
-edits. The shared conversation and test controls move between tabs without
-creating separate histories or losing the saved local test state.
-
-### Save privately and publish separately
-
-**Save draft** stores the current name, rules, settings and source on the server,
-visible only to the signed-in account. Reloading the builder restores saved drafts
-from **Your library**. Incomplete drafts can be saved before naming the game or
-choosing player counts. AI proposals must be applied before saving their changes.
-Unsaved edits and the chat conversation are still local to the page.
-
-**Publish game / Publish new version** saves the working copy, then makes that
-version public in the portal and catalog. Saving later edits leaves the public
-version unchanged until the next publication. Existing matches retain their original
-published version. **Discard private draft** removes the working copy of a published
-game without changing the public game; **Delete** removes both after a second click.
-Games published before this feature stay public; saving a draft does not unpublish them.
-
-Private drafts use authenticated `/game-drafts` routes with ownership checks and
-revision checks against stale browser tabs. They are stored separately from public
-games and excluded from public versions, matches, catalog, and debug data responses.
-The existing `/games` POST/PATCH API still publishes for compatibility with other clients.
-Data format 4 adds publication state and private drafts, loading formats 1/2/3
-automatically. Older server code rejects format 4 rather than losing drafts or
-re-exposing unpublished games: rollback requires compatible code or an explicit,
-reviewed data migration. Keep private backups
-before deployment; never restore an older backup over newer user data by default.
-
-### Unpublish a game
-
-**Unpublish game** removes the game from the public catalog and prevents new
-matches or new participants. Its editable draft stays in your authenticated
-builder library. Existing participants can still load their pinned source and
-finish matches; unrelated users and anonymous visitors cannot read unpublished
-game URLs, versions, match details or move histories. Publish again to restore
-public availability, or Delete to remove the game from your library. Deletion
-retains history needed by existing participants.
+Builder and Portal share sidebar **Play / Build** navigation and an account menu.
+The former upper navigation bar is removed on both pages. Portal offline status and
+Retry sync are in its sidebar footer. Diagnostic pages remain accessible by their
+existing URLs. The service-worker shell cache must be bumped with its asset list
+whenever the Portal shell changes.
 
 ### Portal
 
-The portal uses the builder's navy, lime, cyan and pink palette below the shared
+The portal uses the builder's navy, lime, cyan and pink palette with shared sidebar
 navigation. New match is a large central card with a searchable game combobox,
 game details and a direct solo start button. Type a name to filter the catalog;
 use arrow keys/Enter or click a result. The sidebar contains collapsible Your turn, Ongoing, Waiting,
