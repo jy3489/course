@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from game_platform.config import Config, load_config
 
-EXAMPLE = Path(__file__).parent / "config.example.json"
+EXAMPLE = Path(__file__).resolve().parents[1] / "config.example.json"
 
 
 def _write_config(directory: Path, config: object) -> Path:

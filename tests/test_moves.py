@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from game_platform.testing import Api, error, validation_errors
+from game_platform.tests.helpers import Api, error, validation_errors
 
 
 def test_players_take_turns(api: Api) -> None:

@@ -13,7 +13,7 @@ from game_platform.schemas import (
     UserCreate,
     UserUpdate,
 )
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 DEBUG_PATHS = (
     "/console",

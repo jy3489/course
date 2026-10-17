@@ -8,7 +8,7 @@ from game_platform.agent import AgentError, build_prompt_messages, chat_with_age
 from game_platform.config import ModelApiConfig
 from game_platform.model_api import ChatResult, ModelApiClient, ModelApiError
 from game_platform.schemas import AgentChatRequest
-from game_platform.testing import Api, validation_errors
+from game_platform.tests.helpers import Api, validation_errors
 
 
 def _request(**overrides) -> AgentChatRequest:

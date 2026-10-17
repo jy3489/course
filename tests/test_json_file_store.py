@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from game_platform.json_file_store import JsonFileStore
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 
 def _wait_until(condition: Callable[[], bool]) -> None:

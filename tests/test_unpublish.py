@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from game_platform.json_file_store import JsonFileStore
-from game_platform.testing import Api
+from game_platform.tests.helpers import Api
 
 
 def test_unpublish_hides_public_routes_and_keeps_owner_library(api: Api):

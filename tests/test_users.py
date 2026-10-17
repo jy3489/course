@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from game_platform.json_file_store import JsonFileStore
-from game_platform.testing import Api, error, validation_errors
+from game_platform.tests.helpers import Api, error, validation_errors
 
 UNAUTHORIZED = (401, "missing or invalid X-User-Id / X-User-Password headers")
 

@@ -32,7 +32,8 @@ be swapped for a database. The server binary uses `JsonFileStore`
 | `games/`     | The example games' code: tic-tac-toe, poker and a debug game    |
 | `data.example.json` | Example data: 8 users, the 3 games and 23 matches        |
 | `example_data.py`, `example_data/` | How `data.example.json` is generated     |
-| `test_*.py`  | Pytest tests, using the helpers in `testing.py`                 |
+| `tests/`    | Pytest suite, fixtures and shared helpers in `tests/helpers.py` |
+| `tests/web/` | JavaScript regression tests for Builder, Portal and games      |
 
 ## Architecture
 
@@ -578,7 +579,7 @@ script starts with a pure `Logic` object (no DOM access), followed by the UI:
   computer), matches on the old version of a game, and over (won, drawn, lost to the
   computer, hidden by a player).
 
-The matches are listed in `test_example_data.py`. To change them, edit
+The matches are listed in `tests/test_example_data.py`. To change them, edit
 `example_data/make_operations.js` and regenerate both files from the directory above
 `game_platform`:
 
@@ -599,7 +600,7 @@ above `game_platform`:
 
 ```bash
 pip install -r game_platform/requirements-dev.txt
-python -m pytest game_platform
+python -m pytest game_platform/tests
 ```
 
 The tests start the app in-process (no server or network needed) and use temporary
@@ -607,9 +608,15 @@ directories for data files, so they don't touch your data.
 
 ### Web builder regression checks
 
-Run `node test_builder.cjs` (Node.js 18+) from this package directory. These
+All backend tests and their fixtures/helpers live in `tests/`; web checks live in
+`tests/web/`. Pytest defaults to `tests/` when run from this package directory.
+
+Run `node tests/web/builder.test.cjs` (Node.js 18+) from this package directory. These
 checks exercise editor preservation, asynchronous agent replies, publishing and
 local move validation with a small DOM stub; they do not call the model API.
+
+Run the complete web suite with `node --test tests/web`. Each script
+can also run directly with `node tests/web/<name>.test.cjs`.
 
 The web builder uses the server's configured model API key. Students only need
 to log in; they do not need to supply a personal API key. After publishing,
@@ -626,7 +633,7 @@ The separate port keeps preview accounts separate from an offline local server.
 Google sign-in requires the course OAuth app to allow the local origin; guest
 login remains available for generation checks. Use the deployed site for final
 Google-login verification. The preview binds only to loopback and does not proxy
-admin/debug endpoints. Run `python -m pytest test_preview.py` for its routing check.
+admin/debug endpoints. Run `python -m pytest tests/test_preview.py` for its routing check.
 
 The connected preview submits Muse generation as a background job and polls for
 the result. This avoids relying on one long browser HTTP request for large games.
