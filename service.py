@@ -18,7 +18,6 @@ from pydantic import JsonValue
 
 from game_platform.models import (
     Game,
-    GameDraft,
     GameRules,
     LinkedAccount,
     LinkedAccountKind,
@@ -84,6 +83,30 @@ def _new_verification_code() -> str:
 VERIFICATION_TTL_SECONDS: Final = 600
 VERIFICATION_MAX_ATTEMPTS: Final = 5
 VERIFICATION_MAX_STARTS_PER_HOUR: Final = 5
+
+# Survivor precedence when two accounts merge: the user with the strongest
+# login method survives, so a Google account is never merged away into a guest
+# account. Guests have no linked accounts.
+_ACCOUNT_KIND_RANK: Final = {"google": 3, "phone": 2, "email": 1}
+
+
+def _account_rank(user: User) -> int:
+    """The strength of a user's best linked login method (0 for guests)."""
+    return max(
+        (_ACCOUNT_KIND_RANK.get(account.kind, 0) for account in user.linked_accounts),
+        default=0,
+    )
+
+
+def _dedupe(ids: tuple[str, ...]) -> tuple[str, ...]:
+    """Removes duplicates, keeping the first occurrence of each id."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for i in ids:
+        if i not in seen:
+            seen.add(i)
+            out.append(i)
+    return tuple(out)
 
 
 def _normalize_identifier(*, kind: str, identifier: str) -> str:
@@ -227,11 +250,15 @@ class GamePlatform:
             user = self._store.get_user(user_id)
             if user is None:
                 raise NotFoundError("user not found")
-            return user
+            return self._resolve_replaced(user)
 
     def authenticate(self, *, user_id: str | None, password: str | None) -> User:
         """Checks the caller's credentials. The error doesn't say which part was wrong,
-        so it can't be used to find out which user ids exist."""
+        so it can't be used to find out which user ids exist.
+
+        A replaced user still authenticates with its old credentials; the
+        returned user is the surviving account it was merged into.
+        """
         with self._lock:
             user = None if user_id is None else self._store.get_user(user_id)
             if (
@@ -242,7 +269,7 @@ class GamePlatform:
                 raise UnauthorizedError(
                     "missing or invalid X-User-Id / X-User-Password headers"
                 )
-            return user
+            return self._resolve_replaced(user)
 
     # Third-party login and account merging
 
@@ -262,6 +289,25 @@ class GamePlatform:
             ):
                 return user
         return None
+
+    def _resolve_replaced(self, user: User) -> User:
+        """Returns the surviving user for a replaced account.
+
+        Merges always flatten, so a replaced user points directly at the final
+        survivor: this is a single lookup. The extra hop below is purely
+        defensive (it should never trigger) so a corrupt record can never make
+        this return a replaced user. The caller holds the lock.
+        """
+        if user.replaced_by_user_id is None:
+            return user
+        survivor = self._store.get_user(user.replaced_by_user_id)
+        if survivor is None:
+            return user
+        if survivor.replaced_by_user_id is not None:
+            final = self._store.get_user(survivor.replaced_by_user_id)
+            if final is not None:
+                return final
+        return survivor
 
     def start_verification(
         self, *, kind: LinkedAccountKind, identifier: str
@@ -351,12 +397,15 @@ class GamePlatform:
         With [as_user_id] None this is a plain login: a new user is created on first
         use. With [as_user_id] set (the caller is logged in as that user) the
         credential is linked to that account instead; if it already belongs to a
-        different user, that account is merged into the caller's. The provider's
+        different user, the two accounts merge, and the one with the stronger
+        login method survives (google > phone > email > guest). The provider's
         profile (name, email, picture) is saved on the user and refreshed on each
         login. Returns (user, merged_from_user_id).
         """
         with self._lock:
             user = self._find_by_linked_account(kind, identifier)
+            if user is not None:
+                user = self._resolve_replaced(user)
             if user is None:
                 linked = LinkedAccount(
                     kind=kind, identifier=identifier, linked_at=self._clock()
@@ -391,39 +440,76 @@ class GamePlatform:
                     self._store.put_user(refreshed)
                 return refreshed, None
             target = self._require_user(as_user_id)
-            merged_from = user.id
-            return self._merge_locked(source=user, into=target), merged_from
+            source, into = self._merge_pair(
+                user, target, prefer_first_as_source=True
+            )
+            merged_from = source.id
+            return self._merge_locked(source=source, into=into), merged_from
 
     def merge_users(
         self, *, caller_id: str, from_user_id: str, into_user_id: str
     ) -> User:
         """Merges [from_user_id] into [into_user_id]: games (all versions), matches
         (owner, seats, hidden flags and move authors), and linked accounts move over,
-        then the source user is deleted. The caller must authenticate as the source
-        user, so nobody can absorb someone else's account. Returns the surviving user.
+        then the source user is marked as replaced by the surviving user instead of
+        being deleted, so its old credentials keep working as an alias of the
+        survivor. The stronger login method always survives (google > phone >
+        email > guest); on ties the requested direction is kept. The caller must
+        authenticate as the merged-away (replaced) user, so nobody can absorb
+        someone else's account. Returns the surviving user.
         """
         with self._lock:
             if from_user_id == into_user_id:
                 raise InvalidRequestError("cannot merge a user into itself")
-            source = self._require_user(from_user_id)
+            source, target = self._merge_pair(
+                self._require_user(from_user_id),
+                self._require_user(into_user_id),
+                prefer_first_as_source=True,
+            )
             if source.id != caller_id:
                 raise ForbiddenError(
                     "only the merged-away user can request the merge"
                 )
-            target = self._require_user(into_user_id)
             return self._merge_locked(source=source, into=target)
 
+    def _merge_pair(
+        self, first: User, second: User, *, prefer_first_as_source: bool
+    ) -> tuple[User, User]:
+        """Resolves replaced users to their survivor and applies the survivor-rank rule.
+
+        Returns (source, target): [source] is the user that will be marked as
+        replaced by [target]. The higher-ranked login method survives; on ties
+        the requested direction is kept. Raises InvalidRequestError when both
+        resolve to the same user. The caller holds the lock.
+        """
+        first = self._resolve_replaced(first)
+        second = self._resolve_replaced(second)
+        if first.id == second.id:
+            raise InvalidRequestError("cannot merge a user into itself")
+        if _account_rank(second) > _account_rank(first):
+            return first, second  # first is replaced by the stronger second
+        if _account_rank(first) > _account_rank(second):
+            return second, first  # second is replaced by the stronger first
+        return (first, second) if prefer_first_as_source else (second, first)
+
     def _merge_locked(self, *, source: User, into: User) -> User:
-        """Moves everything of [source] into [into] and deletes [source]. The caller
-        holds the lock."""
+        """Moves everything of [source] into [into], then marks [source] as replaced
+        by [into] instead of deleting it. The source keeps its password and display
+        name (so old credentials still authenticate and resolve to the survivor)
+        but holds no games, matches, seats, moves, or linked accounts afterwards.
+        Everyone [source] had replaced is repointed directly at [into] too, so
+        there are never replacement chains. The caller holds the lock.
+        """
+        into = self._resolve_replaced(into)
+        source = self._resolve_replaced(source)
+        if source.id == into.id:
+            raise InvalidRequestError("cannot merge a user into itself")
         from_user_id, into_user_id = source.id, into.id
         for game in self._store.list_all_game_versions():
             if game.owner_user_id == from_user_id:
                 self._store.put_game_version(
                     replace(game, owner_user_id=into_user_id)
                 )
-        for draft in self._store.list_game_drafts(owner_user_id=from_user_id):
-            self._store.put_game_draft(replace(draft, owner_user_id=into_user_id))
         for match in self._store.list_all_matches():
             updated = match
             if match.owner_user_id == from_user_id:
@@ -466,13 +552,39 @@ class GamePlatform:
             for account in source.linked_accounts
             if (account.kind, account.identifier) not in have
         )
+        # Flatten: everyone the source had replaced, plus the source itself, now
+        # points directly at the survivor. There are never replacement chains.
+        absorbed = (from_user_id, *source.replaced_user_ids)
+        replaced_ids = _dedupe((*into.replaced_user_ids, *absorbed))
         into = replace(
             into,
             linked_accounts=(*into.linked_accounts, *moved),
+            replaced_user_ids=replaced_ids,
             updated_at=self._clock(),
         )
         self._store.put_user(into)
-        self._store.delete_user(from_user_id)
+        # Never delete the source: mark it as replaced so its old credentials
+        # keep authenticating, resolving to the survivor on every use. It keeps
+        # its password and display name but holds nothing else.
+        for uid in absorbed:
+            old = self._store.get_user(uid)
+            if old is None or old.id == into_user_id:
+                continue
+            if uid == from_user_id:
+                old = replace(
+                    old,
+                    replaced_by_user_id=into_user_id,
+                    linked_accounts=(),
+                    replaced_user_ids=(),
+                    updated_at=self._clock(),
+                )
+            else:
+                old = replace(
+                    old,
+                    replaced_by_user_id=into_user_id,
+                    updated_at=self._clock(),
+                )
+            self._store.put_user(old)
         return into
 
     def list_open_matches(self) -> list[Match]:
@@ -483,103 +595,14 @@ class GamePlatform:
             return [
                 match
                 for match in self._store.list_all_matches()
-                if (game := self._store.get_game(match.game_id)) is not None
-                and game.published and not game.deleted
-                and (match.status == "waiting_for_players" or (
+                if match.status == "waiting_for_players"
+                or (
                     match.status == "ongoing"
                     and self._rules_of(match).allows_join_mid_match
-                ))
+                )
             ]
 
-    # Private working copies, kept outside all public game/version/match APIs.
-
-    def _owned_draft(self, *, caller_id: str, draft_id: str) -> GameDraft:
-        draft = self._store.get_game_draft(draft_id)
-        if draft is None or draft.owner_user_id != caller_id:
-            raise NotFoundError("draft not found")
-        return draft
-
-    def list_game_drafts(self, *, caller_id: str) -> list[GameDraft]:
-        with self._lock:
-            return self._store.list_game_drafts(owner_user_id=caller_id)
-
-    def get_game_draft(self, *, caller_id: str, draft_id: str) -> GameDraft:
-        with self._lock:
-            return self._owned_draft(caller_id=caller_id, draft_id=draft_id)
-
-    def save_game_draft(
-        self, *, caller_id: str, draft_id: str | None, name: str,
-        description: str, rules: GameRules, code: str,
-        expected_revision: int | None,
-    ) -> GameDraft:
-        with self._lock:
-            existing = self._store.get_game_draft(draft_id) if draft_id else None
-            game = self._store.get_game(draft_id) if draft_id else None
-            if existing is not None:
-                self._owned_draft(caller_id=caller_id, draft_id=existing.id)
-                if expected_revision != existing.revision:
-                    raise ConflictError("draft changed in another tab; reload before saving")
-            elif draft_id is not None:
-                if game is None or game.deleted or game.owner_user_id != caller_id:
-                    raise NotFoundError("game not found")
-                if expected_revision is not None:
-                    raise ConflictError("draft was discarded; reload before saving")
-            now = self._clock()
-            draft = GameDraft(
-                id=draft_id or self._new_id(), owner_user_id=caller_id,
-                name=name, description=description, rules=rules, code=code,
-                created_at=existing.created_at if existing else now, updated_at=now,
-                base_version=existing.base_version if existing else game.version if game else 0,
-                revision=existing.revision + 1 if existing else 1,
-            )
-            self._store.put_game_draft(draft)
-            return draft
-
-    def delete_game_draft(self, *, caller_id: str, draft_id: str) -> None:
-        with self._lock:
-            self._owned_draft(caller_id=caller_id, draft_id=draft_id)
-            self._store.delete_game_draft(draft_id)
-
-    def publish_game_draft(
-        self, *, caller_id: str, draft_id: str, expected_revision: int,
-    ) -> Game:
-        with self._lock:
-            draft = self._owned_draft(caller_id=caller_id, draft_id=draft_id)
-            if draft.revision != expected_revision:
-                raise ConflictError("draft changed in another tab; reload before publishing")
-            if not draft.name.strip() or not draft.rules.allowed_player_counts:
-                raise InvalidRequestError("give the game a name and select player counts before publishing")
-            current = self._store.get_game(draft_id)
-            if current is None:
-                if draft.base_version != 0:
-                    raise ConflictError("published game is no longer available")
-                game = Game(
-                    id=draft.id, version=1, owner_user_id=caller_id,
-                    name=draft.name.strip(), description=draft.description,
-                    rules=draft.rules, code=draft.code,
-                    created_at=self._clock(), updated_at=self._clock(),
-                )
-                self._store.add_game_version(game)
-            else:
-                if current.deleted or current.owner_user_id != caller_id:
-                    raise ConflictError("published game is no longer available")
-                if current.version != draft.base_version:
-                    raise ConflictError("public version changed; reload it before publishing this draft")
-                game = self.update_game(
-                    caller_id=caller_id, game_id=draft_id, name=draft.name.strip(),
-                    description=draft.description, code=draft.code,
-                    allowed_player_counts=draft.rules.allowed_player_counts,
-                    allows_leave_mid_match=draft.rules.allows_leave_mid_match,
-                    allows_join_mid_match=draft.rules.allows_join_mid_match,
-                    _publishing=True,
-                )
-            self._store.set_game_published(game.id, True)
-            game = self._get_game(game.id)
-            # Keep the working copy; repeat publication cannot create duplicate games.
-            self._store.put_game_draft(replace(draft, base_version=game.version))
-            return game
-
-    # Games (public versions; existing clients continue to publish with POST/PATCH).
+    # Games
 
     def create_game(
         self,
@@ -606,45 +629,18 @@ class GamePlatform:
             self._store.add_game_version(game)
             return game
 
-    def get_game(self, game_id: str, *, caller_id: str | None = None) -> Game:
+    def get_game(self, game_id: str) -> Game:
         with self._lock:
-            game = self._get_game(game_id)
-            if not game.published and caller_id != game.owner_user_id:
-                raise NotFoundError("game not found")
-            return game
+            return self._get_game(game_id)
 
-    def get_game_version(self, game_id: str, version: int, *, caller_id: str | None = None) -> Game:
+    def get_game_version(self, game_id: str, version: int) -> Game:
         """Old versions stay available, even after the game is deleted, because matches
         created with them still need their code."""
         with self._lock:
             game = self._store.get_game_version(game_id, version)
             if game is None:
                 raise NotFoundError("game version not found")
-            if not game.published and caller_id != game.owner_user_id:
-                if caller_id is None or not any(
-                    match.game_id == game_id and match.game_version == version
-                    for match in self._store.list_matches_involving(caller_id)
-                ):
-                    raise NotFoundError("game version not found")
             return game
-
-    def list_owned_games(self, *, caller_id: str) -> list[Game]:
-        with self._lock:
-            return self._store.list_games(owner_user_id=caller_id, include_unpublished=True)
-
-    def unpublish_game(self, *, caller_id: str, game_id: str) -> Game:
-        with self._lock:
-            game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
-            if game.deleted:
-                raise NotFoundError("game not found")
-            if self._store.get_game_draft(game_id) is None:
-                self.save_game_draft(
-                    caller_id=caller_id, draft_id=game_id, name=game.name,
-                    description=game.description, code=game.code,
-                    rules=game.rules, expected_revision=None,
-                )
-            self._store.set_game_published(game_id, False)
-            return self._get_game(game_id)
 
     def list_games(self, *, owner_user_id: str | None) -> list[Game]:
         with self._lock:
@@ -661,7 +657,6 @@ class GamePlatform:
         allows_leave_mid_match: bool | None = None,
         allows_join_mid_match: bool | None = None,
         code: str | None = None,
-        _publishing: bool = False,
     ) -> Game:
         """Creates a new version of the game, unless nothing changes.
 
@@ -669,8 +664,6 @@ class GamePlatform:
         """
         with self._lock:
             game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
-            if not game.published and not _publishing:
-                raise ConflictError("game is unpublished; edit its private draft and Publish to share it")
             rules = game.rules
             updated = replace(
                 game,
@@ -703,7 +696,6 @@ class GamePlatform:
         with self._lock:
             self._get_owned_game(caller_id=caller_id, game_id=game_id)
             self._store.delete_game(game_id)
-            self._store.delete_game_draft(game_id)
 
     # Matches
 
@@ -712,8 +704,6 @@ class GamePlatform:
     ) -> Match:
         with self._lock:
             game = self._get_live_game(game_id)
-            if not game.published:
-                raise NotFoundError("game not found")
             self._check_fits(game.rules, num_players=1 + num_computer_opponents)
             now = self._clock()
             match = Match(
@@ -737,15 +727,9 @@ class GamePlatform:
             self._store.put_match(match)
             return match
 
-    def get_match(self, match_id: str, *, caller_id: str | None = None) -> Match:
+    def get_match(self, match_id: str) -> Match:
         with self._lock:
-            match = self._get_match(match_id)
-            game = self._get_game(match.game_id)
-            if not game.published and caller_id != game.owner_user_id and (
-                caller_id is None or not match.involves(caller_id)
-            ):
-                raise NotFoundError("match not found")
-            return match
+            return self._get_match(match_id)
 
     def list_matches(
         self, *, caller_id: str, status: MatchStatus | None, game_id: str | None
@@ -788,8 +772,6 @@ class GamePlatform:
             match = self._get_match(match_id)
             if match.seat_of(caller_id) is not None:
                 raise ConflictError("you are already a player in this match")
-            if not self._get_game(match.game_id).published:
-                raise ConflictError("this game is no longer published")
             if match.status == "over":
                 raise ConflictError("the match is over")
             if match.status == "ongoing":
@@ -1066,22 +1048,19 @@ class GamePlatform:
         like a creator's delete). Elsewhere, they leave the matches they're seated in."""
         with self._lock:
             self._require_user(user_id)
-            for game in self._store.list_games(owner_user_id=user_id, include_unpublished=True):
+            for game in self._store.list_games(owner_user_id=user_id):
                 self._store.delete_game(game.id)
             for match in self._store.list_matches_involving(user_id):
                 if match.owner_user_id == user_id:
                     self._store.delete_match(match.id)
                 elif match.status != "over" and match.seat_of(user_id) is not None:
                     self.leave_match(caller_id=user_id, match_id=match.id)
-            for draft in self._store.list_game_drafts(owner_user_id=user_id):
-                self._store.delete_game_draft(draft.id)
             self._store.delete_user(user_id)
 
     def admin_delete_game(self, game_id: str) -> None:
         with self._lock:
             self._get_live_game(game_id)
             self._store.delete_game(game_id)
-            self._store.delete_game_draft(game_id)
 
     def admin_delete_match(self, match_id: str) -> None:
         with self._lock:

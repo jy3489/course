@@ -10,7 +10,7 @@ from typing import Final, Literal
 
 from pydantic import JsonValue
 
-MIN_PLAYERS: Final = 1
+MIN_PLAYERS: Final = 2
 MAX_PLAYERS: Final = 10
 
 MatchStatus = Literal["waiting_for_players", "ongoing", "over"]
@@ -44,6 +44,17 @@ class User:
     password: str
     # Defaults to empty so data files written before linked accounts existed still load.
     linked_accounts: tuple[LinkedAccount, ...] = ()
+    # Set when this account was merged into another one. A replaced user is
+    # never deleted (so old credentials keep authenticating), but every use of
+    # it resolves to the surviving user. A replaced user holds no games,
+    # matches, seats, moves, or linked accounts. Defaults to None so older data
+    # files still load.
+    replaced_by_user_id: str | None = None
+    # The ids of every user this account replaced, oldest first. Merges always
+    # flatten: when this user absorbs S, everyone S had replaced is repointed
+    # directly at this user, so there are never replacement chains. Defaults to
+    # empty so older data files still load.
+    replaced_user_ids: tuple[str, ...] = ()
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -80,24 +91,6 @@ class Game:
     # Applies to the whole game, so it is set on every version read back from the store
     # once the game is deleted. Deleted games are kept because matches may use them.
     deleted: bool = False
-    # Current game-wide visibility, applied to every version read from the store.
-    published: bool = True
-
-
-@dataclass(frozen=True, kw_only=True)
-class GameDraft:
-    """Owner-only working copy. Its id becomes the public game id on publication."""
-
-    id: str
-    owner_user_id: str
-    name: str
-    description: str
-    rules: GameRules
-    code: str
-    created_at: dt.datetime
-    updated_at: dt.datetime
-    base_version: int = 0
-    revision: int = 1
 
 
 @dataclass(frozen=True, kw_only=True)
