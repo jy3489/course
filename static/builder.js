@@ -66,6 +66,7 @@ async function select(id) {
   if (isDirty()) scheduleAutosave();
 }
 function scheduleAutosave() {
+  state.deleteArmed=false;
   rememberWork(); clearTimeout(state.saveTimer);
   state.saveTimer=setTimeout(() => flushAutosave(),600);
   renderStatus();
@@ -143,6 +144,8 @@ function renderStatus() {
   $("undo-ai-change").disabled=!state.undo.length || state.agentSending || state.publishing || state.restoring;
   $("new-game").disabled=!me() || state.publishing;
   $("game-name").disabled=state.publishing || state.restoring;
+  $("load-version").disabled=state.publishing || state.restoring || state.agentSending;
+  $("delete-game").disabled=state.publishing || state.restoring || state.agentSending || Boolean(state.savePromise);
   $("agent-send").disabled=state.agentSending || state.publishing || state.restoring;
   $("agent-send").textContent=state.agentSending?"Working…":state.editor.code?"Update game":"Create game";
   $("open-ai").hidden=!state.editor.code || state.aiOpen;
