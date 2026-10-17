@@ -45,7 +45,9 @@ const Auth = (() => {
   }
 
   /** Stores an /auth/* response (or a POST /users response) and makes it current.
-   * Drops the merged-away account, if the login merged one. */
+   * Drops the merged-away account from the local list, if the login merged one:
+   * it still exists server-side, marked as replaced by the surviving account,
+   * so keeping a separate local entry would just duplicate the survivor. */
   function upsert(response) {
     const rest = load().filter(
       (account) =>
