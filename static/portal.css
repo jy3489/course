@@ -95,3 +95,6 @@
   .create-controls { align-items:stretch; flex-direction:column; } #create { width:100%; margin-left:0; }
   .match-stage { padding:18px 14px; }.match-header h2 { font-size:21px; }
 }
+
+.offline-controls { display:flex; flex-direction:column; gap:8px; margin-top:14px; color:#a5aec2; font-size:11px; line-height:1.6; }
+.offline-controls button { align-self:flex-start; font-size:11px; }

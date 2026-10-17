@@ -53,7 +53,9 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
                 return FileResponse(STATIC / "privacy.html")
             html = (STATIC / f"{page}.html").read_text(encoding="utf-8")
             notice = f'<div style="padding:8px 16px;background:#26304a;color:#eef0f5;font:12px/1.5 sans-serif">Local UI preview · Connected to {escape(parsed.netloc)}. Accounts, AI generation, and saved games use the live course server.</div>'
-            return HTMLResponse(html.replace("</header>", "</header>" + notice, 1))
+            if '<div class="sidebar-footer">' in html:
+                return HTMLResponse(html.replace('<div class="sidebar-footer">', '<div class="sidebar-footer">' + notice, 1))
+            return HTMLResponse(html.replace("<body>", "<body>" + notice, 1))
         if path.startswith("preview/jobs/") and request.method == "GET":
             job = jobs.get(path.rsplit("/", 1)[-1])
             owner = (request.headers.get("x-user-id", ""), request.headers.get("x-user-password", ""))

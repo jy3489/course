@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     JsonValue,
     StringConstraints,
+    StrictBool,
     model_validator,
 )
 
@@ -468,6 +469,8 @@ class AgentChatRequest(_Request):
     allowed_player_counts: list[int] = []
     # Existing mobile clients keep their selected counts; web explicitly opts in.
     player_count_mode: Literal["auto", "manual"] = "manual"
+    allows_leave_mid_match: StrictBool = False
+    allows_join_mid_match: StrictBool = False
     code: str = ""
     messages: Annotated[list[AgentMessage], Field(min_length=1, max_length=50)]
 
@@ -480,6 +483,8 @@ class AgentChatResponse(BaseModel):
     description: str | None = None
     # Applied with the proposed code, so solo code cannot retain a default two seats.
     allowed_player_counts: PlayerCounts | None = None
+    allows_leave_mid_match: StrictBool | None = None
+    allows_join_mid_match: StrictBool | None = None
     # Debug info about the model turn (optional; safe to show in the UI).
     # Chain-of-thought the model exposed for this turn, if any.
     thinking: str | None = None

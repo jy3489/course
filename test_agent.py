@@ -85,6 +85,28 @@ def test_reply_without_code_change() -> None:
     assert response.code is None
 
 
+def test_agent_can_update_platform_join_and_leave_rules() -> None:
+    request = _request(allows_leave_mid_match=True)
+    messages, _ = build_prompt_messages(request)
+    assert "allows leave mid-match: True" in messages[1]["content"]
+    response = chat_with_agent(_FakeClient(json.dumps({
+        "message": "Players can join and leave", "code": "<html>updated</html>",
+        "allowed_player_counts": [2, 3], "allows_leave_mid_match": True,
+        "allows_join_mid_match": True,
+    })), request)
+    assert response.allows_leave_mid_match is True
+    assert response.allows_join_mid_match is True
+
+
+@pytest.mark.parametrize("flag", ["true", 1, [], {}])
+def test_agent_rejects_non_boolean_mid_match_metadata(flag) -> None:
+    with pytest.raises(AgentError, match="mid-match rules"):
+        chat_with_agent(_FakeClient(json.dumps({
+            "message": "Updated", "code": "<html>updated</html>",
+            "allowed_player_counts": [2], "allows_join_mid_match": flag,
+        })), _request(), max_attempts=1)
+
+
 def test_solo_proposal_changes_the_default_two_player_metadata() -> None:
     request = _request(messages=[{"role": "user", "content": "Implement Tower of Hanoi"}])
     reply = json.dumps({"message": "A solo puzzle", "code": "<html>solo</html>", "allowed_player_counts": [1]})
@@ -265,6 +287,8 @@ def test_chat_endpoint_uses_configured_client(
         "name": None,
         "description": None,
         "allowed_player_counts": None,
+        "allows_leave_mid_match": None,
+        "allows_join_mid_match": None,
         "thinking": None,
         "raw": None,
         "attempts": 1,

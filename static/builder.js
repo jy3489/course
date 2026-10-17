@@ -1,547 +1,209 @@
-// Builder: create, edit, delete and test your games. Tests run the editor's code in a
-// sandboxed iframe in pass-and-play mode, keeping the moves in this page.
-
+// A playable workspace with automatic working-copy saves and public version releases.
 "use strict";
-
-const $ = (id) => document.getElementById(id);
-const PLAYER_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-// A minimal game showing the game API, used as the starting point for new games.
-const TEMPLATE_CODE = [
-  "<!doctype html>",
-  "<html>",
-  "<body style=\"font-family: sans-serif; padding: 16px\">",
-  "<h2>Race to 10</h2>",
-  "<p id=\"status\">Waiting for the platform…</p>",
-  "<p>Total: <b id=\"total\">0</b></p>",
-  "<button id=\"add1\">+1</button> <button id=\"add2\">+2</button>",
-  "<script>",
-  "let latest = null; // the last state_changed message",
-  "function add(n) {",
-  "  const seat = latest.acting_for_player_index;",
-  "  const total = (latest.state ? latest.state.total : 0) + n;",
-  "  const won = total >= 10;",
-  "  parent.postMessage({",
-  "    type: \"make_move\",",
-  "    new_state: { total, winner: won ? seat : null },",
-  "    next_turn_player_indices: won ? null : [(seat + 1) % latest.players.length],",
-  "  }, \"*\");",
-  "}",
-  "addEventListener(\"message\", (event) => {",
-  "  if (event.source !== parent || !event.data || event.data.type !== \"state_changed\") return;",
-  "  latest = event.data;",
-  "  const state = latest.state || { total: 0, winner: null };",
-  "  const acting = latest.status === \"ongoing\" ? latest.acting_for_player_index : null;",
-  "  document.getElementById(\"total\").textContent = state.total;",
-  "  document.getElementById(\"status\").textContent = state.winner !== null",
-  "    ? latest.players[state.winner].name + \" wins!\"",
-  "    : acting === null ? \"Waiting for another player…\" : latest.players[acting].name + \"'s turn\";",
-  "  for (const id of [\"add1\", \"add2\"]) document.getElementById(id).disabled = acting === null;",
-  "  // Computers' moves are computed by the game, for whichever client acts for them.",
-  "  if (acting !== null && latest.players[acting].kind === \"computer\") {",
-  "    setTimeout(() => add(1 + Math.floor(Math.random() * 2)), 500);",
-  "  }",
-  "});",
-  "document.getElementById(\"add1\").onclick = () => add(1);",
-  "document.getElementById(\"add2\").onclick = () => add(2);",
-  "</" + "script>",
-  "</body>",
-  "</html>",
-  "",
-].join("\n");
-
-const NEW_GAME = {
-  name: "",
-  description: "",
-  allowed_player_counts: [2],
-  allows_leave_mid_match: false,
-  allows_join_mid_match: false,
-  code: TEMPLATE_CODE,
-};
-
-const state = {
-  games: [], // the acting user's games (latest versions)
-  drafts: [], // private working copies, visible only to this user
-  selectedId: null, // a game id, "new", or null
-  baseline: null, // the editor values when last loaded or saved
-  pendingSwitch: null, // a selection waiting for a second click to discard edits
-  deleteArmed: false,
-  discardDraftArmed: false,
-  test: null,
-  agent: null, // {messages: [{role, content}], pending: {code, name, description} | null}
-  activeTab: "agent",
-  agentRequest: null,
-  starters: [],
-  draftUndo: [],
-  restoring: false,
-  saving: false,
-  agentSending: false,
-  agentDebug: false, // show the agent's thinking and raw replies in the chat
-};
-
-const frame = new GameFrame(
-  $("test-frame"),
-  (move) => onTestMove(move),
-  (problem) => testLog(problem, true),
-);
-
-// Acting user and the game list
-
-function me() {
-  return Auth.current();
+const $ = id => document.getElementById(id);
+const EMPTY = {name:"",description:"",code:"",allowed_player_counts:[2],allows_leave_mid_match:false,allows_join_mid_match:false};
+const content = value => Object.fromEntries(Object.keys(EMPTY).map(key => [key, value[key] ?? EMPTY[key]]));
+const copy = value => JSON.parse(JSON.stringify(value));
+const state = {games:[],drafts:[],selectedId:null,editor:copy(EMPTY),baseline:null,session:0,
+  savePromise:null,saveTimer:null,saveError:"",publishing:false,restoring:false,deleteArmed:false,
+  agentRequest:null,agentSending:false,agentDebug:false,messages:[],log:[],undo:[],test:null,
+  aiOpen:true,panelPosition:null,saveWarning:"",ownerId:null};
+const frame = new GameFrame($("test-frame"), onTestMove, problem => testLog(problem,true));
+const me = () => Auth.current();
+const selectedGame = () => state.games.find(game => game.id === state.selectedId);
+const selectedDraft = () => state.drafts.find(game => game.id === state.selectedId);
+const editorValues = () => copy(state.editor);
+const isDirty = () => state.baseline !== null && JSON.stringify(state.editor) !== state.baseline;
+const currentSession = (session,user) => state.session === session && me()?.id === user.id;
+const recoveryKey = (id=state.selectedId,user=me()) => "game-platform.builder.work.v2." + user.id + "." + id;
+function recoveryRecord() {
+  return {values:state.editor,baseline:state.baseline,revision:selectedDraft()?.revision ?? null,messages:state.messages,log:state.log};
 }
-
-async function onUserChanged() {
-  state.selectedId = null;
-  state.baseline = null;
-  state.games = [];
-  state.drafts = [];
-  resetAgent();
-  state.draftUndo = [];
-  stopTest();
-  render();
-  await loadGames();
-  render();
+function rememberWork() {
+  if (!me() || !state.selectedId || state.ownerId !== me().id) return;
+  try {
+    localStorage.setItem(recoveryKey(),JSON.stringify(recoveryRecord()));
+    localStorage.setItem("game-platform.builder.last.v2."+me().id,state.selectedId);
+    state.saveWarning="";
+  }
+  catch { state.saveWarning="Device recovery is unavailable. Keep this page open until autosave succeeds."; }
 }
-
+function restoreWork() {
+  try {
+    const record=JSON.parse(localStorage.getItem(recoveryKey()) || "null");
+    if (!record) return;
+    state.messages=record.messages || []; state.log=record.log || [];
+    if (JSON.stringify(record.values) !== record.baseline) {
+      if (record.revision !== (selectedDraft()?.revision ?? null)) {
+        localStorage.setItem(recoveryKey()+".conflict."+Date.now(),JSON.stringify(record));
+        state.saveWarning="A newer copy was saved elsewhere. Your recovered edits are kept on this device; reload before editing.";
+      } else { state.editor=content(record.values); state.baseline=record.baseline; }
+    }
+  } catch { state.saveWarning="Couldn't restore this device's working copy."; }
+}
 async function loadGames() {
-  const user = me();
-  const [games, drafts] = user ? await Promise.all([
-    apiRequest("GET", "/builder/games", {user}),
-    apiRequest("GET", "/game-drafts", {user}),
-  ]) : [[], []];
+  const user=me();
+  const [games,drafts]=user ? await Promise.all([apiRequest("GET","/builder/games",{user}),apiRequest("GET","/game-drafts",{user})]) : [[],[]];
   if (me()?.id !== user?.id) return;
-  state.games = games;
-  state.drafts = drafts;
+  state.games=games; state.drafts=drafts;
 }
-
-function renderGames() {
-  const library = new Map(state.games.map((game) => [game.id, game]));
-  for (const draft of state.drafts) library.set(draft.id, draft);
-  const items = [...library.values()].map((game) =>
-    el(
-      "button",
-      {
-        type: "button",
-        class: "list-item",
-        "aria-selected": String(game.id === state.selectedId),
-        onclick: () => select(game.id),
-      },
-      el("div", { class: "title" }, game.name || "Untitled game", el("span", { class: "badge", textContent: libraryVisibility(game) })),
-      el("div", {
-        class: "sub",
-        textContent: `${game.allowed_player_counts.join(", ")} players · updated ${formatTime(game.updated_at)}`,
-      }),
-    ),
-  );
-  if (state.selectedId === "new") {
-    items.push(el("button", { type: "button", class: "list-item", "aria-selected": "true" },
-      el("div", { class: "title" }, "New game (unsaved)")));
+function clearAgent() {
+  if (state.agentRequest) {state.agentRequest.cancelled=true;state.agentRequest.controller.abort();}
+  state.agentRequest=null; state.agentSending=false;
+  $("agent-activity").hidden=true; $("agent-stop").hidden=true;
+}
+async function select(id) {
+  if (!me() || state.selectedId === id || state.publishing || state.restoring) return;
+  if (isDirty() && !(await flushAutosave())) return;
+  clearTimeout(state.saveTimer); clearAgent(); state.session++;
+  state.selectedId=id; state.ownerId=me()?.id; state.undo=[]; state.deleteArmed=false; state.saveError="";state.saveWarning="";
+  state.messages=[];state.log=[]; state.aiOpen=true;
+  state.editor=content(selectedDraft() ?? selectedGame() ?? EMPTY);
+  state.baseline=JSON.stringify(state.editor);
+  restoreWork(); stopTest(); $("agent-input").value=""; render();
+  try {localStorage.setItem("game-platform.builder.last.v2."+me().id,id);} catch {}
+  if (state.editor.code) {renderPlayModes();startTest();}
+  if (isDirty()) scheduleAutosave();
+}
+function scheduleAutosave() {
+  state.deleteArmed=false;
+  rememberWork(); clearTimeout(state.saveTimer);
+  state.saveTimer=setTimeout(() => flushAutosave(),600);
+  renderStatus();
+}
+async function flushAutosave() {
+  clearTimeout(state.saveTimer);
+  if (state.savePromise) {
+    const succeeded=await state.savePromise;
+    return succeeded && isDirty() ? flushAutosave() : succeeded;
   }
-  if (!items.length) {
-    items.push(el("div", { class: "empty-note", textContent: me() ? "No games yet. Create one with New game." : "Log in first." }));
-  }
+  if (!isDirty()) return true;
+  const user=me(), id=state.selectedId, session=state.session;
+  if (!user || !id) return false;
+  const values=editorValues(), baseline=JSON.stringify(values),revision=selectedDraft()?.revision ?? null;
+  state.saveError="";
+  const operation=(async()=>{
+    try {
+      const draft=await apiRequest(id === "new" ? "POST":"PUT",id === "new" ? "/game-drafts":"/game-drafts/"+encodeURIComponent(id),
+        {user,body:{...values,expected_revision:revision}});
+      if (!currentSession(session,user)) return false;
+      state.drafts=[draft,...state.drafts.filter(item=>item.id!==draft.id)];
+      state.selectedId=draft.id; state.baseline=baseline;
+      if (id !== draft.id) {try {localStorage.removeItem(recoveryKey(id,user));} catch {}}
+      rememberWork(); renderLibrary(); return true;
+    } catch(error) {
+      if (currentSession(session,user)) {state.saveError="Autosave failed: "+error.message;rememberWork();}
+      return false;
+    }
+  })();
+  state.savePromise=operation;renderStatus();
+  const succeeded=await operation;
+  if (state.savePromise===operation) state.savePromise=null;
+  if (!currentSession(session,user)) return false;
+  renderStatus();
+  return succeeded && isDirty() ? flushAutosave() : succeeded;
+}
+async function publishVersion() {
+  if (state.publishing || state.agentSending || state.restoring || !state.editor.code) return;
+  state.publishing=true;state.saveError="";renderStatus();
+  const user=me(), session=state.session;
+  try {
+    if (!(await flushAutosave())) return;
+    const draft=selectedDraft();
+    if (!draft) return;
+    const game=await apiRequest("POST","/game-drafts/"+encodeURIComponent(draft.id)+"/publish",{user,body:{expected_revision:draft.revision}});
+    if (!currentSession(session,user)) return;
+    state.games=[game,...state.games.filter(item=>item.id!==game.id)];
+    state.drafts=state.drafts.map(item=>item.id===game.id ? {...item,base_version:game.version}:item);
+    agentLog("system","Published version "+game.version+". Everyone can play this version.");
+    rememberWork();render();
+  } catch(error) {if (currentSession(session,user)) state.saveError="Couldn't publish: "+error.message;}
+  finally {if(currentSession(session,user)){state.publishing=false;renderStatus();}}
+}
+function changeName() {
+  state.editor.name=$("game-name").value;state.deleteArmed=false;scheduleAutosave();
+}
+function renderLibrary() {
+  const library=new Map(state.games.map(game=>[game.id,game]));
+  for (const draft of state.drafts) library.set(draft.id,draft);
+  const items=[...library.values()].map(item=>el("button",{type:"button",class:"list-item","aria-selected":String(item.id===state.selectedId),onclick:()=>select(item.id)},
+    el("span",{class:"title",textContent:item.name || "Untitled game"}),
+    el("span",{class:"sub",textContent:state.games.find(game=>game.id===item.id)?.version ? "v"+state.games.find(game=>game.id===item.id).version:"In progress"})));
+  if (state.selectedId==="new") items.push(el("button",{type:"button",class:"list-item","aria-selected":"true",textContent:"New game"}));
+  if (!items.length) items.push(el("p",{class:"muted",textContent:me()?"Your games will appear here.":"Sign in to build a game."}));
   $("games").replaceChildren(...items);
 }
-
-// Editor
-
-function selectedGame() {
-  return state.games.find((game) => game.id === state.selectedId) ?? null;
+function renderStatus() {
+  const game=selectedGame();
+  const changed=!game || game.published===false || JSON.stringify(content(game))!==JSON.stringify(state.editor);
+  $("publish").disabled=!state.editor.code || !state.editor.name.trim() || !changed || state.publishing || state.agentSending || state.restoring;
+  $("publish").textContent=state.publishing ? "Publishing…":"Publish";
+  $("save-status").textContent=state.saveError || state.saveWarning || (state.savePromise ? "Saving…":isDirty()?"Saving…":state.selectedId && state.editor.code?"Autosaved":"");
+  $("save-status").className="save-status"+((state.saveError||state.saveWarning)?" error":"");
+  $("retry-save").hidden=!state.saveError;
+  $("undo-ai-change").disabled=!state.undo.length || state.agentSending || state.publishing || state.restoring;
+  $("new-game").disabled=!me() || state.publishing;
+  $("game-name").disabled=state.publishing || state.restoring;
+  $("load-version").disabled=state.publishing || state.restoring || state.agentSending;
+  $("delete-game").disabled=state.publishing || state.restoring || state.agentSending || Boolean(state.savePromise);
+  $("agent-send").disabled=state.agentSending || state.publishing || state.restoring;
+  $("agent-send").textContent=state.agentSending?"Working…":state.editor.code?"Update game":"Create game";
+  $("open-ai").hidden=!state.editor.code || state.aiOpen;
+  $("open-ai").textContent=state.agentSending?"AI is working…":"Ask AI";
+  $("agent-stop").hidden=!state.agentSending;
+  $("game-summary").textContent=state.editor.description;
+  $("game-version").textContent=game ? "v"+game.version:"First version";
+  $("play-game").hidden=!game || game.published===false;
+  if (game) $("play-game").href="/portal#game="+encodeURIComponent(game.id);
 }
-
-function selectedDraft() {
-  return state.drafts.find((draft) => draft.id === state.selectedId) ?? null;
+function render() {
+  renderLibrary();
+  const ready=Boolean(me() && state.selectedId);
+  $("workspace").hidden=!ready;$("welcome").hidden=ready;
+  $("welcome-action").textContent=me()?"Create a game":"Sign in";
+  const playable=Boolean(state.editor.code);
+  $("starter-view").hidden=playable;$("play-view").hidden=!playable;
+  $("ai-panel").hidden=!ready || !playable || !state.aiOpen;
+  const host=$(playable?"ai-panel-body":"starter-agent-home");
+  if ($("agent-tools").parentNode!==host) host.append($("agent-tools"));
+  $("game-name").value=state.editor.name;
+  $("agent-input").placeholder=playable?"Change a rule, add a feature, or fix a bug…":"Describe the game you want to play…";
+  const log=$("agent-log");
+  log.hidden=!state.log.length;
+  log.replaceChildren(...state.log.map(item=>el("div",{class:"msg "+item.role,textContent:item.text})));
+  log.scrollTop=log.scrollHeight;
+  const game=selectedGame();
+  $("versions").replaceChildren(...(game?Array.from({length:game.version},(_,i)=>el("option",{value:game.version-i,textContent:"Version "+(game.version-i)})):[]));
+  $("version-history").hidden=!game;
+  renderStatus();
 }
-
-function libraryVisibility(item) {
-  const game = state.games.find((g) => g.id === item.id);
-  if (game?.published === false) return "Unpublished · private";
-  return item.version ? `Public · v${item.version}` : game ? `Private draft · public v${game.version}` : "Private draft";
+function agentLog(role,text) {
+  state.log.push({role,text});state.log=state.log.slice(-80);
+  $("agent-log").hidden=false;
+  $("agent-log").append(el("div",{class:"msg "+role,textContent:text}));
+  $("agent-log").scrollTop=$("agent-log").scrollHeight;
 }
-
-function editorValues() {
-  return {
-    name: $("name").value,
-    description: $("description").value,
-    allowed_player_counts: PLAYER_COUNTS.filter((count) => $(`count-${count}`).checked),
-    allows_leave_mid_match: $("allows-leave").checked,
-    allows_join_mid_match: $("allows-join").checked,
-    code: $("code").value,
-  };
+function testLog(text,isError=false) {
+  if (isError) $("test-status").textContent=text;
 }
-
-function fillEditor(values) {
-  $("name").value = values.name;
-  $("description").value = values.description;
-  $("counts").replaceChildren(...PLAYER_COUNTS.map((count) =>
-    el("label", { class: "inline" },
-      el("input", {
-        type: "checkbox",
-        id: `count-${count}`,
-        checked: values.allowed_player_counts.includes(count),
-        onchange: () => { $("lock-player-counts").checked = true; renderTestSetup(); renderDraftControls(); },
-      }),
-      count === 1 ? "1 (solo)" : String(count)),
-  ));
-  $("allows-leave").checked = values.allows_leave_mid_match;
-  $("allows-join").checked = values.allows_join_mid_match;
-  $("code").value = values.code;
-  state.baseline = JSON.stringify(editorValues());
+function renderPlayModes() {
+  const choices=state.editor.allowed_player_counts.flatMap(count=>count===1
+    ? [{value:"1:solo",label:"Solo"}]
+    : [{value:count+":computer",label:count+" players · vs computers"},{value:count+":human",label:count+" players · pass and play"}]);
+  const previous=$("play-mode").value;
+  $("play-mode").replaceChildren(...choices.map(choice=>el("option",{value:choice.value,textContent:choice.label})));
+  $("play-mode").value=choices.some(choice=>choice.value===previous)?previous:choices[0]?.value || "";
 }
-
-const isDirty = () => state.baseline !== null && JSON.stringify(editorValues()) !== state.baseline;
-
-function select(id) {
-  if (id === state.selectedId || state.saving) return;
-  if (id !== state.selectedId && (isDirty() || state.agent?.pending) && state.pendingSwitch !== id) {
-    state.pendingSwitch = id;
-    saveMessage("You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
-    setMessage("test-status", "You have unsaved changes or an unapplied proposal. Click again to discard them.", "error");
-    return;
-  }
-  state.pendingSwitch = null;
-  state.selectedId = id;
-  state.deleteArmed = false;
-  state.discardDraftArmed = false;
-  resetAgent();
-  state.draftUndo = [];
-  const game = selectedGame();
-  fillEditor(selectedDraft() ?? game ?? NEW_GAME);
-  $("lock-player-counts").checked = false;
-  stopTest();
-  showTab(id === "new" ? "agent" : "edit");
-  setMessage("edit-message", "");
-  render();
-  const working = selectedDraft() ?? game;
-  if (working) {
-    setTestMode(working.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
-    startTest();
-  }
-}
-
-function setMessage(id, text, kind = "") {
-  $(id).textContent = text;
-  $(id).className = `message ${kind}`;
-}
-
-function saveMessage(text, kind = "") {
-  setMessage("edit-message", text, kind);
-  setMessage("agent-message", text, kind);
-}
-
-function updateSaveControls() {
-  for (const id of ["save", "agent-save", "publish", "agent-publish", "unpublish", "discard-draft", "delete", "revert", "new-game"]) {
-    $(id).disabled = state.saving;
-  }
-  renderDraftControls();
-}
-
-async function save(publishing = false) {
-  if (state.saving || state.restoring) return;
-  if (state.agent?.pending || state.agentSending) {
-    saveMessage("Wait for the agent, then apply or discard its proposal before saving or publishing.", "error");
-    return;
-  }
-  const user = me();
-  const selectedId = state.selectedId;
-  if (!user || !selectedId) return;
-  const values = editorValues();
-  const baseline = JSON.stringify(values);
-  const existingDraft = selectedDraft();
-  state.saving = true;
-  updateSaveControls();
-  saveMessage(publishing ? "Saving privately, then publishing…" : "Saving private draft…");
-  try {
-    const draft = await apiRequest(selectedId === "new" ? "POST" : "PUT",
-      selectedId === "new" ? "/game-drafts" : `/game-drafts/${encodeURIComponent(selectedId)}`,
-      {body: {...values, expected_revision: existingDraft?.revision ?? null}, user});
-    if (me()?.id !== user.id || state.selectedId !== selectedId) return;
-    state.drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)];
-    state.selectedId = draft.id;
-    // Keep edits typed while the request was in flight.
-    if (JSON.stringify(editorValues()) === baseline) fillEditor(draft);
-    else state.baseline = baseline;
-    saveMessage("Saved privately. Only you can access this draft; Publish makes it public.", "ok");
-    render();
-    if (publishing) {
-      try {
-        const game = await apiRequest("POST", `/game-drafts/${encodeURIComponent(draft.id)}/publish`,
-          {body: {expected_revision: draft.revision}, user});
-        if (me()?.id !== user.id || state.selectedId !== draft.id) return;
-        state.games = [game, ...state.games.filter((item) => item.id !== game.id)];
-        state.drafts = state.drafts.map((item) => item.id === draft.id ? {...item, base_version: game.version} : item);
-        saveMessage(`Published version ${game.version}. Everyone can now play this version.`, "ok");
-      } catch (error) {
-        if (me()?.id === user.id && state.selectedId === draft.id) {
-          saveMessage(`Draft saved privately, but publishing failed: ${error.message}`, "error");
-        }
-      }
-    }
-  } catch (error) {
-    if (me()?.id === user.id && state.selectedId === selectedId) {
-      saveMessage(`Couldn't save: ${error.message}`, "error");
-    }
-  } finally {
-    state.saving = false;
-    updateSaveControls();
-    render();
-  }
-}
-
-async function discardSavedDraft() {
-  if (!selectedDraft() || state.saving || state.restoring || state.agentSending || state.agent?.pending) return;
-  const user = me(), id = state.selectedId;
-  if (!state.discardDraftArmed) {
-    state.discardDraftArmed = true;
-    saveMessage("Click Discard private draft again to remove your saved draft. The public version stays available.", "error");
-    return;
-  }
-  state.saving = true;
-  updateSaveControls();
-  try {
-    await apiRequest("DELETE", `/game-drafts/${encodeURIComponent(id)}`, {user});
-    if (me()?.id !== user.id || state.selectedId !== id) return;
-    state.drafts = state.drafts.filter((item) => item.id !== id);
-    fillEditor(selectedGame() ?? NEW_GAME);
-    state.discardDraftArmed = false;
-    resetAgent();
-    state.draftUndo = [];
-    stopTest();
-    saveMessage(`Private draft discarded. ${selectedGame()?.published === false ? "Unpublished" : "Public"} version loaded.`, "ok");
-  } catch (error) {
-    saveMessage(`Couldn't discard draft: ${error.message}`, "error");
-  } finally {
-    state.saving = false;
-    updateSaveControls();
-    render();
-  }
-}
-
-async function unpublishGame() {
-  if (state.saving || state.restoring || !selectedGame() || selectedGame().published === false) return;
-  const user = me(), id = state.selectedId;
-  state.saving = true;
-  updateSaveControls();
-  try {
-    await apiRequest("POST", `/games/${encodeURIComponent(id)}/unpublish`, {user});
-    if (me()?.id !== user.id || state.selectedId !== id) return;
-    await loadGames();
-    saveMessage("Unpublished. Hidden from the catalog; no new matches or players can join. Your private draft is kept. Existing participants can finish their matches.", "ok");
-  } catch (error) {
-    if (me()?.id === user.id && state.selectedId === id) saveMessage(`Couldn't unpublish: ${error.message}`, "error");
-  } finally {
-    state.saving = false;
-    updateSaveControls();
-    render();
-  }
-}
-
-async function deleteGame() {
-  if (state.saving) return;
-  if (state.selectedId === "new") {
-    stopTest();
-    state.selectedId = null;
-    state.baseline = null;
-    render();
-    return;
-  }
-  if (!state.deleteArmed) {
-    state.deleteArmed = true;
-    setMessage("edit-message", selectedGame()?.published === false
-      ? "Click Delete again to delete this unpublished game and your draft. Existing participants keep their match history."
-      : selectedGame()
-      ? "Click Delete again to delete the public game and your draft. Existing matches keep working; new ones can't be created."
-      : "Click Delete again to delete this private draft. It has never been published.", "error");
-    return;
-  }
-  try {
-    await apiRequest("DELETE", `${selectedGame() ? "/games" : "/game-drafts"}/${encodeURIComponent(state.selectedId)}`, { user: me() });
-    stopTest();
-    state.selectedId = null;
-    state.baseline = null;
-    state.deleteArmed = false;
-    await loadGames();
-    render();
-  } catch (error) {
-    setMessage("edit-message", `Couldn't delete: ${error.message}`, "error");
-  }
-}
-
-function renderEditorMeta() {
-  const game = selectedGame();
-  const draft = selectedDraft();
-  $("game-meta").textContent = game
-    ? `${game.published === false ? "Unpublished" : "Public"} version ${game.version}${draft ? " · private working copy" : ""} · id ${game.id}`
-    : draft ? "Private draft · visible only to your account" : "Unsaved draft · Save keeps it private, Publish makes it public";
-  $("save").textContent = "Save draft";
-  $("publish").textContent = game && game.published !== false ? "Publish new version" : "Publish game";
-  $("agent-publish").textContent = $("publish").textContent;
-  $("revert").textContent = draft ? "Revert to saved draft" : "Revert to published";
-  $("discard-draft").hidden = !draft || !game;
-  $("unpublish").hidden = !game || game.published === false;
-  $("delete").textContent = state.selectedId === "new" ? "Discard" : "Delete";
-}
-
-// Tabs
-
-const TABS = ["edit", "test", "agent"];
-
-function showTab(name) {
-  state.activeTab = name;
-  for (const tab of TABS) {
-    $(`tab-${tab}`).setAttribute("aria-selected", String(name === tab));
-    $(`${tab}-panel`).hidden = name !== tab;
-  }
-  const chatHost = $(name === "edit" ? "edit-chat-host" : "agent-home");
-  if ($("agent-tools").parentNode !== chatHost) chatHost.append($("agent-tools"));
-  const testHost = $(name === "edit" ? "edit-test-host" : "test-home");
-  if ($("test-tools").parentNode !== testHost) {
-    testHost.append($("test-tools"));
-    // Moving an iframe reloads its document in some browsers. Re-send the
-    // stored match snapshot rather than losing the current test's progress.
-    if (state.test) {
-      frame.load(state.test.code ?? $("code").value);
-      sendTestState();
-    }
-  }
-  $("agent-send").textContent = name === "edit" ? "Update game ↗" : "Let’s build ↗";
-  if (name === "test" || name === "edit") renderTestSetup();
-  renderDraftControls();
-}
-
-function renderDraftControls() {
-  $("undo-ai-change").disabled = state.draftUndo.length === 0 || state.agentSending || Boolean(state.agent?.pending) || state.saving || state.restoring;
-  const game = selectedGame();
-  const draft = selectedDraft();
-  const sameAsPublic = game && game.published !== false && draft && Object.keys(editorValues()).every((key) => JSON.stringify(game[key]) === JSON.stringify(draft[key]));
-  $("draft-status").textContent = state.agent?.pending ? "Proposal awaiting review" : isDirty() ? "Unsaved changes — Save keeps them private" : sameAsPublic ? `Published v${game.version} — draft also saved` : draft ? "Draft saved privately — Publish shares it with everyone" : game ? (game.published === false ? "Unpublished game loaded — only you can edit it" : "Published version loaded") : "New game — not saved or published";
-  const counts = editorValues().allowed_player_counts;
-  $("agent-player-summary").textContent = state.selectedId === "new" && !state.agent?.messages.length
-    ? "Muse sets player counts from your prompt. Tell it if you want a specific number."
-    : `Current draft: ${counts.length === 1 && counts[0] === 1 ? "1 player · solo" : counts.join(", ") + " players"}`;
-  const versions = game ? Array.from({length: Math.min(game.version, 6)}, (_, i) => game.version - i) : [];
-  $("published-versions").replaceChildren(...versions.map((version) => el("button", {
-    type: "button", textContent: `Load v${version}${version === game.version ? " (latest)" : ""}`,
-    disabled: state.saving || state.agentSending || state.restoring || Boolean(state.agent?.pending),
-    onclick: () => restorePublishedVersion(version),
-  })));
-  if (!game) $("published-versions").textContent = "Publish your first version to keep its history.";
-}
-
-function replaceDraft(values) {
-  const baseline = state.baseline;
-  state.draftUndo.push(editorValues());
-  fillEditor(values);
-  state.baseline = baseline;
-  stopTest();
-  renderTestSetup();
-  renderDraftControls();
-}
-
-function undoAppliedChange() {
-  if (state.saving || state.agentSending || state.agent?.pending || state.restoring || !state.draftUndo.length) return;
-  const baseline = state.baseline;
-  fillEditor(state.draftUndo.pop());
-  state.baseline = baseline;
-  stopTest();
-  renderTestSetup();
-  renderDraftControls();
-  if (state.activeTab === "edit" || state.activeTab === "test") startTest();
-  saveMessage("Restored the previous draft. Save privately or Publish to share it.", "ok");
-}
-
-async function restorePublishedVersion(version) {
-  const user = me();
-  const id = state.selectedId;
-  if (!user || !selectedGame() || state.saving || state.agentSending || state.agent?.pending || state.restoring) return;
-  const snapshot = JSON.stringify(editorValues());
-  state.restoring = true;
-  renderDraftControls();
-  try {
-    const game = await apiRequest("GET", `/games/${encodeURIComponent(id)}/versions/${version}`, {user});
-    if (state.selectedId !== id || me()?.id !== user.id) return;
-    if (JSON.stringify(editorValues()) !== snapshot) {
-      saveMessage("The draft changed while the version loaded. Click Load again to try again.", "error");
-      return;
-    }
-    replaceDraft(game);
-    if (state.activeTab === "edit" || state.activeTab === "test") startTest();
-    saveMessage(`Loaded version ${version} as a draft. Publish to use it for new matches.`, "ok");
-  } catch (error) {
-    if (state.selectedId === id && me()?.id === user.id) saveMessage(`Couldn't load version: ${error.message}`, "error");
-  } finally {
-    state.restoring = false;
-    renderDraftControls();
-  }
-}
-
-// Pass-and-play test
-
-function testLog(text, isError = false) {
-  $("test-log").prepend(el("div", { class: `entry${isError ? " error" : ""}`, textContent: text }));
-}
-
-function renderTestSetup() {
-  const counts = PLAYER_COUNTS.filter((count) => $(`count-${count}`)?.checked);
-  const select = $("test-count");
-  const previous = Number(select.value);
-  select.replaceChildren(...counts.map((count) => el("option", { value: count, textContent: count })));
-  if (counts.includes(previous)) select.value = String(previous);
-  renderSeatKinds();
-  $("test-mode-solo").disabled = !counts.includes(1);
-  $("test-mode-computer").disabled = !counts.some((count) => count >= 2);
-  $("test-mode-human").disabled = !counts.some((count) => count >= 2);
-}
-
-function setTestMode(mode) {
-  const counts = PLAYER_COUNTS.filter((count) => $(`count-${count}`)?.checked);
-  const count = mode === "solo" ? (counts.includes(1) ? 1 : null) : counts.find((count) => count >= 2);
-  if (!count) return;
-  $("test-count").value = String(count);
-  renderSeatKinds();
-  [...$("test-seats").querySelectorAll("select")].forEach((select, seat) => {
-    select.value = mode === "computer" && seat > 0 ? "computer" : "human";
-  });
-}
-
-function renderSeatKinds() {
-  const count = Number($("test-count").value) || 0;
-  const previous = [...$("test-seats").querySelectorAll("select")].map((s) => s.value);
-  $("test-seats").replaceChildren(...[...Array(count).keys()].map((seat) => {
-    const kind = el("select", { "aria-label": `Seat ${seat}` },
-      el("option", { value: "human", textContent: `${seat}: human` }),
-      el("option", { value: "computer", textContent: `${seat}: computer` }));
-    kind.value = previous[seat] ?? "human";
-    return kind;
-  }));
-}
-
 function startTest() {
-  const kinds = [...$("test-seats").querySelectorAll("select")].map((s) => s.value);
-  if (kinds.length === 0) {
-    setMessage("test-status", "Choose at least one player count first.", "error");
-    return;
-  }
-  const players = kinds.map((kind, seat) => ({
-    player_index: seat,
-    kind,
-    name: kind === "human" ? `Player ${seat + 1}` : `Computer ${seat + 1}`,
-  }));
-  state.test = { code: $("code").value, players, moves: [], state: null, turn: [0], status: "ongoing", awaiting: false };
-  $("test-log").replaceChildren();
-  frame.load($("code").value);
-  testLog(`Started a test with ${players.length} players.`);
-  sendTestState();
+  if (!state.editor.code) return;
+  const [countText,mode]=$("play-mode").value.split(":");const count=Number(countText);
+  if (!state.editor.allowed_player_counts.includes(count)) return;
+  const players=Array.from({length:count},(_,seat)=>({player_index:seat,kind:mode==="computer"&&seat>0?"computer":"human",name:mode==="computer"&&seat>0?"Computer "+seat:"Player "+(seat+1)}));
+  state.test={code:state.editor.code,players,moves:[],state:null,turn:[0],status:"ongoing",awaiting:false};
+  frame.load(state.editor.code);sendTestState();
 }
-
-function stopTest() {
-  state.test = null;
-  frame.unload();
-  $("test-log").replaceChildren();
-  setMessage("test-status", "");
-}
-
+function stopTest(){state.test=null;frame.unload();$("test-status").textContent="";}
+function setMessage(id,text,kind="") {$(id).textContent=text;$(id).className="message "+kind;}
 function sendTestState() {
   const test = state.test;
   const firstTurn = test.turn === null ? null : test.turn[0];
@@ -603,72 +265,6 @@ function undoTestMove() {
   sendTestState();
 }
 
-// Game-building agent: iterative chat that proposes code for the editor.
-
-function resetAgent() {
-  if (state.agentRequest) {
-    state.agentRequest.cancelled = true;
-    state.agentRequest.controller.abort();
-  }
-  state.agentRequest = null;
-  $("agent-activity").hidden = true;
-  $("agent-stop").hidden = true;
-  state.agent = null;
-  state.agentSending = false;
-  $("agent-send").disabled = false;
-  $("agent-log").replaceChildren();
-  $("agent-proposal").hidden = true;
-  $("agent-input").value = "";
-  $("agent-proposed-code").textContent = "";
-  setMessage("agent-message", "");
-}
-
-function agentLog(role, text) {
-  $("agent-log").append(el("div", { class: `msg ${role}`, textContent: text }));
-  $("agent-log").scrollTop = $("agent-log").scrollHeight;
-}
-
-/** One collapsible debug section inside an assistant message. */
-function agentDebugSection(title, text) {
-  return el(
-    "details",
-    { class: "agent-debug", open: state.agentDebug || undefined },
-    el("summary", {}, title),
-    el("pre", {}, text)
-  );
-}
-
-/** Render an assistant reply as a chat bubble with optional debug details. */
-function agentLogReply(reply) {
-  const log = $("agent-log");
-  const bubble = el("div", { class: "msg assistant" }, reply.message);
-  if (reply.thinking) bubble.append(agentDebugSection("💭 Thinking", reply.thinking));
-  if (reply.raw) bubble.append(agentDebugSection("🧾 Raw response", reply.raw));
-  log.append(bubble);
-  if (reply.parse_note) {
-    const attempts = reply.attempts > 1 ? `took ${reply.attempts} attempts` : "needed a retry";
-    log.append(
-      el("div", {
-        class: "msg system agent-note",
-        textContent: `The agent ${attempts} (${reply.parse_note}).`,
-      })
-    );
-  }
-  log.scrollTop = log.scrollHeight;
-}
-
-/** The Debug toggle expands or collapses every thinking/raw section at once. */
-function setAgentDebug(on) {
-  state.agentDebug = on;
-  for (const details of $("agent-log").querySelectorAll("details.agent-debug")) {
-    details.open = on;
-  }
-}
-
-function agentHistory() {
-  if (!state.agent) state.agent = { messages: [], pending: null };
-  return state.agent;
-}
 
 function generationActivity(phase, started) {
   $("agent-activity").hidden = false;
@@ -676,8 +272,8 @@ function generationActivity(phase, started) {
   const seconds = Math.floor((Date.now() - started) / 1000);
   $("agent-elapsed").textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed`;
   $("agent-wait-note").textContent = seconds >= 60
-    ? "The live server has not returned game code. Its model progress is unavailable. You can keep waiting or stop waiting."
-    : "Waiting for the live course server to return a proposal. This indicator is not model progress.";
+    ? "Still waiting for AI. You can stop waiting and keep your current game."
+    : "Your current game stays available while AI works.";
 }
 
 function stopAgentWaiting() {
@@ -691,7 +287,7 @@ function stopAgentWaiting() {
 async function requestAgentReply(user, body, isCurrent, request) {
   const started = Date.now();
   const options = {user, signal: request.controller.signal};
-  let phase = "Sending request to the course server";
+  let phase = "Asking AI…";
   generationActivity(phase, started);
   const ticker = setInterval(() => {
     if (isCurrent() && !request.cancelled) generationActivity(phase, started);
@@ -702,7 +298,7 @@ async function requestAgentReply(user, body, isCurrent, request) {
     while (reply?.preview_job_id) {
       if (!isCurrent() || request.cancelled) throw new Error("Waiting stopped.");
       if (Date.now() > deadline) throw new Error("Generation is taking too long. Please try again later.");
-      phase = "Request accepted — waiting for the backend response";
+      phase = "AI is working…";
       generationActivity(phase, started);
       await new Promise((resolve) => setTimeout(resolve, 1500));
       if (request.cancelled) throw new Error("Waiting stopped.");
@@ -715,228 +311,132 @@ async function requestAgentReply(user, body, isCurrent, request) {
   }
 }
 
-async function loadStarters() {
-  $("load-starters").disabled = true;
-  try {
-    state.starters = await apiRequest("GET", "/games");
-    $("starter-game").replaceChildren(...state.starters.map((game) => el("option", {value: game.id, textContent: `${game.name} · v${game.version}`})));
-    $("use-starter").disabled = state.starters.length === 0;
-  } catch (error) {
-    setMessage("agent-message", `Couldn't load the catalog: ${error.message}`, "error");
-  } finally {
-    $("load-starters").disabled = false;
-  }
-}
-
-function useStarter() {
-  if (state.selectedId !== "new" || state.saving || state.agentSending || state.agent?.pending || state.restoring) {
-    setMessage("agent-message", "Stop waiting and apply or discard any proposal before loading a starting game.", "error");
-    return;
-  }
-  const game = state.starters.find((game) => game.id === $("starter-game").value);
-  if (!game) return;
-  resetAgent();
-  replaceDraft({...game, name: `${game.name} (copy)`, description: `${game.description || game.name} · Based on ${game.name} v${game.version}.`});
-  showTab("edit");
-  setTestMode(game.allowed_player_counts.some((count) => count >= 2) ? "computer" : "solo");
-  startTest();
-  agentLog("system", `Loaded a copy of published ${game.name} v${game.version}. No AI generation was performed. Describe a change to customize it.`);
-  saveMessage("Loaded an unpublished copy. Customize it and test before publishing.", "ok");
-}
 
 async function sendAgentMessage() {
-  const user = me();
-  const input = $("agent-input").value.trim();
-  if (!input || !user || state.agentSending || state.saving || state.restoring) return;
-  const history = agentHistory();
-  if (history.pending) {
-    setMessage("agent-message", "Apply or discard the pending proposal first.", "error");
-    return;
-  }
-  const values = editorValues();
-  const generationMode = $("lock-player-counts").checked ? "manual" : "auto";
-  if (generationMode !== "auto" && values.allowed_player_counts.length === 0) {
-    setMessage("agent-message", "Open Player settings & code and select at least one player count, or unlock counts so Muse can choose.", "error");
-    return;
-  }
-  const request = {cancelled: false, controller: new AbortController()};
-  state.agentRequest = request;
-  const isCurrent = () => state.agent === history && me()?.id === user.id && state.agentRequest === request;
-  const messages = [...history.messages, { role: "user", content: input }];
-  $("agent-input").value = "";
-  agentLog("user", input);
-  setMessage("agent-message", "");
-  $("agent-stop").hidden = false;
-  state.agentSending = true;
-  renderDraftControls();
-  $("agent-send").disabled = true;
+  const user=me(),input=$("agent-input").value.trim();
+  if (!user||!input||state.agentSending||state.publishing||state.restoring) return;
+  const session=state.session,values=editorValues(),base=JSON.stringify(values);
+  const request={cancelled:false,controller:new AbortController()};state.agentRequest=request;state.agentSending=true;
+  const isCurrent=()=>currentSession(session,user)&&state.agentRequest===request;
+  const messages=[...state.messages.slice(-48),{role:"user",content:input}];
+  $("agent-input").value="";agentLog("user",input);setMessage("agent-message","");rememberWork();renderStatus();
   try {
-    const reply = await requestAgentReply(user, {
-        game_name: values.name,
-        game_description: values.description,
-        allowed_player_counts: values.allowed_player_counts,
-        player_count_mode: generationMode === "auto" ? "auto" : "manual",
-        code: values.code,
-        messages,
-    }, isCurrent, request);
-    if (!isCurrent() || request.cancelled) return;
-    history.messages.push({ role: "user", content: input });
-    history.messages.push({ role: "assistant", content: reply.message });
-    agentLogReply(reply);
+    const reply=await requestAgentReply(user,{game_name:values.name,game_description:values.description,
+      allowed_player_counts:values.allowed_player_counts,player_count_mode:"auto",
+      allows_leave_mid_match:values.allows_leave_mid_match,allows_join_mid_match:values.allows_join_mid_match,
+      code:values.code,messages},isCurrent,request);
+    if (!isCurrent()||request.cancelled) return;
+    state.messages=[...messages,{role:"assistant",content:reply.message}];
+    agentLog("assistant",reply.message);
     if (reply.code) {
-      history.pending = { code: reply.code, name: reply.name, description: reply.description, allowed_player_counts: reply.allowed_player_counts, generationMode, base: JSON.stringify(values) };
-      $("agent-proposed-players").textContent = reply.allowed_player_counts
-        ? `Proposed players: ${reply.allowed_player_counts.join(", ")}${reply.allowed_player_counts.length === 1 && reply.allowed_player_counts[0] === 1 ? " (solo)" : ""}`
-        : "Player counts unchanged";
-      $("agent-proposed-code").textContent = reply.code;
-      $("agent-proposal").hidden = false;
-      agentLog("system", "The agent proposed new code. Review it with Apply, or Discard it.");
+      const counts=reply.allowed_player_counts;
+      if (!Array.isArray(counts)||!counts.length||new Set(counts).size!==counts.length||counts.some(n=>!Number.isInteger(n)||n<1||n>10)) throw new Error("The AI did not return valid player counts. Please ask it to try again.");
+      if ([reply.allows_leave_mid_match,reply.allows_join_mid_match].some(value=>value!=null && typeof value!=="boolean")) throw new Error("The AI did not return valid mid-match rules. Please ask it to try again.");
+      if (JSON.stringify(state.editor)!==base) {
+        agentLog("system","The game changed while the AI was working, so this update wasn't applied. Ask again using the latest game.");
+      } else {
+        state.undo.push(editorValues());state.undo=state.undo.slice(-8);
+        state.editor={...state.editor,code:reply.code,allowed_player_counts:counts,
+          allows_leave_mid_match:reply.allows_leave_mid_match ?? state.editor.allows_leave_mid_match,
+          allows_join_mid_match:reply.allows_join_mid_match ?? state.editor.allows_join_mid_match,
+          name:reply.name || state.editor.name || input.split("\n")[0].slice(0,80),description:reply.description ?? state.editor.description};
+        state.aiOpen=true;render();renderPlayModes();startTest();scheduleAutosave();
+        agentLog("system","Updated the game. Play it now, ask for another change, or publish a version when ready.");
+      }
     }
-    setMessage("agent-message", "");
-  } catch (error) {
+    rememberWork();
+  } catch(error) {
     if (!isCurrent()) return;
-    setMessage("agent-message", request.cancelled
-      ? "Stopped waiting. The live server may still finish the original request. Your prompt is preserved."
-      : `The agent couldn't reply: ${error.message}`, request.cancelled ? "" : "error");
-    if (!$("agent-input").value.trim()) $("agent-input").value = input;
+    setMessage("agent-message",request.cancelled?"Stopped waiting. Your game is unchanged; the server may still finish this request.":"The agent couldn't reply: "+error.message,"error");
+    if (!$("agent-input").value.trim()) $("agent-input").value=input;
   } finally {
-    if (isCurrent()) {
-      state.agentSending = false;
-      state.agentRequest = null;
-      $("agent-activity").hidden = true;
-      $("agent-stop").hidden = true;
-      $("agent-send").disabled = false;
-      renderDraftControls();
-    }
+    if (isCurrent()) {state.agentSending=false;state.agentRequest=null;$("agent-activity").hidden=true;renderStatus();}
   }
 }
-
-function applyAgentProposal() {
-  const history = agentHistory();
-  const pending = history.pending;
-  if (!pending || state.saving || state.restoring) return;
-  if (pending.generationMode && pending.generationMode !== ($("lock-player-counts").checked ? "manual" : "auto")) {
-    setMessage("agent-message", "The player count lock changed while Muse was working. Discard this proposal and request a fresh change.", "error");
-    return;
-  }
-  if (pending.base && JSON.stringify(editorValues()) !== pending.base) {
-    setMessage("agent-message", "The draft changed while Muse was working. Discard this proposal and request a fresh change to keep your edits.", "error");
-    return;
-  }
-  replaceDraft({...editorValues(), code: pending.code,
-    allowed_player_counts: pending.allowed_player_counts ?? editorValues().allowed_player_counts,
-    name: pending.name || $("name").value, description: pending.description || $("description").value});
-  history.pending = null;
-  $("agent-proposal").hidden = true;
-  $("agent-proposed-code").textContent = "";
-  showTab("edit");
-  if (editorValues().allowed_player_counts.length === 1 && editorValues().allowed_player_counts[0] === 1) setTestMode("solo");
-  startTest();
-  agentLog("system", "Applied to the draft and restarted the preview. Save privately, ask for another change, or publish when ready.");
-  saveMessage("Applied to draft. Save to keep it private, or Publish to share it.", "ok");
-  renderDraftControls();
+function undoAppliedChange() {
+  if (!state.undo.length||state.agentSending||state.publishing||state.restoring) return;
+  state.editor=state.undo.pop();render();renderPlayModes();startTest();scheduleAutosave();
+  agentLog("system","Undid the last AI change.");
 }
-
-function discardAgentProposal() {
-  const history = agentHistory();
-  history.pending = null;
-  $("agent-proposal").hidden = true;
-  agentLog("system", "Discarded the proposal.");
-  $("agent-proposed-code").textContent = "";
-  renderDraftControls();
-}
-
-// Rendering
-
-function render() {
-  renderGames();
-  const showWorkspace = Boolean(me()) && state.selectedId !== null;
-  $("workspace").hidden = !showWorkspace;
-  $("no-user").hidden = showWorkspace;
-  if (!me()) {
-    $("no-user").replaceChildren(
-      "Log in at the top right to see and build your games. ",
-      el("button", { type: "button", class: "link", textContent: "Log in", onclick: () => Auth.openDialog("login") })
-    );
-  } else {
-    $("no-user").replaceChildren(
-      "Ready to make your next favorite game? ",
-      el("button", { type: "button", textContent: "Create a game ↗", onclick: () => select("new") })
-    );
-  }
-  $("new-game").disabled = !me() || state.saving;
-  $("starter-options").hidden = state.selectedId !== "new";
-  if (showWorkspace) { renderEditorMeta(); renderDraftControls(); }
-  $("play-game").hidden = !selectedGame() || selectedGame().published === false;
-  if (selectedGame()) $("play-game").href = `/portal#game=${encodeURIComponent(state.selectedId)}`;
-}
-
-function protectUnsavedChanges(event) {
-  if (isDirty() || state.agent?.pending || state.agentSending || state.saving) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
-}
-
-async function main() {
-  window.addEventListener("beforeunload", protectUnsavedChanges);
-  $("new-game").addEventListener("click", () => select("new"));
-  $("save").addEventListener("click", () => save());
-  $("agent-save").addEventListener("click", () => save());
-  $("publish").addEventListener("click", () => save(true));
-  $("discard-draft").addEventListener("click", discardSavedDraft);
-  $("unpublish").addEventListener("click", unpublishGame);
-  $("undo-ai-change").addEventListener("click", undoAppliedChange);
-  for (const id of ["name", "description", "code", "allows-leave", "allows-join"]) {
-    $(id).addEventListener("input", renderDraftControls);
-  }
-  $("revert").addEventListener("click", () => {
-    fillEditor(selectedDraft() ?? selectedGame() ?? NEW_GAME);
-    stopTest();
-    renderTestSetup();
-    renderDraftControls();
-    setMessage("edit-message", "Reverted.");
-  });
-  $("delete").addEventListener("click", deleteGame);
-  $("tab-edit").addEventListener("click", () => showTab("edit"));
-  $("tab-test").addEventListener("click", () => showTab("test"));
-  $("tab-agent").addEventListener("click", () => showTab("agent"));
-  $("open-player-settings").addEventListener("click", () => {
-    showTab("edit");
-    $("advanced-editor").open = true;
-    $("advanced-editor").scrollIntoView({block: "start", behavior: "smooth"});
-    $("lock-player-counts").focus({preventScroll: true});
-  });
-  $("agent-send").addEventListener("click", sendAgentMessage);
-  $("agent-stop").addEventListener("click", stopAgentWaiting);
-  $("load-starters").addEventListener("click", loadStarters);
-  $("use-starter").addEventListener("click", useStarter);
-  $("agent-input").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendAgentMessage();
-  });
-  $("agent-apply").addEventListener("click", applyAgentProposal);
-  $("agent-discard").addEventListener("click", discardAgentProposal);
-  $("agent-debug").addEventListener("change", (event) => setAgentDebug(event.target.checked));
-  $("lock-player-counts").addEventListener("change", renderDraftControls);
-  $("agent-publish").addEventListener("click", () => save(true));
-  for (const [id, mode] of [["test-mode-solo", "solo"], ["test-mode-computer", "computer"], ["test-mode-human", "human"]]) {
-    $(id).addEventListener("click", () => setTestMode(mode));
-  }
-  $("test-count").addEventListener("change", renderSeatKinds);
-  $("test-start").addEventListener("click", startTest);
-  $("test-undo").addEventListener("click", undoTestMove);
-  Auth.renderMenu($("account-menu"));
-  document.addEventListener("auth-changed", async () => {
-    Auth.renderMenu($("account-menu"));
-    await onUserChanged();
-  });
+async function restoreVersion() {
+  if (state.agentSending||state.publishing||state.restoring||!selectedGame()) return;
+  if (!(await flushAutosave())) return;
+  const user=me(),session=state.session,id=state.selectedId,version=$("versions").value;
+  state.restoring=true;renderStatus();
   try {
-    await loadGames();
-  } catch (error) {
-    showPageError(`Couldn't load data from the server: ${error.message}`);
-    return;
-  }
-  render();
+    const value=await apiRequest("GET","/games/"+encodeURIComponent(id)+"/versions/"+version,{user});
+    if (!currentSession(session,user)) return;
+    state.undo.push(editorValues());state.editor=content(value);render();renderPlayModes();startTest();scheduleAutosave();
+    agentLog("system","Loaded version "+version+". Publish to release it as the next version.");
+  } catch(error){if(currentSession(session,user))state.saveError="Couldn't load the version: "+error.message;}
+  finally {if(currentSession(session,user)){state.restoring=false;renderStatus();}}
 }
-
+async function deleteGame() {
+  if (state.publishing||state.agentSending||state.savePromise||!state.selectedId) return;
+  if (!state.deleteArmed) {state.deleteArmed=true;setMessage("workspace-message","Click Delete game again to remove it. Existing matches retain their history.","error");return;}
+  const user=me(),session=state.session,id=state.selectedId;
+  try {
+    clearTimeout(state.saveTimer);
+    if (id!=="new") await apiRequest("DELETE",(selectedGame()?"/games/":"/game-drafts/")+encodeURIComponent(id),{user});
+    if (!currentSession(session,user)) return;
+    try{localStorage.removeItem(recoveryKey());}catch{}
+    state.selectedId=null;state.baseline=null;state.editor=copy(EMPTY);state.session++;stopTest();clearAgent();
+    await loadGames();render();
+  } catch(error){setMessage("workspace-message","Couldn't delete: "+error.message,"error");}
+}
+function clampPanel(x,y,width,height,viewportWidth,viewportHeight) {
+  return {x:Math.max(8,Math.min(x,viewportWidth-width-8)),y:Math.max(8,Math.min(y,viewportHeight-Math.min(height,viewportHeight-16)-8))};
+}
+function positionPanel(x,y) {
+  const panel=$("ai-panel"),rect=panel.getBoundingClientRect();
+  const position=clampPanel(x,y,rect.width,rect.height,window.innerWidth,window.innerHeight);
+  state.panelPosition=position;panel.style.left=position.x+"px";panel.style.top=position.y+"px";panel.style.right="auto";panel.style.bottom="auto";
+}
+function initFloatingPanel() {
+  const handle=$("ai-drag-handle");let drag=null;
+  handle.addEventListener("pointerdown",event=>{
+    if(event.button!==0)return;
+    const rect=$("ai-panel").getBoundingClientRect();drag={id:event.pointerId,x:event.clientX-rect.x,y:event.clientY-rect.y};
+    handle.setPointerCapture(event.pointerId);event.preventDefault();
+  });
+  handle.addEventListener("pointermove",event=>{if(drag?.id===event.pointerId)positionPanel(event.clientX-drag.x,event.clientY-drag.y);});
+  const end=()=>{drag=null;};handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);
+  handle.addEventListener("keydown",event=>{
+    const direction={ArrowLeft:[-16,0],ArrowRight:[16,0],ArrowUp:[0,-16],ArrowDown:[0,16]}[event.key];
+    if(!direction)return;event.preventDefault();const rect=$("ai-panel").getBoundingClientRect();positionPanel(rect.x+direction[0],rect.y+direction[1]);
+  });
+  window.addEventListener("resize",()=>{if(state.panelPosition)positionPanel(state.panelPosition.x,state.panelPosition.y);});
+  $("close-ai").addEventListener("click",()=>{state.aiOpen=false;render();$("open-ai").focus();});
+  $("open-ai").addEventListener("click",()=>{state.aiOpen=true;render();if(state.panelPosition)positionPanel(state.panelPosition.x,state.panelPosition.y);$("agent-input").focus();});
+}
+async function onUserChanged() {
+  clearTimeout(state.saveTimer);clearAgent();state.session++;
+  state.selectedId=null;state.baseline=null;state.editor=copy(EMPTY);state.savePromise=null;state.saveError="";state.saveWarning="";
+  state.ownerId=null;state.publishing=false;state.restoring=false;state.games=[];state.drafts=[];
+  state.messages=[];state.log=[];state.undo=[];stopTest();render();
+  try{await loadGames();await resumeWorkspace();}catch(error){showPageError("Couldn't load games: "+error.message);}
+}
+async function resumeWorkspace() {
+  let last;
+  try {last=me() && localStorage.getItem("game-platform.builder.last.v2."+me().id);} catch {}
+  if (last && (state.games.some(game=>game.id===last) || state.drafts.some(game=>game.id===last) ||
+      (last==="new" && localStorage.getItem(recoveryKey("new"))))) await select(last);
+  else render();
+}
+async function main() {
+  $("new-game").addEventListener("click",()=>select("new"));
+  $("welcome-action").addEventListener("click",()=>me()?select("new"):Auth.openDialog("login"));
+  $("publish").addEventListener("click",publishVersion);$("retry-save").addEventListener("click",()=>flushAutosave());
+  $("game-name").addEventListener("input",changeName);$("undo-ai-change").addEventListener("click",undoAppliedChange);
+  $("play-mode").addEventListener("change",startTest);$("restart").addEventListener("click",startTest);
+  $("undo-move").addEventListener("click",undoTestMove);$("load-version").addEventListener("click",restoreVersion);
+  $("delete-game").addEventListener("click",deleteGame);$("agent-send").addEventListener("click",sendAgentMessage);
+  $("agent-stop").addEventListener("click",stopAgentWaiting);
+  $("agent-input").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey))sendAgentMessage();});
+  document.addEventListener("auth-changed",()=>{Auth.renderMenu($("account-menu"));onUserChanged();});
+  window.addEventListener("beforeunload",event=>{rememberWork();if(isDirty()||state.savePromise||state.agentSending){event.preventDefault();event.returnValue="";}});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden&&isDirty())flushAutosave();});
+  Auth.renderMenu($("account-menu"));initFloatingPanel();
+  try {await loadGames();await resumeWorkspace();}catch(error){showPageError("Couldn't load games: "+error.message);}
+}
 main();
