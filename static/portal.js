@@ -84,6 +84,9 @@ const state = {
   gameSearchOriginal: "",
   gameSearchKey: null,
   filteredGames: [],
+  libraryFilter: "all",
+  libraryView: "grid",
+  libraryKey: null,
   requestedGameHandled: false,
 };
 
@@ -275,11 +278,35 @@ async function refreshLocked() {
 
 // Lists
 
+// Games own their opaque state. Only display an outcome when they explicitly
+// report a valid winning seat or a completed draw; never infer a loss from leaving.
+function matchOutcome(match, userId) {
+  if (match.status !== "over") return null;
+  if (match.end_reason && match.end_reason !== "finished")
+    return {label:"Ended early", kind:"neutral"};
+  const result = match.state;
+  const seat = seatOf(match, userId);
+  let outcome = {label:"Result unavailable", kind:"neutral"};
+  if (result && typeof result === "object") {
+    if (Number.isInteger(result.winner) && match.players.some(player => player.player_index === result.winner)) {
+      outcome = seat
+        ? {label:seat.player_index === result.winner ? "You won" : "You lost", kind:seat.player_index === result.winner ? "win" : "loss"}
+        : {label:`${playerName(match.players.find(player => player.player_index === result.winner))} won`, kind:"neutral"};
+    } else if (result.winner === null && (result.draw === true || result.done === true)) {
+      outcome = {label:"Draw", kind:"draw"};
+    }
+  }
+  if (match.pending || match.conflict) outcome = {...outcome, label:outcome.label + " · awaiting sync"};
+  return outcome;
+}
+
 function matchItem(match) {
   const game = gameOf(match.game_id, match.game_version);
   const user = me();
   const yourTurn = user && isYourTurn(match, user.id);
   const badges = [el("span", { class: `badge ${match.status}`, textContent: match.status.replaceAll("_", " ") })];
+  const outcome = matchOutcome(match, user?.id);
+  if (outcome) badges.push(el("span", {class:`badge result-${outcome.kind}`, textContent:outcome.label}));
   if (yourTurn) badges.unshift(el("span", { class: "badge turn", textContent: "your turn" }));
   return el(
     "button",
@@ -336,7 +363,7 @@ function renderLists() {
     else if (!games.some((game) => game.id === previous)) select.value = "";
   }
   renderGameSearch();
-  updateComputerLimit();
+  updateMatchSetup();
 }
 
 function gameCountLabel(game) {
@@ -344,7 +371,41 @@ function gameCountLabel(game) {
     ? "1 player · solo" : `${game.allowed_player_counts.join(", ")} players`;
 }
 
+function libraryGames() {
+  const query = state.gameSearchQuery.trim().toLocaleLowerCase();
+  return state.games.filter(game =>
+    `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query) &&
+    (state.libraryFilter === "all" || (state.libraryFilter === "solo"
+      ? game.allowed_player_counts.includes(1)
+      : game.allowed_player_counts.some(count => count > 1))));
+}
+
+function renderLibrary() {
+  const games = libraryGames();
+  const selected = $("new-game").value;
+  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter]);
+  if (state.libraryKey === key) return;
+  state.libraryKey = key;
+  $("library-count").textContent = `${games.length} ${games.length === 1 ? "game" : "games"} to explore`;
+  $("library-empty").hidden = games.length > 0;
+  $("game-library").className = `game-library-grid ${state.libraryView === "list" ? "is-list" : ""}`;
+  $("game-library").replaceChildren(...games.map(game => {
+    const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
+    const initials = game.name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
+    return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
+      "aria-label":`Choose ${game.name}, ${gameCountLabel(game)}`, onclick:() => chooseGame(game.id)},
+      el("span", {class:"library-art", style:`--art-hue:${hue}`, "aria-hidden":"true"},
+        el("span", {class:"library-monogram", textContent:initials}),
+        el("span", {class:"library-art-label", textContent:"GAME PLATFORM"})),
+      el("span", {class:"library-copy"}, el("span", {class:"library-mode", textContent:gameCountLabel(game)}),
+        el("span", {class:"library-title", textContent:game.name}),
+        el("span", {class:"library-description", textContent:game.description || "Choose this game to start a new match."}),
+        el("span", {class:"library-select", textContent:game.id === selected ? "Selected ✓" : "Choose game ↗"})));
+  }));
+}
+
 function renderGameSearch() {
+  renderLibrary();
   const input = $("game-search");
   const selected = state.games.find((game) => game.id === $("new-game").value);
   if (!state.gameSearchOpen) input.value = selected?.name ?? state.gameSearchQuery;
@@ -386,7 +447,7 @@ function chooseGame(id) {
   state.gameSearchOriginal = id;
   $("create-message").textContent = "";
   renderGameSearch();
-  updateComputerLimit();
+  updateMatchSetup();
 }
 
 function closeGameSearch(restore = false) {
@@ -395,7 +456,7 @@ function closeGameSearch(restore = false) {
   state.gameSearchOpen = false;
   if (restore || $("new-game").value) state.gameSearchQuery = "";
   renderGameSearch();
-  updateComputerLimit();
+  updateMatchSetup();
 }
 
 function onGameSearchInput() {
@@ -404,7 +465,7 @@ function onGameSearchInput() {
   state.gameSearchActive = 0;
   $("new-game").value = "";
   renderGameSearch();
-  updateComputerLimit();
+  updateMatchSetup();
 }
 
 function onGameSearchKey(event) {
@@ -436,24 +497,18 @@ function renderMatchList(node, matches) {
 
 // The selected match
 
-function updateComputerLimit() {
+function updateMatchSetup() {
   const game = state.games.find((game) => game.id === $("new-game").value);
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
-  $("computers").max = String(maximum);
-  $("computers").value = String(
-    Math.min(maximum, Math.max(0, Number($("computers").value) || 0)),
-  );
-  $("computers").disabled = maximum === 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
   $("practice").disabled = !me() || !game;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("create").textContent = solo ? "Play solo ↗" : "Create match ↗";
-  $("computer-setting").hidden = !game || solo;
   $("selected-game-card").hidden = !game;
   $("selected-game-name").textContent = game?.name || "Choose a game";
   $("selected-game-description").textContent = game?.description || "";
   $("selected-game-mode").textContent = solo ? "1 player · solo" : game ? `${game.allowed_player_counts.join(", ")} players` : "";
-  $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "With 0 computers, invite friends using your match link. Start once everyone is seated." : state.games.length ? "Choose a game from the search results to continue." : "Publish a game in the builder to make it available here.";
+  $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "Create a match, then invite friends or add computers in the lobby." : state.games.length ? "Choose a game from the search results to continue." : "Publish a game in the builder to make it available here.";
 }
 
 function selectMatch(id) {
@@ -523,6 +578,10 @@ function renderMatch() {
   const ownerName = nameOf(match.owner_user_id);
   $("match-title").textContent =
     `${game ? game.name : "?"} (version ${match.game_version})`;
+  const outcome = matchOutcome(match, user?.id);
+  $("match-result").hidden = !outcome;
+  $("match-result").textContent = outcome?.label || "";
+  $("match-result").className = `match-result result-${outcome?.kind || "neutral"}`;
   $("match-status").textContent = match.status.replaceAll("_", " ");
   $("match-status").className = `badge ${match.status}`;
   const meta = [
@@ -547,15 +606,16 @@ function renderMatch() {
       el("span", {
         class: `seat-chip${turn.includes(player.player_index) ? " turn" : ""}`,
         textContent:
-          `${player.player_index}: ${playerName(player)}${player === mySeat ? " (you)" : ""}` +
+          `${playerName(player)}${player === mySeat ? " · You" : ""}` +
           `${turn.includes(player.player_index) ? " — to move" : ""}`,
       }),
     ),
   );
 
   const actions = [];
+  const secondaryActions = [];
   if (game?.code)
-    actions.push(
+    secondaryActions.push(
       actionButton("Practice this game", async () => {
         const practiceMatch = offline.practice(game, $("practice-mode").value);
         selectMatch(practiceMatch.id);
@@ -617,32 +677,21 @@ function renderMatch() {
         actions.push(actionButton("Play latest solo version", async () => {
           $("new-game").value = latest.id;
           renderGameSearch();
-          updateComputerLimit();
+          updateMatchSetup();
           await createMatch();
         }, {primary: true}));
       }
       const computers = match.players.filter((player) => player.kind === "computer").length;
       const max = Math.max(...counts, 0);
-      actions.push(
-        actionButton(
-          "− Computer",
-          call("PATCH", "", { num_computer_opponents: computers - 1 }),
-          { disabled: computers === 0 },
-        ),
-        actionButton(
-          "+ Computer",
-          call("PATCH", "", { num_computer_opponents: computers + 1 }),
-          { disabled: match.players.length >= max },
-        ),
-        actionButton("Start", call("POST", "/start"), {
-          primary: true,
-          disabled: !counts.includes(match.players.length),
-        }),
-        actionButton("Delete", call("DELETE"), {
-          danger: true,
-          confirm: "Delete this match for everyone?",
-        }),
-      );
+      const minus = actionButton("−", call("PATCH", "", {num_computer_opponents: computers - 1}), {disabled:computers === 0});
+      const plus = actionButton("+", call("PATCH", "", {num_computer_opponents: computers + 1}), {disabled:match.players.length >= max});
+      minus.setAttribute?.("aria-label", "Remove computer opponent");
+      plus.setAttribute?.("aria-label", "Add computer opponent");
+      actions.push(el("div", {class:"computer-stepper", role:"group", "aria-label":"Computer opponents"},
+        el("span", {class:"stepper-label", textContent:"Computers"}), minus,
+        el("span", {class:"stepper-count", textContent:String(computers), "aria-label":`${computers} computer opponents`}), plus));
+      actions.push(actionButton("Start game", call("POST", "/start"), {primary:true, disabled:!counts.includes(match.players.length)}));
+      secondaryActions.push(actionButton("Delete match", call("DELETE"), {danger:true, confirm:"Delete this match for everyone?"}));
     } else if (mySeat) {
       actions.push(
         actionButton("Leave", call("POST", "/leave"), { danger: true }),
@@ -658,8 +707,8 @@ function renderMatch() {
     );
   } else if (match.status === "over") {
     if (isOwner)
-      actions.push(
-        actionButton("Delete", call("DELETE"), {
+      secondaryActions.push(
+        actionButton("Delete match", call("DELETE"), {
           danger: true,
           confirm: "Delete this match for everyone?",
         }),
@@ -668,8 +717,8 @@ function renderMatch() {
       actions.push(actionButton("Hide from my list", call("DELETE")));
   }
   if (isOwner && match.status === "ongoing") {
-    actions.push(
-      actionButton("Delete", call("DELETE"), {
+    secondaryActions.push(
+      actionButton("Delete match", call("DELETE"), {
         danger: true,
         confirm: "Delete this ongoing match for everyone?",
       }),
@@ -679,13 +728,22 @@ function renderMatch() {
     actions.push(
       el("button", {
         type: "button",
-        textContent: "Copy link",
+        textContent: "Invite friends",
         onclick: () =>
           navigator.clipboard
             .writeText(`${location.origin}/portal#match=${match.id}`)
             .then(() => toast("Copied the link")),
       }),
     );
+  if (secondaryActions.length) {
+    const menu = el("details", {class:"match-more", open:state.moreActionsMatch === match.id},
+      el("summary", {"aria-label":"More match actions", textContent:"⋯"}),
+      el("div", {class:"match-more-panel"}, ...secondaryActions));
+    menu.addEventListener?.("toggle", () => {
+      if (menu.isConnected) state.moreActionsMatch = menu.open ? match.id : null;
+    });
+    actions.push(menu);
+  }
   $("actions").replaceChildren(...actions);
 
   const waiting = match.status === "waiting_for_players";
@@ -830,7 +888,7 @@ async function createMatch() {
       user,
       body: {
         game_id: $("new-game").value,
-        num_computer_opponents: Number($("computers").value) || 0,
+        num_computer_opponents: 0,
       },
     });
     // Solo-only games have no lobby or second seat to wait for. Start the pinned
@@ -893,7 +951,7 @@ async function main() {
     state.lastSent = null;
     refresh();
   });
-  $("new-game").addEventListener("change", updateComputerLimit);
+  $("new-game").addEventListener("change", updateMatchSetup);
   $("game-search").addEventListener("focus", () => {
     if (state.gameSearchOpen) return;
     state.gameSearchOriginal = $("new-game").value;
@@ -916,6 +974,21 @@ async function main() {
     $("match-creator").open = true;
     $("match-creator").scrollIntoView({behavior: "smooth", block: "start"});
     $("game-search").focus({preventScroll: true});
+  });
+  document.querySelectorAll("[data-game-filter]").forEach(button => button.addEventListener("click", () => {
+    state.libraryFilter = button.dataset.gameFilter;
+    document.querySelectorAll("[data-game-filter]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    renderLibrary();
+  }));
+  document.querySelectorAll("[data-game-view]").forEach(button => button.addEventListener("click", () => {
+    state.libraryView = button.dataset.gameView;
+    document.querySelectorAll("[data-game-view]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    renderLibrary();
+  }));
+  $("reset-games").addEventListener("click", () => {
+    state.libraryFilter = "all";
+    document.querySelectorAll("[data-game-filter]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.gameFilter === "all")));
+    browseAllGames();
   });
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);

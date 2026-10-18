@@ -20,7 +20,7 @@ function setup(request=async()=>{}) {
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/portal.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
   run('refresh=async()=>{};state.games=[{id:"game",version:2,name:"Hanoi",allowed_player_counts:[1]}]');
-  node('new-game').value='game';node('computers').value='0';
+  node('new-game').value='game';
   return {node,run};
 }
 
@@ -36,7 +36,7 @@ test('creating a solo-only game starts one human immediately',async()=>{
   assert.equal(calls[1][1],'/matches/match/start');
   assert.deepEqual(Array.from(calls[1][2].first_turn_player_indices),[0]);
   assert.equal(run('state.selectedId'),'match');
-  assert.equal(node('computers').disabled,true);assert.equal(node('create').textContent,'Play solo ↗');
+  assert.equal(node('create').textContent,'Play solo ↗');
 });
 
 test('multiplayer and mixed-mode games retain their lobby',async()=>{
@@ -126,4 +126,49 @@ test('catalog updates preserve a searched choice instead of restoring an old URL
   const {node,run}=setup();
   run('location.hash="#game=game";state.games.push({id:"other",version:1,name:"Other",allowed_player_counts:[2]});renderLists();chooseGame("other");state.games[0].version++;renderLists()');
   assert.equal(node('new-game').value,'other');assert.equal(node('game-search').value,'Other');
+});
+
+test('gallery filters by description and player support without losing the selected match',()=>{
+  const {node,run}=setup();
+  run('state.games=[{id:"solo",name:"Puzzle",description:"Quiet cards",version:1,allowed_player_counts:[1]},{id:"mixed",name:"Chess",description:"Classic strategy",version:1,allowed_player_counts:[1,2]},{id:"party",name:"Party",description:"Cards with friends",version:1,allowed_player_counts:[3,4]}];state.libraryFilter="multiplayer";state.gameSearchQuery="cards";renderLibrary()');
+  assert.equal(node('game-library').children.length,1);
+  assert.equal(run('libraryGames()[0].id'),'party');
+  run('state.libraryFilter="solo";state.gameSearchQuery="";renderLibrary()');
+  assert.equal(node('game-library').children.length,2);
+  run('state.gameSearchQuery="not found";renderLibrary()');
+  assert.equal(node('library-empty').hidden,false);
+});
+
+test('gallery selection uses existing match controls and polling preserves card nodes',()=>{
+  const {node,run}=setup();
+  run('renderLibrary()');const original=node('game-library').children;
+  run('renderLibrary()');assert.equal(node('game-library').children,original);
+  run('chooseGame("game")');assert.equal(node('new-game').value,'game');
+  assert.equal(node('create').textContent,'Play solo ↗');
+  run('state.libraryView="list";renderLibrary()');
+  assert.match(node('game-library').className,/is-list/);
+});
+
+test('finished results are personalized including seat zero, draws, and spectators',()=>{
+  const {run}=setup();
+  run('state.match={status:"over",end_reason:"finished",players:[{player_index:0,user_id:"owner",kind:"human"},{player_index:1,user_id:"other",kind:"human"}],state:{winner:0}}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'You won');
+  assert.equal(run('matchOutcome(state.match,"other").label'),'You lost');
+  assert.doesNotMatch(run('matchOutcome(state.match,"spectator").label'),/You/);
+  run('state.match.state={winner:null,draw:true}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Draw');
+  run('state.match.state={winner:null,done:true}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Draw');
+});
+
+test('unfinished, abandoned, unknown and unsynced results are not false confirmed losses',()=>{
+  const {run}=setup();
+  run('state.match={status:"ongoing",players:[],state:{winner:0}}');
+  assert.equal(run('matchOutcome(state.match,"owner")'),null);
+  run('state.match.status="over";state.match.end_reason="player_left"');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Ended early');
+  run('state.match.end_reason="finished";state.match.state={winner:null}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Result unavailable');
+  run('state.match.state={winner:null,done:true};state.match.pending=1');
+  assert.match(run('matchOutcome(state.match,"owner").label'),/awaiting sync/);
 });
