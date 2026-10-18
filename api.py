@@ -13,11 +13,16 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
 
+from game_platform import i18n
 from game_platform.models import GameRules, MatchStatus
 from game_platform.schemas import (
     AgentChatRequest,
+    CatalogOut,
+    LocaleOut,
+    LocalesOut,
     AgentChatResponse,
     AllDataOut,
     AuthConfigOut,
@@ -116,7 +121,7 @@ router = APIRouter()
 def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
     """Returns the new user's password, which authenticated requests need. Apart from
     the debug tools, this is the only place the API returns it."""
-    user = platform.create_user(display_name=body.display_name)
+    user = platform.create_user(display_name=body.display_name, locale=body.locale)
     return UserWithPasswordOut.of_user(user)
 
 
@@ -130,7 +135,10 @@ def update_user(
     platform: Platform, caller_id: CallerId, user_id: str, body: UserUpdate
 ) -> UserOut:
     user = platform.update_user(
-        caller_id=caller_id, user_id=user_id, display_name=body.display_name
+        caller_id=caller_id,
+        user_id=user_id,
+        display_name=body.display_name,
+        locale=body.locale,
     )
     return UserOut.of(user)
 
@@ -524,6 +532,46 @@ def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -
     return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
 
 
+# Languages: the catalogs of texts that frontends show, so they all share translations.
+
+i18n_router = APIRouter(prefix="/i18n")
+
+
+@i18n_router.get("/locales")
+def list_locales() -> LocalesOut:
+    """The supported languages: the code to pass as `lang` (or to save on a user), the
+    language's own name for a picker, and its writing direction."""
+    return LocalesOut(
+        default=i18n.DEFAULT_LOCALE,
+        locales=[LocaleOut.of(locale) for locale in i18n.LOCALES],
+    )
+
+
+@i18n_router.get("/{locale}", response_model=CatalogOut)
+def get_catalog(
+    request: Request, locale: str, prefix: str = "", fallback: bool = True
+) -> Response:
+    """Every text in one language, keyed by name: `error.*` (the platform's error
+    messages), `status.*`, `end_reason.*` and `seat.*` (labels for API values) and `ui.*`
+    (common portal and builder labels). `prefix` keeps only keys starting with it, e.g.
+    `ui.`. Keys missing from a language are filled in from English unless `fallback` is
+    false. Cacheable: the ETag changes exactly when a text does."""
+    code = i18n.normalize_locale(locale)
+    if code is None:
+        raise NotFoundError(f"language not supported: {locale}")
+    version = i18n.catalog_version(code, fallback=fallback, prefix=prefix)
+    headers = {"ETag": f'"{version}"', "Cache-Control": "public, max-age=300"}
+    if request.headers.get("if-none-match") == headers["ETag"]:
+        return Response(status_code=HTTPStatus.NOT_MODIFIED, headers=headers)
+    body = CatalogOut(
+        locale=code,
+        direction=i18n.get_locale(code).direction,
+        version=version,
+        messages=i18n.messages(code, fallback=fallback, prefix=prefix),
+    )
+    return JSONResponse(body.model_dump(), headers=headers)
+
+
 # Debugging tools: an API console and a browser of all data. They're hidden from the
 # OpenAPI schema because they're not part of the product API.
 
@@ -667,12 +715,52 @@ async def agent_chat(
         ) from exc
 
 
-async def _handle_platform_error(_request: Request, exc: Exception) -> JSONResponse:
+def _error_body(request: Request, message: str) -> dict[str, object]:
+    """`detail` is the message in the request's language, `code` names it in every
+    language, and `params` holds the values the message mentions."""
+    locale = getattr(request.state, "locale", i18n.DEFAULT_LOCALE)
+    text, code, params = i18n.localize_error(message, locale)
+    body: dict[str, object] = {"detail": text, "code": code}
+    if params:
+        body["params"] = params
+    return body
+
+
+async def _handle_platform_error(request: Request, exc: Exception) -> JSONResponse:
     status = next(
         (status for kind, status in _STATUS_OF_ERROR if isinstance(exc, kind)),
         HTTPStatus.INTERNAL_SERVER_ERROR,
     )
-    return JSONResponse(status_code=status, content={"detail": str(exc)})
+    return JSONResponse(status_code=status, content=_error_body(request, str(exc)))
+
+
+async def _handle_http_exception(request: Request, exc: Exception) -> Response:
+    """Like Starlette's default handler, but with a localized `detail` and a `code`."""
+    assert isinstance(exc, StarletteHTTPException)
+    if exc.status_code in {HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED}:
+        return Response(status_code=exc.status_code, headers=exc.headers)
+    detail = exc.detail
+    body = _error_body(request, detail) if isinstance(detail, str) else {"detail": detail}
+    return JSONResponse(body, status_code=exc.status_code, headers=exc.headers)
+
+
+async def _choose_locale(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Picks the language of the response: the `lang` query parameter, else the language
+    saved on the user named by X-User-Id, else Accept-Language, else English. The user
+    isn't authenticated here (it only picks a language)."""
+    platform = _get_platform(request)
+    request.state.locale = i18n.negotiate(
+        explicit=request.query_params.get("lang"),
+        saved=platform.saved_locale(request.headers.get("x-user-id")),
+        accept_language=request.headers.get("accept-language"),
+    )
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("application/json"):
+        response.headers["Content-Language"] = request.state.locale
+        response.headers.append("Vary", "Accept-Language, X-User-Id")
+    return response
 
 
 async def _revalidate_pages(
@@ -729,6 +817,8 @@ def create_app(
     app.state.email_sender = email_sender if email_sender is not None else LogSender()
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(i18n_router)
+    app.middleware("http")(_choose_locale)
     if debug_tools:
         app.include_router(debug_router)
         # Build environments may symlink the packaged files.
@@ -736,4 +826,5 @@ def create_app(
         app.mount("/static", static_files, name="static")
         app.middleware("http")(_revalidate_pages)
     app.add_exception_handler(PlatformError, _handle_platform_error)
+    app.add_exception_handler(StarletteHTTPException, _handle_http_exception)
     return app

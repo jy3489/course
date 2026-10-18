@@ -188,9 +188,11 @@ another of your accounts.
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `POST /users` |  | Create a guest user `{display_name}`; returns its `password` |
+| `POST /users` |  | Create a guest user `{display_name, locale?}`; returns its `password` |
 | `GET /users/{id}` |  | Get a user |
-| `PATCH /users/{id}` | yes | Change your own `display_name` (403 for other users) |
+| `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |
+| `GET /i18n/locales` |  | The supported languages (see [Languages](#languages)) |
+| `GET /i18n/{locale}` |  | Every text in one language: UI labels, status labels, error messages |
 | `POST /users/{id}/merge` | yes | Merge this account into `into_user_id` and delete it (authenticate as this user) |
 | `GET /matches/open` |  | Matches anyone may join (waiting, or ongoing with mid-match joins) |
 | `POST /games` | yes | Create a game |
@@ -241,9 +243,23 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
 
+### Languages
+
+The backend serves its texts in English, Spanish, French, German, Portuguese, Chinese
+(Simplified), Hindi and Arabic, so every frontend shows the same translations. A request
+is answered in the first of: the `lang` query parameter, the language saved on the user
+named by `X-User-Id` (set with `locale` on `POST /users` or `PATCH /users/{id}`), the
+`Accept-Language` header, and English. Error messages are translated; `GET /i18n/{locale}`
+returns the catalog of UI labels and status labels (cacheable, with an `ETag`). The
+catalogs live in `locales/*.json`. See [docs/i18n.md](docs/i18n.md) for how frontends use
+them and how to add a language or a text.
+
 ### Errors
 
-Errors have a JSON body `{"detail": ...}`:
+Errors have a JSON body `{"detail": ..., "code": ...}`, plus `"params"` when the message
+mentions values. `detail` is in the request's language (see [Languages](#languages)); `code`
+is the same in every language. Other fields can be added later, so clients should ignore
+the ones they don't know:
 
 | Status | Meaning                                                                 |
 |--------|-------------------------------------------------------------------------|

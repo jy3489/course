@@ -15,6 +15,7 @@ def test_create_and_get_a_guest_user(api: Api) -> None:
         "id": user["id"],
         "display_name": "alice",
         "picture_url": "",
+        "locale": "",
         "replaced_by_user_id": None,
         "replaced_user_ids": [],
         "password": user["password"],
@@ -104,7 +105,7 @@ def test_users_can_change_their_own_display_name(api: Api) -> None:
     assert rename("nobody", as_user=alice) == (404, "user not found")
     assert validation_errors(
         api.request("PATCH", f"/users/{alice}", as_user=alice, json={})
-    ) == ["display_name: Field required"]
+    ) == ["Value error, give display_name, locale or both"]
 
 
 def test_passwords_are_saved_and_only_shown_by_the_debug_tools(

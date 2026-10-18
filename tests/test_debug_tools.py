@@ -65,6 +65,8 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         "/games/{game_id}",
         "/games/{game_id}/unpublish",
         "/games/{game_id}/versions/{version}",
+        "/i18n/locales",
+        "/i18n/{locale}",
         "/matches",
         "/matches/open",
         "/matches/{match_id}",
@@ -165,7 +167,10 @@ def test_the_master_password_protects_browse_and_all_data() -> None:
     # The challenge makes the browser ask for the password.
     response = client.get("/browse")
     assert (response.json(), response.headers["www-authenticate"]) == (
-        {"detail": "the master password is required (any username)"},
+        {
+            "detail": "the master password is required (any username)",
+            "code": "master_password_required",
+        },
         'Basic realm="Game platform debug tools"',
     )
 

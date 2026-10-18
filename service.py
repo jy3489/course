@@ -4,6 +4,7 @@ Every public method takes the caller's user id (already authenticated) where ide
 matters, and raises a subclass of [PlatformError] when a request can't be honored.
 """
 
+import collections
 import datetime as dt
 import hmac
 import re
@@ -217,6 +218,7 @@ class GamePlatform:
         email: str = "",
         picture_url: str = "",
         linked_accounts: tuple[LinkedAccount, ...] = (),
+        locale: str = "",
     ) -> User:
         with self._lock:
             now = self._clock()
@@ -225,6 +227,7 @@ class GamePlatform:
                 display_name=display_name,
                 email=email,
                 picture_url=picture_url,
+                locale=locale,
                 password=self._new_password(),
                 linked_accounts=linked_accounts,
                 created_at=now,
@@ -233,18 +236,40 @@ class GamePlatform:
             self._store.put_user(user)
             return user
 
-    def update_user(self, *, caller_id: str, user_id: str, display_name: str) -> User:
+    def update_user(
+        self,
+        *,
+        caller_id: str,
+        user_id: str,
+        display_name: str | None = None,
+        locale: str | None = None,
+    ) -> User:
+        """Changes the given fields of a user; [None] leaves a field as it is."""
         with self._lock:
             user = self._store.get_user(user_id)
             if user is None:
                 raise NotFoundError("user not found")
             if user.id != caller_id:
                 raise ForbiddenError("users can only change themselves")
-            if user.display_name == display_name:
+            changes: dict[str, str] = {}
+            if display_name is not None and display_name != user.display_name:
+                changes["display_name"] = display_name
+            if locale is not None and locale != user.locale:
+                changes["locale"] = locale
+            if not changes:
                 return user
-            user = replace(user, display_name=display_name, updated_at=self._clock())
+            user = replace(user, updated_at=self._clock(), **changes)
             self._store.put_user(user)
             return user
+
+    def saved_locale(self, user_id: str | None) -> str:
+        """The language [user_id] chose, or empty if they chose none or don't exist.
+        Not authenticated: it only picks the language of a response."""
+        if not user_id:
+            return ""
+        with self._lock:
+            user = self._store.get_user(user_id)
+            return user.locale if user is not None else ""
 
     def get_user(self, user_id: str) -> User:
         with self._lock:
@@ -1124,6 +1149,12 @@ class GamePlatform:
                 "with_phone": sum(
                     1 for u in users if any(a.kind == "phone" for a in u.linked_accounts)
                 ),
+                "by_locale": {
+                    (code or "unset"): count
+                    for code, count in sorted(
+                        collections.Counter(u.locale for u in users).items()
+                    )
+                },
                 "who_built_a_game": len(builders),
                 "who_played_a_match": len(players | owners),
                 "new_per_day": last_days([u.created_at for u in users]),

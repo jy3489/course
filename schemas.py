@@ -28,12 +28,27 @@ from game_platform.models import (
     SeatKind,
     User,
 )
+from game_platform.i18n import LOCALE_CODES, Locale, normalize_locale
 from game_platform.service import AllData
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
 ]
 PlayerCount = Annotated[int, Field(ge=MIN_PLAYERS, le=MAX_PLAYERS)]
+
+
+def _check_locale(tag: str) -> str:
+    """A language tag such as "es" or "pt-BR" becomes its supported language code; the
+    empty string means no language chosen."""
+    if tag == "":
+        return ""
+    code = normalize_locale(tag)
+    if code is None:
+        raise ValueError(f"unsupported language; supported: {', '.join(LOCALE_CODES)}")
+    return code
+
+
+LocaleCode = Annotated[str, AfterValidator(_check_locale)]
 
 
 def _check_player_counts(counts: list[int]) -> list[int]:
@@ -73,21 +88,38 @@ _TIC_TAC_TOE_BOARD: Final[list[JsonValue]] = [""] * 9
 
 
 class UserCreate(_Request):
-    model_config = _example({"display_name": "alice"})
+    model_config = _example({"display_name": "alice", "locale": "es"})
 
     display_name: Name
+    # The user's preferred language (see GET /i18n/locales); responses to their requests
+    # are in it unless a request says otherwise.
+    locale: LocaleCode = ""
 
 
 class UserUpdate(_Request):
-    model_config = _example({"display_name": "alice the great"})
+    """Omitted fields are left unchanged. A [locale] of "" clears the preference."""
 
-    display_name: Name
+    model_config = _example({"display_name": "alice the great", "locale": "fr"})
+
+    display_name: Name | None = None
+    locale: LocaleCode | None = None
+
+    @model_validator(mode="after")
+    def _require_a_change(self) -> "UserUpdate":
+        if not self.model_fields_set:
+            raise ValueError("give display_name, locale or both")
+        for field in sorted(self.model_fields_set):
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class UserOut(BaseModel):
     id: str
     display_name: str
     picture_url: str = ""
+    # The user's preferred language code; empty if they haven't chosen one.
+    locale: str = ""
     # Set when this account was merged into another one; every use of it
     # resolves to the surviving user. (get_user/authenticate always return the
     # survivor, so this is None there; debug tools may surface it.)
@@ -104,6 +136,7 @@ class UserOut(BaseModel):
             id=user.id,
             display_name=user.display_name,
             picture_url=user.picture_url,
+            locale=user.locale,
             replaced_by_user_id=user.replaced_by_user_id,
             replaced_user_ids=list(user.replaced_user_ids),
             created_at=user.created_at,
@@ -503,3 +536,36 @@ class AgentChatResponse(BaseModel):
     attempts: int = 1
     # Human-readable note about the attempts, e.g. which ones failed and why.
     parse_note: str | None = None
+
+
+class LocaleOut(BaseModel):
+    code: str
+    # The language's own name, for a language picker.
+    name: str
+    english_name: str
+    # "rtl" languages (Arabic) need a mirrored layout.
+    direction: Literal["ltr", "rtl"]
+
+    @classmethod
+    def of(cls, locale: Locale) -> "LocaleOut":
+        return cls(
+            code=locale.code,
+            name=locale.name,
+            english_name=locale.english_name,
+            direction=locale.direction,
+        )
+
+
+class LocalesOut(BaseModel):
+    default: str
+    locales: list[LocaleOut]
+
+
+class CatalogOut(BaseModel):
+    """Every text a frontend can ask for in one language."""
+
+    locale: str
+    direction: Literal["ltr", "rtl"]
+    # Changes exactly when a text does; also the ETag, so clients can cache the catalog.
+    version: str
+    messages: dict[str, str]
