@@ -4,7 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Statistics</title>
-    <link rel="stylesheet" href="/static/common.css?v=4" />
+    <link rel="stylesheet" href="/static/common.css?v=8" />
+    <script>
+      // Framed mode for the /admin tabs: hide this page's own top bar.
+      if (new URLSearchParams(location.search).has("frame")) {
+        document.documentElement.classList.add("framed");
+      }
+    </script>
     <style>
       main {
         flex: 1;
@@ -123,10 +129,7 @@
       <nav>
         <a href="/portal">Portal</a>
         <a href="/builder">Builder</a>
-        <a href="/console">API console</a>
-        <a href="/browse">Browse data</a>
-        <a href="/stats" aria-current="page">Statistics</a>
-        <a href="/docs">OpenAPI docs</a>
+        <a href="/admin">Admin</a>
       </nav>
     </header>
     <main>

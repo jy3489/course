@@ -779,3 +779,9 @@ button.link {
     align-items: center;
   }
 }
+
+/* Framed mode: when an admin tool page is embedded in the /admin tabs
+   (?frame=1), its own top bar is redundant — the admin page provides nav. */
+.framed .topbar {
+  display: none;
+}

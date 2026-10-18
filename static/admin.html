@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game platform · Admin</title>
+    <link rel="stylesheet" href="/static/common.css?v=8" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+
+      .admin-tabs {
+        display: flex;
+        gap: var(--space-xs);
+        padding: var(--space-sm) var(--space-lg) 0;
+        border-bottom: 1px solid var(--color-border-2);
+        background: var(--color-bg-1);
+        overflow-x: auto;
+        flex: none;
+      }
+
+      .admin-tabs button {
+        border: none;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        box-shadow: none;
+        background: none;
+        color: var(--color-text-tertiary);
+        white-space: nowrap;
+      }
+
+      .admin-tabs button[aria-selected="true"] {
+        background: var(--color-bg-2);
+        color: var(--color-text-primary);
+        font-weight: 600;
+      }
+
+      #admin-frame-wrap {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+
+      #admin-frame-wrap iframe {
+        flex: 1;
+        border: 0;
+        background: var(--color-bg-0);
+      }
+
+      #admin-frame-wrap .empty-note {
+        margin: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Game platform</h1>
+      <nav aria-label="Game platform">
+        <a href="/portal">Portal</a>
+        <a href="/builder">Builder</a>
+        <a href="/admin" aria-current="page">Admin</a>
+      </nav>
+      <span class="spacer"></span>
+      <span id="account-menu"></span>
+    </header>
+    <div class="admin-tabs" role="tablist" aria-label="Admin tools">
+      <button type="button" role="tab" id="tab-console" aria-selected="true" data-src="/console?frame=1">API console</button>
+      <button type="button" role="tab" id="tab-browse" aria-selected="false" data-src="/browse?frame=1">Browse data</button>
+      <button type="button" role="tab" id="tab-stats" aria-selected="false" data-src="/stats?frame=1">Statistics</button>
+      <button type="button" role="tab" id="tab-docs" aria-selected="false" data-src="/docs">API docs</button>
+    </div>
+    <div id="admin-frame-wrap">
+      <div class="empty-note">Loading…</div>
+    </div>
+    <script src="/static/common.js?v=2"></script>
+    <script src="/static/auth.js?v=1"></script>
+    <script src="/static/admin.js?v=1"></script>
+  </body>
+</html>

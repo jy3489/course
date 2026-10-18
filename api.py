@@ -587,6 +587,13 @@ def stats_page() -> FileResponse:
     return FileResponse(_STATIC_DIR / "stats.html")
 
 
+@debug_router.get("/admin", dependencies=[MasterPassword])
+def admin() -> FileResponse:
+    """Hub page for the super-admin tools (API console, data browser,
+    statistics, API docs), shown as tabs."""
+    return FileResponse(_STATIC_DIR / "admin.html")
+
+
 @debug_router.get("/privacy")
 def privacy() -> FileResponse:
     return FileResponse(_STATIC_DIR / "privacy.html")
@@ -694,10 +701,10 @@ def create_app(
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
 ) -> FastAPI:
-    """[debug_tools] adds the web pages (/portal, /builder, /console, /browse) and
-    /debug/all-data, which exposes everything (including users' passwords), and the
-    backoffice's /stats and /admin/* endpoints. /browse, /stats, /debug/all-data and
-    /admin/* need [master_password], unless it is empty.
+    """[debug_tools] adds the web pages (/portal, /builder, /admin, /console, /browse)
+    and /debug/all-data, which exposes everything (including users' passwords),
+    and the backoffice's /stats and /admin/* endpoints. /admin, /browse, /stats,
+    /debug/all-data and /admin/* need [master_password], unless it is empty.
 
     [cors_allow_origins] are the origins whose pages may call the API from a browser;
     empty adds no CORS headers, for when a reverse proxy already adds them (two
