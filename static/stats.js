@@ -66,7 +66,13 @@ function render(stats) {
       [matches.avg_moves_per_match, "moves per match"],
       [matches.ended_because_a_player_left, "ended by a player leaving"],
     ]),
-    el("div", { class: "panels" }, barChart("New users per day", users.new_per_day), barChart("New matches per day", matches.new_per_day)),
+    el(
+      "div",
+      { class: "panels" },
+      barChart("New users per day", users.new_per_day),
+      barChart("New matches per day", matches.new_per_day),
+      table("Users by language", ["Language", "Users"], Object.entries(users.by_locale ?? {})),
+    ),
     el("h2", { textContent: "Builder: games" }),
     cards([
       [games.live, "live games"],
