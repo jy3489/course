@@ -11,12 +11,13 @@ import re
 import secrets
 import threading
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
 
 from pydantic import JsonValue
 
+from game_platform import i18n
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
@@ -30,7 +31,9 @@ from game_platform.models import (
     Move,
     Seat,
     User,
+    WebPushSubscription,
 )
+from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
 
 
@@ -200,12 +203,18 @@ class GamePlatform:
         new_id: Callable[[], str] = _new_id,
         new_password: Callable[[], str] = _new_password,
         new_verification_code: Callable[[], str] = _new_verification_code,
+        push_notifier: PushNotifier | None = None,
+        max_push_subscriptions_per_user: int = 10,
     ) -> None:
         self._store: Store = store if store is not None else InMemoryStore()
         self._clock = clock
         self._new_id = new_id
         self._new_password = new_password
         self._new_verification_code = new_verification_code
+        self._push_notifier = (
+            push_notifier if push_notifier is not None else LogPushNotifier()
+        )
+        self._max_push_subscriptions_per_user = max_push_subscriptions_per_user
         self._verifications: dict[str, _Verification] = {}
         self._verification_starts: dict[str, list[dt.datetime]] = {}
         # Each public method is a read-modify-write on the store; the server handles
@@ -576,6 +585,10 @@ class GamePlatform:
                 )
             if updated is not match:
                 self._save(updated)
+        for subscription in self._store.list_push_subscriptions(user_id=from_user_id):
+            self._store.put_push_subscription(
+                replace(subscription, user_id=into_user_id)
+            )
         have = {
             (account.kind, account.identifier) for account in into.linked_accounts
         }
@@ -945,7 +958,18 @@ class GamePlatform:
                     human_user_ids=[*match.human_user_ids, caller_id],
                     num_computer_opponents=match.num_computer_opponents,
                 )
-            return self._save(replace(match, seats=seats))
+            saved = self._save(replace(match, seats=seats))
+            joiner = self._store.get_user(caller_id)
+            self._notify_match_event(
+                "notify.player_joined",
+                match=saved,
+                recipient_ids=[
+                    user_id for user_id in saved.human_user_ids if user_id != caller_id
+                ],
+                actor_name=joiner.display_name if joiner is not None else "",
+                tag_suffix="join",
+            )
+            return saved
 
     def start_match(
         self,
@@ -1013,7 +1037,28 @@ class GamePlatform:
                     updated = self._ended_by_leaving(updated)
             else:
                 updated = self._ended_by_leaving(match)
-            return self._save(updated)
+            saved = self._save(updated)
+            others = [
+                user_id for user_id in saved.human_user_ids if user_id != caller_id
+            ]
+            if saved.status == "over":
+                self._notify_match_event(
+                    "notify.match_over",
+                    match=saved,
+                    recipient_ids=others,
+                    tag_suffix="over",
+                )
+            elif saved.status == "ongoing":
+                leaver = self._store.get_user(caller_id)
+                self._notify_match_event(
+                    "notify.player_left",
+                    match=saved,
+                    recipient_ids=others,
+                    actor_name=leaver.display_name if leaver is not None else "",
+                    tag_suffix="left",
+                )
+            # A leave from the waiting room (still waiting_for_players) tells nobody.
+            return saved
 
     def make_move(
         self,
@@ -1060,7 +1105,7 @@ class GamePlatform:
                 new_state=new_state,
                 next_turn_player_indices=next_turn_player_indices,
             )
-            return self._save(
+            saved = self._save(
                 replace(
                     match,
                     state=new_state,
@@ -1074,6 +1119,36 @@ class GamePlatform:
                     else "finished",
                 )
             )
+            if saved.status == "over":
+                self._notify_match_event(
+                    "notify.match_over",
+                    match=saved,
+                    recipient_ids=[
+                        user_id
+                        for user_id in saved.human_user_ids
+                        if user_id != caller_id
+                    ],
+                    tag_suffix="over",
+                )
+            else:
+                # Only seats that gained the turn are told: seats that already held
+                # it (simultaneous turns) know, and the mover just played.
+                gained = (saved.turn_of_player_indices or frozenset()) - (
+                    match.turn_of_player_indices or frozenset()
+                )
+                self._notify_match_event(
+                    "notify.turn",
+                    match=saved,
+                    recipient_ids=[
+                        seat.user_id
+                        for seat in saved.seats
+                        if seat.player_index in gained
+                        and seat.user_id is not None
+                        and seat.user_id != caller_id
+                    ],
+                    tag_suffix="turn",
+                )
+            return saved
 
     def delete_match(self, *, caller_id: str, match_id: str) -> None:
         """The owner deletes the match; other players can only hide an ended match."""
@@ -1093,6 +1168,147 @@ class GamePlatform:
                     hidden_for_user_ids=match.hidden_for_user_ids | {caller_id},
                 )
             )
+
+    # Web push notifications
+
+    def subscribe_push(
+        self,
+        *,
+        caller_id: str,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+        expiration_time: dt.datetime | None,
+    ) -> tuple[WebPushSubscription, bool]:
+        """Registers or refreshes the caller's browser push subscription.
+
+        The endpoint identifies the browser: re-subscribing with a known endpoint
+        updates keys and owner in place (a browser profile is shared by every account
+        logged into it) and keeps the subscription's id. Returns (subscription,
+        created).
+        """
+        with self._lock:
+            now = self._clock()
+            existing = self._store.get_push_subscription_by_endpoint(endpoint)
+            if existing is not None:
+                subscription = replace(
+                    existing,
+                    user_id=caller_id,
+                    p256dh=p256dh,
+                    auth=auth,
+                    expiration_time=expiration_time,
+                    updated_at=now,
+                )
+                self._store.put_push_subscription(subscription)
+                return subscription, False
+            subscription = WebPushSubscription(
+                id=self._new_id(),
+                user_id=caller_id,
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth,
+                expiration_time=expiration_time,
+                created_at=now,
+                updated_at=now,
+            )
+            self._store.put_push_subscription(subscription)
+            # Bound the data file: past the cap, the caller's oldest ones go.
+            mine = self._store.list_push_subscriptions(user_id=caller_id)
+            excess = len(mine) - self._max_push_subscriptions_per_user
+            if excess > 0:
+                for old in sorted(mine, key=lambda s: s.created_at)[:excess]:
+                    self._store.delete_push_subscription(old.id)
+            return subscription, True
+
+    def list_push_subscriptions(self, *, caller_id: str) -> list[WebPushSubscription]:
+        with self._lock:
+            return self._store.list_push_subscriptions(user_id=caller_id)
+
+    def delete_push_subscription(self, *, caller_id: str, subscription_id: str) -> None:
+        with self._lock:
+            subscription = self._store.get_push_subscription(subscription_id)
+            if subscription is None:
+                raise NotFoundError("push subscription not found")
+            if subscription.user_id != caller_id:
+                raise ForbiddenError(
+                    "you can only delete your own push subscriptions"
+                )
+            self._store.delete_push_subscription(subscription_id)
+
+    def delete_push_subscription_by_endpoint(
+        self, *, caller_id: str, endpoint: str
+    ) -> None:
+        """Unsubscribes a browser, which knows its endpoint but not the server's id.
+        Idempotent: deleting an unknown endpoint is a no-op."""
+        with self._lock:
+            subscription = self._store.get_push_subscription_by_endpoint(endpoint)
+            if subscription is None:
+                return
+            if subscription.user_id != caller_id:
+                raise ForbiddenError(
+                    "you can only delete your own push subscriptions"
+                )
+            self._store.delete_push_subscription_by_endpoint(endpoint)
+
+    def send_test_push(self, *, caller_id: str) -> None:
+        """Queues a test notification to all of the caller's subscriptions."""
+        with self._lock:
+            user = self._require_user(caller_id)
+            subscriptions = self._store.list_push_subscriptions(user_id=caller_id)
+            if not subscriptions:
+                raise NotFoundError("push subscription not found")
+            locale = i18n.normalize_locale(user.locale) or i18n.DEFAULT_LOCALE
+            self._push_notifier.enqueue(
+                [
+                    PushMessage(
+                        subscription=subscription,
+                        title="Game platform",
+                        body=i18n.translate("notify.test", locale),
+                        url="/static/portal.html",
+                        tag="test",
+                    )
+                    for subscription in subscriptions
+                ]
+            )
+
+    def _notify_match_event(
+        self,
+        key: str,
+        *,
+        match: Match,
+        recipient_ids: Iterable[str],
+        actor_name: str = "",
+        tag_suffix: str,
+    ) -> None:
+        """Queues a localized notification to every push subscription of every
+        recipient. [key] is an i18n catalog key whose {game}/{name} placeholders are
+        filled with the match's game name and [actor_name]. The caller holds the
+        lock; delivery itself is the notifier's background work, off the request path.
+        """
+        subscriptions: list[tuple[str, WebPushSubscription]] = []
+        for user_id in dict.fromkeys(recipient_ids):
+            user = self._store.get_user(user_id)
+            if user is None:
+                continue
+            locale = i18n.normalize_locale(user.locale) or i18n.DEFAULT_LOCALE
+            for subscription in self._store.list_push_subscriptions(user_id=user_id):
+                subscriptions.append((locale, subscription))
+        if not subscriptions:
+            return
+        game = self._store.get_game_version(match.game_id, match.game_version)
+        game_name = game.name if game is not None else ""
+        self._push_notifier.enqueue(
+            [
+                PushMessage(
+                    subscription=subscription,
+                    title=game_name,
+                    body=i18n.translate(key, locale, game=game_name, name=actor_name),
+                    url=f"/static/portal.html#match={match.id}",
+                    tag=f"match-{match.id}-{tag_suffix}",
+                )
+                for locale, subscription in subscriptions
+            ]
+        )
 
     # Agent conversations
 
@@ -1289,6 +1505,8 @@ class GamePlatform:
                     self.leave_match(caller_id=user_id, match_id=match.id)
             for draft in self._store.list_game_drafts(owner_user_id=user_id):
                 self._store.delete_game_draft(draft.id)
+            for subscription in self._store.list_push_subscriptions(user_id=user_id):
+                self._store.delete_push_subscription(subscription.id)
             self._store.delete_user(user_id)
 
     def admin_delete_game(self, game_id: str) -> None:

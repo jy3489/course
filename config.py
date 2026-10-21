@@ -85,6 +85,24 @@ class AuthConfig(_Section):
     email: EmailAuthConfig = EmailAuthConfig()
 
 
+class PushConfig(_Section):
+    # How push notifications are delivered. "log" writes them to the server log
+    # (development only); "webpush" delivers real Web Push messages (RFC 8030),
+    # signed with the VAPID key below.
+    provider: Literal["log", "webpush"] = "log"
+    # VAPID private key (base64url-encoded PKCS#8 DER), generated with
+    # --generate-vapid-keys. Needed when provider is "webpush". Prefer the
+    # GAME_PLATFORM_VAPID_PRIVATE_KEY environment variable over storing the key here.
+    vapid_private_key: str = ""
+    # Operator contact that push services require with VAPID: a "mailto:" or
+    # "https:" URL. Needed when provider is "webpush".
+    vapid_subject: str = ""
+    # A push service drops a message it couldn't deliver after this many seconds.
+    ttl_seconds: Annotated[int, Field(ge=0)] = 86400
+    # Each user keeps at most this many subscriptions; extra ones replace the oldest.
+    max_subscriptions_per_user: Annotated[int, Field(ge=1)] = 10
+
+
 class Config(_Section):
     server: ServerConfig = ServerConfig()
     data_file: DataFileConfig = DataFileConfig()
@@ -96,6 +114,7 @@ class Config(_Section):
     log_level: LogLevel = "INFO"
     model_api: ModelApiConfig = ModelApiConfig()
     auth: AuthConfig = AuthConfig()
+    push: PushConfig = PushConfig()
 
     @model_validator(mode="after")
     def _require_master_password_for_hostnames(self) -> "Config":

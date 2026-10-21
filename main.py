@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 import uvicorn
@@ -9,6 +10,7 @@ import uvicorn
 from game_platform.api import create_app
 from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
+from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
 from game_platform.senders import make_email_sender, make_sms_sender
 from game_platform.service import GamePlatform
 
@@ -60,11 +62,27 @@ def main() -> None:
         action="store_true",
         help="print the effective config as JSON and exit",
     )
+    parser.add_argument(
+        "--generate-vapid-keys",
+        action="store_true",
+        help="generate a VAPID key pair for web push notifications and exit: the "
+        "private key goes in the config's push.vapid_private_key (or the "
+        "GAME_PLATFORM_VAPID_PRIVATE_KEY environment variable); the public key is "
+        "served to browsers by /push/config",
+    )
     args = parser.parse_args()
+    if args.generate_vapid_keys:
+        private_key, public_key = generate_vapid_keys()
+        print(f'push.vapid_private_key: "{private_key}"')
+        print(f"public key (served to browsers by /push/config): {public_key}")
+        return
     config = load_config(args.config) if args.config is not None else Config()
     if args.print_config:
         print(config.model_dump_json(indent=2))
         return
+    push_config = config.push
+    if env_key := os.environ.get("GAME_PLATFORM_VAPID_PRIVATE_KEY"):
+        push_config = push_config.model_copy(update={"vapid_private_key": env_key})
 
     logging.basicConfig(level=config.log_level)
     data_file = config.data_file.path.expanduser()
@@ -76,8 +94,14 @@ def main() -> None:
         backup_keep=config.data_file.backup_keep,
     )
     logger.info("Using data file %s", data_file)
+    push_notifier: PushNotifier | None = None
     try:
-        platform = GamePlatform(store=store)
+        push_notifier = make_push_notifier(push_config, store=store)
+        platform = GamePlatform(
+            store=store,
+            push_notifier=push_notifier,
+            max_push_subscriptions_per_user=push_config.max_subscriptions_per_user,
+        )
         if args.purge_example_data:
             purge_example_data(platform)
             return
@@ -88,6 +112,7 @@ def main() -> None:
             master_password=config.master_password,
             model_api_config=config.model_api,
             auth_config=config.auth,
+            push_config=push_config,
             sms_sender=make_sms_sender(config.auth.sms),
             email_sender=make_email_sender(config.auth.email),
             cors_allow_origins=config.server.cors_allow_origins,
@@ -100,6 +125,10 @@ def main() -> None:
             log_level=config.log_level.lower(),
         )
     finally:
+        # Deliver queued notifications first: subscriptions found dead while draining
+        # are dropped by the final write below.
+        if push_notifier is not None:
+            push_notifier.close()
         # Saves changes made since the last write before exiting.
         store.close()
 

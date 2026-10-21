@@ -62,6 +62,123 @@ function offlineStatus() {
     `${navigator.onLine && offline.network ? "Online" : "Offline"} · ${pending} pending moves${conflicts ? ` · ${conflicts} sync conflicts` : ""} · ${shellReady ? "Portal saved for offline" : "Offline setup not ready"}`;
 }
 
+// Web push notifications: the toggle subscribes this browser (Push API) and registers
+// the subscription with the server, which then pushes turn and match events (see
+// push.py). Arriving pushes are shown by portal-sw.js. Nothing here runs unless the
+// server has push configured and the user opts in.
+let pushConfig = null; // GET /push/config, fetched once
+
+function notifySupported() {
+  return (
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+/** This browser's current push subscription, or null. */
+async function currentPushSubscription() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    return await registration.pushManager.getSubscription();
+  } catch {
+    return null;
+  }
+}
+
+function urlBase64ToUint8Array(base64) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+/** Registers (or refreshes) the browser's subscription server-side. */
+async function postPushSubscription(subscription) {
+  const keys = subscription.toJSON().keys;
+  await portalTransport("POST", "/push/subscriptions", {
+    user: Auth.current(),
+    body: {
+      endpoint: subscription.endpoint,
+      keys: { p256dh: keys.p256dh, auth: keys.auth },
+      expiration_time: subscription.expirationTime
+        ? new Date(subscription.expirationTime).toISOString()
+        : null,
+    },
+  });
+}
+
+async function updateNotifyToggle() {
+  const button = $("notify-toggle");
+  if (!notifySupported() || !Auth.current() || !pushConfig?.enabled) {
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  if (Notification.permission === "denied") {
+    button.textContent = "Notifications blocked by the browser";
+    button.disabled = true;
+    return;
+  }
+  button.disabled = false;
+  const subscribed = Boolean(await currentPushSubscription());
+  button.textContent = subscribed ? "Notifications on" : "Enable notifications";
+  button.setAttribute("aria-pressed", String(subscribed));
+}
+
+async function toggleNotifications() {
+  const button = $("notify-toggle");
+  button.disabled = true;
+  try {
+    const existing = await currentPushSubscription();
+    if (existing) {
+      await portalTransport(
+        "DELETE",
+        `/push/subscriptions?endpoint=${encodeURIComponent(existing.endpoint)}`,
+        { user: Auth.current() },
+      );
+      await existing.unsubscribe();
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            pushConfig.vapid_public_key,
+          ),
+        });
+        await postPushSubscription(subscription);
+      }
+    }
+  } catch (error) {
+    showPageError(`Notifications: ${error.message}`);
+  } finally {
+    button.disabled = false;
+    await updateNotifyToggle();
+  }
+}
+
+/** Shows the toggle when push is available, and re-registers a live subscription as
+ * the current account: server restarts, VAPID key rotations and account switches
+ * heal themselves on load. */
+async function setupNotifications() {
+  if (!notifySupported()) return;
+  try {
+    pushConfig ??= await portalTransport("GET", "/push/config");
+  } catch {
+    return; // Push unreachable; the toggle stays hidden.
+  }
+  const subscription = await currentPushSubscription();
+  if (subscription && Auth.current() && Notification.permission === "granted") {
+    try {
+      await postPushSubscription(subscription);
+    } catch {
+      // Offline: the next load retries.
+    }
+  }
+  await updateNotifyToggle();
+}
+
 const state = {
   games: [], // latest versions, from GET /games
   gameCache: new Map(), // "game_id@version" -> game (null when gone)
@@ -915,6 +1032,7 @@ function selectFromHash() {
 
 async function main() {
   Auth.renderMenu($("account-menu"));
+  $("notify-toggle").addEventListener("click", toggleNotifications);
   document.addEventListener("auth-changed", () => {
     Auth.renderMenu($("account-menu"));
     state.armed = null;
@@ -929,6 +1047,7 @@ async function main() {
     history.replaceState(null, "", "#");
     showMessage("");
     refresh();
+    setupNotifications();
   });
   $("practice").addEventListener("click", practice);
   $("retry-sync").addEventListener("click", () => {
@@ -1053,6 +1172,7 @@ async function main() {
       .catch((error) =>
         showPageError(`Offline setup failed: ${error.message}`),
       );
+  setupNotifications();
 }
 
 main();

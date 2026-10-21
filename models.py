@@ -192,3 +192,26 @@ class Match:
 
     def involves(self, user_id: str) -> bool:
         return user_id == self.owner_user_id or self.seat_of(user_id) is not None
+
+
+@dataclass(frozen=True, kw_only=True)
+class WebPushSubscription:
+    """A browser's web push subscription, bound to a user.
+
+    The endpoint and keys are the browser's push credentials: anyone holding them
+    can send pushes to that browser, so they're kept as carefully as passwords.
+    """
+
+    id: str
+    user_id: str
+    # The push service's URL for this browser. Unique: one browser profile has one
+    # endpoint, whoever is logged into it.
+    endpoint: str
+    # The browser's P-256 public key and auth secret (base64url), used to encrypt
+    # payloads for this subscription (RFC 8291).
+    p256dh: str
+    auth: str
+    # When the browser says the subscription lapses; None means it didn't say.
+    expiration_time: dt.datetime | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime

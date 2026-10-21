@@ -1,7 +1,9 @@
 """Request and response bodies of the HTTP API."""
 
+import base64
 import datetime as dt
 from typing import Annotated, Final, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AfterValidator,
@@ -29,6 +31,7 @@ from game_platform.models import (
     Seat,
     SeatKind,
     User,
+    WebPushSubscription,
 )
 from game_platform.i18n import LOCALE_CODES, Locale, normalize_locale
 from game_platform.service import AllData
@@ -249,6 +252,109 @@ class AuthConfigOut(BaseModel):
     google_client_id: str
     phone_login_enabled: bool
     email_login_enabled: bool
+
+
+# Web push
+
+
+def _check_endpoint(url: str) -> str:
+    """A push endpoint must be a real https URL (http only for local development)."""
+    parsed = urlsplit(url)
+    if parsed.scheme == "https" and parsed.hostname:
+        return url
+    if parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1"):
+        return url
+    raise ValueError("endpoint must be an https URL")
+
+
+def _decode_b64url(value: str, field: str) -> bytes:
+    try:
+        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except ValueError:
+        raise ValueError(f"keys.{field} must be base64url") from None
+
+
+def _check_p256dh(value: str) -> str:
+    """The browser's P-256 public key: 65 bytes (uncompressed point), base64url."""
+    if len(_decode_b64url(value, "p256dh")) != 65:
+        raise ValueError("keys.p256dh must decode to 65 bytes")
+    return value
+
+
+def _check_auth_secret(value: str) -> str:
+    """The subscription's auth secret (RFC 8291): at least 16 bytes, base64url."""
+    if not 16 <= len(_decode_b64url(value, "auth")) <= 64:
+        raise ValueError("keys.auth must decode to 16..64 bytes")
+    return value
+
+
+class PushSubscriptionKeys(_Request):
+    model_config = _example(
+        {
+            "p256dh": "BOr1wEXAMPLEKEY",
+            "auth": "k8J6EXAMPLEAUTH",
+        }
+    )
+
+    p256dh: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=256),
+        AfterValidator(_check_p256dh),
+    ]
+    auth: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=128),
+        AfterValidator(_check_auth_secret),
+    ]
+
+
+class PushSubscribe(_Request):
+    """The browser's PushSubscription (PushSubscription.toJSON()), keyed by endpoint."""
+
+    model_config = _example(
+        {
+            "endpoint": "https://push.example.com/subscription/abc",
+            "keys": {"p256dh": "BOr1wEXAMPLEKEY", "auth": "k8J6EXAMPLEAUTH"},
+            "expiration_time": None,
+        }
+    )
+
+    endpoint: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2048),
+        AfterValidator(_check_endpoint),
+    ]
+    keys: PushSubscriptionKeys
+    # When the browser says the subscription lapses (PushSubscription.expirationTime);
+    # null means it didn't say.
+    expiration_time: dt.datetime | None = None
+
+
+class PushSubscriptionOut(BaseModel):
+    """One of the caller's subscriptions. The keys are not returned: the browser that
+    owns the subscription already has them, and nobody else should."""
+
+    id: str
+    endpoint: str
+    expiration_time: dt.datetime | None
+    created_at: dt.datetime
+
+    @classmethod
+    def of(cls, subscription: WebPushSubscription) -> "PushSubscriptionOut":
+        return cls(
+            id=subscription.id,
+            endpoint=subscription.endpoint,
+            expiration_time=subscription.expiration_time,
+            created_at=subscription.created_at,
+        )
+
+
+class PushConfigOut(BaseModel):
+    """Whether web push is set up, and the VAPID public key browsers subscribe with.
+    Public information."""
+
+    enabled: bool
+    vapid_public_key: str
 
 
 class GameCreate(_Request):

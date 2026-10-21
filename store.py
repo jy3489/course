@@ -8,7 +8,15 @@ the service or the HTTP layer.
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from game_platform.models import AgentConversation, AgentConversationEntry, Game, GameDraft, Match, User
+from game_platform.models import (
+    AgentConversation,
+    AgentConversationEntry,
+    Game,
+    GameDraft,
+    Match,
+    User,
+    WebPushSubscription,
+)
 
 
 class Store(Protocol):
@@ -84,6 +92,18 @@ class Store(Protocol):
 
     def list_agent_conversations(self) -> list[AgentConversation]: ...
 
+    def put_push_subscription(self, subscription: WebPushSubscription) -> None: ...
+
+    def get_push_subscription(self, subscription_id: str) -> WebPushSubscription | None: ...
+
+    def get_push_subscription_by_endpoint(self, endpoint: str) -> WebPushSubscription | None: ...
+
+    def list_push_subscriptions(self, *, user_id: str) -> list[WebPushSubscription]: ...
+
+    def delete_push_subscription(self, subscription_id: str) -> None: ...
+
+    def delete_push_subscription_by_endpoint(self, endpoint: str) -> None: ...
+
 
 @dataclass(frozen=True, kw_only=True)
 class Snapshot:
@@ -99,6 +119,9 @@ class Snapshot:
     unpublished_game_ids: tuple[str, ...] = ()
     # Optional so existing data files load without a migration. Admin-only data.
     agent_conversations: tuple[AgentConversation, ...] = ()
+    # Optional so existing data files load without a migration. The browsers that
+    # signed up for web push notifications.
+    push_subscriptions: tuple[WebPushSubscription, ...] = ()
 
 
 class InMemoryStore:
@@ -114,6 +137,9 @@ class InMemoryStore:
         self._game_drafts: dict[str, GameDraft] = {}
         self._unpublished_game_ids: set[str] = set()
         self._agent_conversations: dict[str, list[AgentConversationEntry]] = {}
+        self._push_subscriptions: dict[str, WebPushSubscription] = {}
+        # Secondary index, endpoint -> subscription id; endpoints are unique.
+        self._push_subscription_ids_by_endpoint: dict[str, str] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -130,6 +156,8 @@ class InMemoryStore:
             store.put_game_draft(draft)
         for conversation in snapshot.agent_conversations:
             store._agent_conversations[conversation.game_id] = list(conversation.entries)
+        for subscription in snapshot.push_subscriptions:
+            store.put_push_subscription(subscription)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -147,6 +175,7 @@ class InMemoryStore:
                 AgentConversation(game_id=game_id, entries=tuple(entries))
                 for game_id, entries in self._agent_conversations.items()
             ),
+            push_subscriptions=tuple(self._push_subscriptions.values()),
         )
 
     def put_user(self, user: User) -> None:
@@ -259,3 +288,36 @@ class InMemoryStore:
             AgentConversation(game_id=game_id, entries=tuple(entries))
             for game_id, entries in self._agent_conversations.items()
         ]
+
+    def put_push_subscription(self, subscription: WebPushSubscription) -> None:
+        old = self._push_subscriptions.get(subscription.id)
+        if old is not None:
+            self._push_subscription_ids_by_endpoint.pop(old.endpoint, None)
+        same_endpoint = self._push_subscription_ids_by_endpoint.get(
+            subscription.endpoint
+        )
+        if same_endpoint is not None and same_endpoint != subscription.id:
+            # Endpoints are unique: a browser re-subscribing replaces the old record.
+            del self._push_subscriptions[same_endpoint]
+        self._push_subscriptions[subscription.id] = subscription
+        self._push_subscription_ids_by_endpoint[subscription.endpoint] = subscription.id
+
+    def get_push_subscription(self, subscription_id: str) -> WebPushSubscription | None:
+        return self._push_subscriptions.get(subscription_id)
+
+    def get_push_subscription_by_endpoint(self, endpoint: str) -> WebPushSubscription | None:
+        subscription_id = self._push_subscription_ids_by_endpoint.get(endpoint)
+        return self._push_subscriptions.get(subscription_id) if subscription_id else None
+
+    def list_push_subscriptions(self, *, user_id: str) -> list[WebPushSubscription]:
+        return [s for s in self._push_subscriptions.values() if s.user_id == user_id]
+
+    def delete_push_subscription(self, subscription_id: str) -> None:
+        old = self._push_subscriptions.pop(subscription_id, None)
+        if old is not None:
+            self._push_subscription_ids_by_endpoint.pop(old.endpoint, None)
+
+    def delete_push_subscription_by_endpoint(self, endpoint: str) -> None:
+        subscription_id = self._push_subscription_ids_by_endpoint.pop(endpoint, None)
+        if subscription_id is not None:
+            self._push_subscriptions.pop(subscription_id, None)

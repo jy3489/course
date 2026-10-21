@@ -1,4 +1,6 @@
+import base64
 import json
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -41,6 +43,39 @@ def test_all_data_survives_a_restart(tmp_path: Path) -> None:
     after = Api(store=restarted).ok("GET", "/debug/all-data")
     restarted.close()
     assert after == before
+
+
+def test_push_subscriptions_survive_a_restart(tmp_path: Path) -> None:
+    path = tmp_path / "data.json"
+    store = JsonFileStore(path)
+    api = Api(store=store)
+    alice = api.new_user("alice")
+    password = api.passwords_by_user_id[alice]
+    subscription = api.ok(
+        "POST",
+        "/push/subscriptions",
+        as_user=alice,
+        json={
+            "endpoint": "https://push.example.com/s/1",
+            "keys": {
+                "p256dh": base64.urlsafe_b64encode(os.urandom(65))
+                .rstrip(b"=")
+                .decode(),
+                "auth": base64.urlsafe_b64encode(os.urandom(16))
+                .rstrip(b"=")
+                .decode(),
+            },
+            "expiration_time": None,
+        },
+    )
+    store.close()
+
+    restarted = JsonFileStore(path)
+    response = Api(store=restarted).request(
+        "GET", "/push/subscriptions", as_user=alice, password=password
+    )
+    restarted.close()
+    assert response.json() == [subscription]
 
 
 def test_a_missing_file_starts_empty_and_is_created_on_the_first_change(
@@ -111,7 +146,7 @@ def test_a_version_1_file_is_migrated_to_turn_sets(tmp_path: Path) -> None:
 
     # Rewrite the file in the old layout: single-index turns, format version 1.
     file = json.loads(path.read_text())
-    assert file["format_version"] == 5
+    assert file["format_version"] == 6
     file["format_version"] = 1
     match = file["data"]["matches"][0]
     turn = match.pop("turn_of_player_indices")
@@ -135,9 +170,9 @@ def test_an_unreadable_file_is_rejected_rather_than_overwritten(tmp_path: Path) 
         JsonFileStore(path)
 
     path.write_text(
-        '{"format_version": 6, "data": {"users": [], "game_versions": [], '
+        '{"format_version": 7, "data": {"users": [], "game_versions": [], '
         '"deleted_game_ids": [], "matches": []}}'
     )
     with pytest.raises(ValueError) as error:
         JsonFileStore(path)
-    assert str(error.value) == f"{path} has format version 6, expected 5"
+    assert str(error.value) == f"{path} has format version 7, expected 6"

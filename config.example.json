@@ -38,5 +38,12 @@
       "smtp_from_address": "",
       "smtp_use_tls": true
     }
+  },
+  "push": {
+    "provider": "log",
+    "vapid_private_key": "",
+    "vapid_subject": "",
+    "ttl_seconds": 86400,
+    "max_subscriptions_per_user": 10
   }
 }

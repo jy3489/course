@@ -41,3 +41,39 @@ self.addEventListener("fetch", (event) => {
       ),
   );
 });
+
+// Web push: the server sends {title, body, url, tag} (see push.py), already localized
+// for the subscriber. The worker only displays it; the payload carries no credentials.
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Game platform", {
+      body: payload.body || "",
+      tag: payload.tag,
+      renotify: true,
+      icon: "/static/portal-icon.svg",
+      data: { url: payload.url || "/static/portal.html" },
+    }),
+  );
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/static/portal.html";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const portal = clients.find((client) =>
+          client.url.includes("/static/portal.html"),
+        );
+        if (portal) return portal.focus().then(() => portal.navigate(url));
+        return self.clients.openWindow(url);
+      }),
+  );
+});

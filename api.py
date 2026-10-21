@@ -44,6 +44,9 @@ from game_platform.schemas import (
     MoveCreate,
     MoveOut,
     PhoneStart,
+    PushConfigOut,
+    PushSubscribe,
+    PushSubscriptionOut,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -62,10 +65,11 @@ from game_platform.service import (
     UnauthorizedError,
 )
 from game_platform.agent import GENERATION_BUDGET_SECONDS, AgentError, chat_with_agent
-from game_platform.config import AuthConfig, ModelApiConfig
+from game_platform.config import AuthConfig, ModelApiConfig, PushConfig
 from game_platform.model_api import ModelApiClient
 from game_platform.models import LinkedAccountKind
 from game_platform.oauth import ProviderError, verify_google_id_token
+from game_platform.push import vapid_public_key
 from game_platform.senders import CodeSender, LogSender, SenderError
 
 _STATUS_OF_ERROR: Final[tuple[tuple[type[PlatformError], HTTPStatus], ...]] = (
@@ -573,6 +577,83 @@ def get_catalog(
     return JSONResponse(body.model_dump(), headers=headers)
 
 
+# Web push notifications: browsers register subscriptions; the platform notifies them.
+
+push_router = APIRouter(prefix="/push")
+
+
+def _push_config_of(request: Request) -> PushConfig:
+    config = request.app.state.push_config
+    assert isinstance(config, PushConfig)
+    return config
+
+
+@push_router.get("/config")
+def push_config(request: Request) -> PushConfigOut:
+    """Whether web push is set up, and the VAPID public key the browser subscribes
+    with (applicationServerKey). Public information."""
+    config = _push_config_of(request)
+    return PushConfigOut(
+        enabled=config.provider != "log",
+        vapid_public_key=vapid_public_key(config.vapid_private_key)
+        if config.vapid_private_key
+        else "",
+    )
+
+
+@push_router.post("/subscriptions")
+def subscribe_push(
+    platform: Platform, caller_id: CallerId, body: PushSubscribe, response: Response
+) -> PushSubscriptionOut:
+    """Registers (201) or refreshes (200) the caller's browser subscription, keyed by
+    endpoint: a browser re-subscribing, or a different login on the same browser,
+    updates the existing record."""
+    subscription, created = platform.subscribe_push(
+        caller_id=caller_id,
+        endpoint=body.endpoint,
+        p256dh=body.keys.p256dh,
+        auth=body.keys.auth,
+        expiration_time=body.expiration_time,
+    )
+    if created:
+        response.status_code = HTTPStatus.CREATED
+    return PushSubscriptionOut.of(subscription)
+
+
+@push_router.get("/subscriptions")
+def list_push_subscriptions(
+    platform: Platform, caller_id: CallerId
+) -> list[PushSubscriptionOut]:
+    """The caller's own subscriptions (one per browser that signed up)."""
+    return [
+        PushSubscriptionOut.of(subscription)
+        for subscription in platform.list_push_subscriptions(caller_id=caller_id)
+    ]
+
+
+@push_router.delete("/subscriptions/{subscription_id}", status_code=HTTPStatus.NO_CONTENT)
+def delete_push_subscription(
+    platform: Platform, caller_id: CallerId, subscription_id: str
+) -> None:
+    platform.delete_push_subscription(caller_id=caller_id, subscription_id=subscription_id)
+
+
+@push_router.delete("/subscriptions", status_code=HTTPStatus.NO_CONTENT)
+def delete_push_subscription_by_endpoint(
+    platform: Platform, caller_id: CallerId, endpoint: str
+) -> None:
+    """Unsubscribes a browser, which knows its endpoint but not the server's id.
+    Idempotent: deleting an unknown endpoint succeeds too."""
+    platform.delete_push_subscription_by_endpoint(caller_id=caller_id, endpoint=endpoint)
+
+
+@push_router.post("/test", status_code=HTTPStatus.ACCEPTED)
+def push_test(platform: Platform, caller_id: CallerId) -> None:
+    """Queues a test notification to the caller's subscriptions (404 when they have
+    none). With the "log" provider it's written to the server log instead."""
+    platform.send_test_push(caller_id=caller_id)
+
+
 # Debugging tools: an API console and a browser of all data. They're hidden from the
 # OpenAPI schema because they're not part of the product API.
 
@@ -813,6 +894,7 @@ def create_app(
     master_password: str = "",
     model_api_config: ModelApiConfig | None = None,
     auth_config: AuthConfig | None = None,
+    push_config: PushConfig | None = None,
     sms_sender: CodeSender | None = None,
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
@@ -841,11 +923,13 @@ def create_app(
         model_api_config if model_api_config is not None else ModelApiConfig()
     )
     app.state.auth_config = auth_config if auth_config is not None else AuthConfig()
+    app.state.push_config = push_config if push_config is not None else PushConfig()
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()
     app.state.email_sender = email_sender if email_sender is not None else LogSender()
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(i18n_router)
+    app.include_router(push_router)
     app.middleware("http")(_choose_locale)
     if debug_tools:
         app.include_router(debug_router)

@@ -4,3 +4,7 @@ pydantic>=2.9,<3
 uvicorn>=0.34,<1
 # Needed for the optional Meta Model API client (model_api.py).
 openai>=1.0,<2
+# Needed for web push notifications (push.py): RFC 8030 delivery signed with VAPID,
+# and the EC key handling behind it.
+pywebpush>=1.9,<3
+cryptography>=42

@@ -8,7 +8,8 @@ import httpx
 from fastapi.testclient import TestClient
 
 from game_platform.api import create_app
-from game_platform.config import AuthConfig
+from game_platform.config import AuthConfig, PushConfig
+from game_platform.push import PushNotifier
 from game_platform.senders import CodeSender
 from game_platform.service import GamePlatform
 from game_platform.store import Store
@@ -33,14 +34,23 @@ class Api:
         auth_config: AuthConfig | None = None,
         sms_sender: CodeSender | None = None,
         email_sender: CodeSender | None = None,
+        push_notifier: PushNotifier | None = None,
+        push_config: PushConfig | None = None,
+        max_push_subscriptions_per_user: int = 10,
     ) -> None:
-        platform = GamePlatform(store=store, clock=FakeClock())
+        platform = GamePlatform(
+            store=store,
+            clock=FakeClock(),
+            push_notifier=push_notifier,
+            max_push_subscriptions_per_user=max_push_subscriptions_per_user,
+        )
         self.client = TestClient(
             create_app(
                 platform,
                 auth_config=auth_config,
                 sms_sender=sms_sender,
                 email_sender=email_sender,
+                push_config=push_config,
             )
         )
         self._names_by_user_id: dict[str, str] = {}

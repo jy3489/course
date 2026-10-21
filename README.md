@@ -184,6 +184,46 @@ as the merged-away user, so nobody can absorb someone else's account; merging a 
 into itself is a 400. The website uses this when you link a login that belongs to
 another of your accounts.
 
+### Web push notifications
+
+The platform can push browser notifications when something happens in a match you're
+in: it's your turn, the match ended, a player joined your waiting match, or a player
+left mid-match (a computer takes over). Notifications are opt-in per browser: a
+frontend asks for the browser's notification permission, subscribes (Push API), and
+registers the subscription with the server. Users who never enable them — and
+frontends that never implement them — are unaffected.
+
+The pieces:
+
+- **VAPID keys** identify the server to the browsers' push services. Generate a pair
+  with `python -m game_platform.main --generate-vapid-keys`, put the private key in
+  `push.vapid_private_key` (or the `GAME_PLATFORM_VAPID_PRIVATE_KEY` environment
+  variable), set `push.provider` to `"webpush"` and `push.vapid_subject` to a
+  `mailto:` or `https:` contact. Rotating the pair invalidates existing
+  subscriptions; browsers heal by re-subscribing on their next visit.
+- **Subscriptions**: `POST /push/subscriptions` registers the browser's
+  PushSubscription (upserted by endpoint: re-subscribing, or a different login on the
+  same browser, updates the existing record), `GET /push/subscriptions` lists the
+  caller's, and `DELETE` removes one — by id, or by `?endpoint=` (idempotent), which
+  is what a browser knows. A user keeps at most `push.max_subscriptions_per_user`.
+  Merging accounts moves subscriptions to the survivor; deleting a user drops theirs;
+  a push service answering 404 or 410 drops the dead subscription automatically.
+- **Payloads** are composed server-side and localized into the recipient's language
+  (the `notify.*` catalog keys); they carry only a title, a body and the portal match
+  link — no credentials. A click focuses the portal (or opens it) at the match.
+- **Delivery** is best-effort and off the request path: the service queues
+  notifications and a worker thread sends them, so a slow push service never stalls
+  requests, and a lost notification is annoying, not corrupting. `push.ttl_seconds`
+  bounds how long a push service keeps an undeliverable message. With the default
+  `"log"` provider, notifications are written to the server log instead — handy for
+  development. `POST /push/test` queues a test notification to the caller, and
+  `GET /push/config` tells a frontend whether push is set up and which VAPID public
+  key to subscribe with.
+
+Browsers require a secure context: serve the site over HTTPS (localhost works
+without). On iOS, push works only when the portal is installed to the home screen
+(iOS 16.4+).
+
 ### Endpoints
 
 | Endpoint | Auth | Description |
@@ -211,6 +251,12 @@ another of your accounts.
 | `POST /matches/{id}/moves` | yes | Make a move `{new_state, next_turn_player_indices, expected_move_count?}` |
 | `GET /matches/{id}/moves` |  | Full move history |
 | `DELETE /matches/{id}` | yes | Owner: delete the match. Other players: hide an ended match from their list |
+| `GET /push/config` |  | Whether web push is set up, and the VAPID public key to subscribe with |
+| `POST /push/subscriptions` | yes | Register (201) or refresh (200) the caller's browser subscription `{endpoint, keys, expiration_time?}`, keyed by endpoint |
+| `GET /push/subscriptions` | yes | List the caller's subscriptions |
+| `DELETE /push/subscriptions/{id}` | yes | Delete one of the caller's subscriptions (403 for others') |
+| `DELETE /push/subscriptions?endpoint=` | yes | Unsubscribe a browser by endpoint (idempotent) |
+| `POST /push/test` | yes | Queue a test notification to the caller (404 when they have no subscription) |
 
 Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct, each in
 1..10), `allows_leave_mid_match`, `allows_join_mid_match`, `code`.
@@ -277,9 +323,10 @@ the ones they don't know:
 - **Python 3.10 or newer.** The code uses 3.10 features (`X | Y` type unions evaluated at
   runtime, `dataclass(kw_only=True)`), so 3.9 and older won't work. It is tested with
   3.10.
-- **Three pip packages** for the server, listed in `requirements.txt`: `fastapi`,
-  `pydantic` (v2) and `uvicorn`. They pull in their own dependencies (such as
-  `starlette`) automatically.
+- **The server packages** are listed in `requirements.txt`: `fastapi`, `pydantic`
+  (v2) and `uvicorn`, plus `openai` for the optional Model API client and
+  `pywebpush` (with `cryptography`) for web push notifications. They pull in their
+  own dependencies (such as `starlette`) automatically.
 - **Two more for the tests**, in `requirements-dev.txt`: `pytest`, and `httpx`, which
   FastAPI's `TestClient` needs.
 - Nothing else: no database (data is kept in a JSON file), no build step, and no
@@ -362,6 +409,11 @@ stop the server at startup with an error naming the field.
 | `auth.email.smtp_password`        | `""`                                     | SMTP password |
 | `auth.email.smtp_from_address`    | `""`                                     | The From address login codes are sent from |
 | `auth.email.smtp_use_tls`         | `true`                                   | Use STARTTLS |
+| `push.provider`                   | `"log"`                                  | `"log"` writes notifications to the server log; `"webpush"` delivers real Web Push messages (see [Web push notifications](#web-push-notifications)) |
+| `push.vapid_private_key`          | `""`                                     | VAPID private key, from `--generate-vapid-keys`; needed for `"webpush"`. Prefer the `GAME_PLATFORM_VAPID_PRIVATE_KEY` environment variable over storing it in this file |
+| `push.vapid_subject`              | `""`                                     | Operator contact push services require with VAPID: a `mailto:` or `https:` URL; needed for `"webpush"` |
+| `push.ttl_seconds`                | `86400`                                  | A push service drops a notification it couldn't deliver after this many seconds |
+| `push.max_subscriptions_per_user` | `10`                                     | Each user keeps at most this many subscriptions; extra ones replace the oldest |
 
 For example, to serve other machines on port 45123 and keep the data next to the config:
 
@@ -382,8 +434,8 @@ any idle connection a browser keeps.
 ### Data file
 
 The data file holds everything: users (including their passwords), every
-version of every game, which games are deleted, and all matches with their moves. Its
-layout is
+version of every game, which games are deleted, all matches with their moves, and
+web push subscriptions. Its layout is
 `{"format_version": 1, "data": {"users": [...], "game_versions": [...], "deleted_game_ids": [...], "matches": [...]}}`.
 `format_version` is for incompatible layout changes after launch.
 
