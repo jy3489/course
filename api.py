@@ -20,6 +20,7 @@ from game_platform import i18n
 from game_platform.models import GameRules, MatchStatus
 from game_platform.schemas import (
     AgentChatRequest,
+    AgentConversationOut,
     CatalogOut,
     LocaleOut,
     LocalesOut,
@@ -688,7 +689,7 @@ def admin_delete_match(platform: Platform, match_id: str) -> None:
 
 @debug_router.post("/agent/chat")
 async def agent_chat(
-    request: Request, caller_id: CallerId, body: AgentChatRequest
+    request: Request, platform: Platform, caller_id: CallerId, body: AgentChatRequest
 ) -> AgentChatResponse:
     """One turn of conversation with the game-building agent (backs the builder's
     Agent tab). Requires the acting user because every turn calls the paid model
@@ -704,7 +705,7 @@ async def agent_chat(
             "configured on the server.",
         )
     try:
-        return await asyncio.wait_for(
+        response = await asyncio.wait_for(
             run_in_threadpool(chat_with_agent, client, body), timeout=GENERATION_BUDGET_SECONDS
         )
     except asyncio.TimeoutError as exc:
@@ -713,6 +714,33 @@ async def agent_chat(
         raise HTTPException(
             status_code=HTTPStatus.BAD_GATEWAY, detail=str(exc)
         ) from exc
+    # Keep the whole conversation server-side so admins can review how a game
+    # was built. Recording must never fail the chat itself.
+    if body.game_id is not None and body.messages and body.messages[-1].role == "user":
+        try:
+            platform.record_agent_exchange(
+                caller_id=caller_id,
+                game_id=body.game_id,
+                user_text=body.messages[-1].content,
+                assistant_text=response.message,
+            )
+        except Exception:
+            pass
+    return response
+
+
+@debug_router.get(
+    "/admin/games/{game_id}/agent-conversation", dependencies=[MasterPassword]
+)
+def admin_agent_conversation(platform: Platform, game_id: str) -> AgentConversationOut:
+    """A game's recorded conversation with the building agent (super admin)."""
+    conversation = platform.agent_conversation(game_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail="No agent conversation recorded for this game.",
+        )
+    return AgentConversationOut.of(conversation)
 
 
 def _error_body(request: Request, message: str) -> dict[str, object]:

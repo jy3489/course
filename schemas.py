@@ -17,6 +17,8 @@ from pydantic import (
 from game_platform.models import (
     MAX_PLAYERS,
     MIN_PLAYERS,
+    AgentConversation,
+    AgentConversationEntry,
     EndReason,
     Game,
     GameDraft,
@@ -478,11 +480,47 @@ class MatchDetailOut(MatchOut):
         )
 
 
+class AgentConversationEntryOut(BaseModel):
+    role: str
+    text: str
+    created_at: dt.datetime
+    # The game's published version when the message was exchanged (0 = the
+    # game had never been published at that point).
+    game_version: int
+
+    @classmethod
+    def of(cls, entry: AgentConversationEntry) -> "AgentConversationEntryOut":
+        return cls(
+            role=entry.role,
+            text=entry.text,
+            created_at=entry.created_at,
+            game_version=entry.game_version,
+        )
+
+
+class AgentConversationOut(BaseModel):
+    """A game's recorded agent conversation. Admin-only: never part of a game
+    or draft response, so the portal and builder never receive it."""
+
+    game_id: str
+    entries: list[AgentConversationEntryOut]
+
+    @classmethod
+    def of(cls, conversation: AgentConversation) -> "AgentConversationOut":
+        return cls(
+            game_id=conversation.game_id,
+            entries=[
+                AgentConversationEntryOut.of(entry) for entry in conversation.entries
+            ],
+        )
+
+
 class AllDataOut(BaseModel):
     users: list[UserWithPasswordOut]
     # Every version of every game, including deleted games.
     game_versions: list[GameOut]
     matches: list[MatchDetailOut]
+    agent_conversations: list[AgentConversationOut] = []
 
     @classmethod
     def of(cls, data: AllData) -> "AllDataOut":
@@ -490,6 +528,10 @@ class AllDataOut(BaseModel):
             users=[UserWithPasswordOut.of_user(user) for user in data.users],
             game_versions=[GameOut.of(game) for game in data.game_versions],
             matches=[MatchDetailOut.of(match) for match in data.matches],
+            agent_conversations=[
+                AgentConversationOut.of(conversation)
+                for conversation in data.agent_conversations
+            ],
         )
 
 
@@ -515,6 +557,10 @@ class AgentChatRequest(_Request):
     allows_join_mid_match: StrictBool = False
     code: str = ""
     messages: Annotated[list[AgentMessage], Field(min_length=1, max_length=50)]
+    # The draft (or game) being edited, when the client knows it. The exchange
+    # is recorded against this id so admins can review the conversation later;
+    # clients that send no id simply stay unrecorded.
+    game_id: str | None = None
 
 
 class AgentChatResponse(BaseModel):
