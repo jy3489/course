@@ -348,6 +348,20 @@ async function requestAgentReply(user, body, isCurrent, request) {
 }
 
 
+async function ensureDraftId(user, session) {
+  // A brand-new game has no draft yet; create one so the agent conversation
+  // can be recorded against a real id (the draft id becomes the game id).
+  if (state.selectedId !== "new") return state.selectedId;
+  const values = editorValues();
+  const draft = await apiRequest("POST", "/game-drafts", {user, body: {...values, expected_revision: null}});
+  if (!currentSession(session, user)) return null;
+  state.drafts = [draft, ...state.drafts.filter(item => item.id !== draft.id)];
+  state.selectedId = draft.id; state.baseline = JSON.stringify(values);
+  try { localStorage.removeItem(recoveryKey("new", user)); } catch {}
+  rememberWork(); renderLibrary();
+  return draft.id;
+}
+
 async function sendAgentMessage() {
   const user=me(),input=$("agent-input").value.trim();
   if (!user||!input||state.agentSending||state.publishing||state.restoring) return;
@@ -357,10 +371,13 @@ async function sendAgentMessage() {
   const messages=[...state.messages.slice(-48),{role:"user",content:input}];
   $("agent-input").value="";agentLog("user",input);setMessage("agent-message","");rememberWork();renderStatus();
   try {
+    let gameId = null;
+    try { gameId = await ensureDraftId(user, session); } catch { gameId = null; }
+    if (!isCurrent() || request.cancelled) return;
     const reply=await requestAgentReply(user,{game_name:values.name,game_description:values.description,
       allowed_player_counts:values.allowed_player_counts,player_count_mode:"auto",
       allows_leave_mid_match:values.allows_leave_mid_match,allows_join_mid_match:values.allows_join_mid_match,
-      code:values.code,messages},isCurrent,request);
+      code:values.code,messages,game_id:gameId},isCurrent,request);
     if (!isCurrent()||request.cancelled) return;
     state.messages=[...messages,{role:"assistant",content:reply.message}];
     agentLog("assistant",reply.message);

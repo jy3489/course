@@ -132,6 +132,26 @@
         white-space: normal;
       }
 
+      .chat-entry {
+        border-top: 1px solid var(--color-border-2);
+        padding: var(--space-sm) 0;
+      }
+
+      .chat-entry:first-child {
+        border-top: none;
+      }
+
+      .chat-meta {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-sm);
+        margin-bottom: var(--space-xs);
+      }
+
+      .chat-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
       .detail-grid {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
@@ -223,8 +243,12 @@
         <h2>Matches <span id="matches-count" class="count"></span></h2>
         <div id="matches"></div>
       </section>
+      <section>
+        <h2>Agent conversations <span id="conversations-count" class="count"></span></h2>
+        <div id="conversations"></div>
+      </section>
     </main>
     <script src="/static/common.js?v=2"></script>
-    <script src="/static/browse.js?v=2"></script>
+    <script src="/static/browse.js?v=3"></script>
   </body>
 </html>

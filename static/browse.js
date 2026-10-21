@@ -133,6 +133,51 @@ function render() {
   renderUsers(data, games);
   renderGames(data, games, versionsById, nameOf);
   renderMatches(data, gamesById, nameOf);
+  renderConversations(data, gamesById);
+}
+
+function renderConversations(data, gamesById) {
+  const columns = [
+    { title: "Game" },
+    { title: "Game ID" },
+    { title: "Messages", class: "num" },
+    { title: "Last message", class: "time" },
+  ];
+  const conversations = data.agent_conversations ?? [];
+  const rows = conversations.map((conversation) => {
+    const game = gamesById.get(conversation.game_id);
+    const name = game ? game.name : conversation.game_id;
+    const last = conversation.entries[conversation.entries.length - 1];
+    return {
+      key: `conversation:${conversation.game_id}`,
+      text: `${name} ${conversation.game_id}`,
+      cells: [
+        name,
+        idChip(conversation.game_id),
+        conversation.entries.length,
+        last ? formatTime(last.created_at) : "",
+      ],
+      detail: () =>
+        el(
+          "div",
+          {},
+          conversation.entries.map((entry) =>
+            el(
+              "div",
+              { class: "chat-entry" },
+              el("div", {
+                class: "chat-meta",
+                textContent: `${entry.role === "user" ? "User" : "Agent"} · ${formatTime(entry.created_at)} · ${
+                  entry.game_version ? `game version ${entry.game_version}` : "not yet published"
+                }`,
+              }),
+              el("div", { class: "chat-text", textContent: entry.text }),
+            ),
+          ),
+        ),
+    };
+  });
+  renderTable($("conversations"), $("conversations-count"), columns, rows);
 }
 
 function renderUsers(data, games) {

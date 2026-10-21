@@ -76,6 +76,30 @@
         padding: var(--space-md);
       }
 
+      .chat-detail {
+        margin-top: var(--space-md);
+      }
+
+      .chat-detail:empty {
+        margin-top: 0;
+      }
+
+      .chat-entry {
+        border-top: 1px solid var(--color-border-2);
+        padding: var(--space-sm) 0;
+      }
+
+      .chat-meta {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-sm);
+        margin-bottom: var(--space-xs);
+      }
+
+      .chat-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
       .panel h3 {
         margin: 0 0 var(--space-sm);
         font-size: var(--font-size-sm);
@@ -149,6 +173,6 @@
       <div id="content"></div>
     </main>
     <script src="/static/common.js?v=2"></script>
-    <script src="/static/stats.js?v=2"></script>
+    <script src="/static/stats.js?v=3"></script>
   </body>
 </html>
