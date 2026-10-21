@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "प्रकाशित गेम अब उपलब्ध नहीं है",
   "error.public_version_changed": "सार्वजनिक संस्करण बदल गया; इस ड्राफ़्ट को प्रकाशित करने से पहले उसे पुनः लोड करें",
   "error.game_not_found": "गेम नहीं मिला",
+  "error.no_agent_conversation": "इस खेल के लिए कोई एजेंट वार्तालाप रिकॉर्ड नहीं किया गया है।",
   "error.game_version_not_found": "गेम का संस्करण नहीं मिला",
   "error.game_deleted": "गेम हटा दिया गया है",
   "error.game_unpublished": "गेम प्रकाशित नहीं है; साझा करने के लिए इसका निजी ड्राफ़्ट संपादित करें और प्रकाशित करें",

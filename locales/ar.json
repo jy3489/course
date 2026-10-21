@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "اللعبة المنشورة لم تعد متاحة",
   "error.public_version_changed": "تغيّر الإصدار العام؛ أعد تحميله قبل نشر هذه المسودة",
   "error.game_not_found": "لم يتم العثور على اللعبة",
+  "error.no_agent_conversation": "لم يتم تسجيل أي محادثة مع الوكيل لهذه اللعبة.",
   "error.game_version_not_found": "لم يتم العثور على إصدار اللعبة",
   "error.game_deleted": "تم حذف اللعبة",
   "error.game_unpublished": "اللعبة غير منشورة؛ عدّل مسودتها الخاصة ثم انشرها لمشاركتها",

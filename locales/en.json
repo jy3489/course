@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "published game is no longer available",
   "error.public_version_changed": "public version changed; reload it before publishing this draft",
   "error.game_not_found": "game not found",
+  "error.no_agent_conversation": "No agent conversation recorded for this game.",
   "error.game_version_not_found": "game version not found",
   "error.game_deleted": "the game has been deleted",
   "error.game_unpublished": "game is unpublished; edit its private draft and Publish to share it",

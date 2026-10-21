@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "已发布的游戏已不可用",
   "error.public_version_changed": "公开版本已更改，请刷新后再发布此草稿",
   "error.game_not_found": "找不到该游戏",
+  "error.no_agent_conversation": "尚未记录此游戏的智能体对话。",
   "error.game_version_not_found": "找不到该游戏版本",
   "error.game_deleted": "该游戏已被删除",
   "error.game_unpublished": "该游戏未发布；请编辑其私有草稿并发布后再分享",

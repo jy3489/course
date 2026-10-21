@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "le jeu publié n'est plus disponible",
   "error.public_version_changed": "la version publique a changé ; rechargez-la avant de publier ce brouillon",
   "error.game_not_found": "jeu introuvable",
+  "error.no_agent_conversation": "Aucune conversation avec l'agent n'a été enregistrée pour ce jeu.",
   "error.game_version_not_found": "version du jeu introuvable",
   "error.game_deleted": "le jeu a été supprimé",
   "error.game_unpublished": "le jeu n'est pas publié ; modifiez son brouillon privé puis publiez-le pour le partager",

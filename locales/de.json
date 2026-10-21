@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "das veröffentlichte Spiel ist nicht mehr verfügbar",
   "error.public_version_changed": "die öffentliche Version hat sich geändert; lade sie neu, bevor du diesen Entwurf veröffentlichst",
   "error.game_not_found": "Spiel nicht gefunden",
+  "error.no_agent_conversation": "Für dieses Spiel wurde keine Agent-Konversation aufgezeichnet.",
   "error.game_version_not_found": "Spielversion nicht gefunden",
   "error.game_deleted": "das Spiel wurde gelöscht",
   "error.game_unpublished": "das Spiel ist nicht veröffentlicht; bearbeite den privaten Entwurf und veröffentliche ihn, um es zu teilen",

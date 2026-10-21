@@ -20,6 +20,7 @@
   "error.published_game_unavailable": "o jogo publicado não está mais disponível",
   "error.public_version_changed": "a versão pública mudou; recarregue-a antes de publicar este rascunho",
   "error.game_not_found": "jogo não encontrado",
+  "error.no_agent_conversation": "Nenhuma conversa com o agente foi registrada para este jogo.",
   "error.game_version_not_found": "versão do jogo não encontrada",
   "error.game_deleted": "o jogo foi excluído",
   "error.game_unpublished": "o jogo não está publicado; edite o rascunho privado e publique para compartilhar",
