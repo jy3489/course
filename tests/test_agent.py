@@ -537,3 +537,154 @@ def test_real_endpoint_deadline_does_not_wait_for_a_blocked_model(api, monkeypat
         assert len(calls) == 1
     finally:
         release.set()
+
+
+# Recording the conversation server-side (for the admin pages)
+
+
+def _use_fake_agent(api: Api, monkeypatch: pytest.MonkeyPatch, message: str = "Done!") -> None:
+    from game_platform import agent as agent_module
+    from game_platform import api as api_module
+
+    def fake_chat(client: ModelApiClient, request: AgentChatRequest):  # type: ignore[no-untyped-def]
+        return agent_module._parse_reply(json.dumps({"message": message, "code": None}))
+
+    monkeypatch.setattr(api_module, "chat_with_agent", fake_chat)
+    api.client.app.state.model_api_config = ModelApiConfig(api_key="k", model="m")
+
+
+def _new_draft(api: Api, user: str) -> dict:
+    return api.ok(
+        "POST",
+        "/game-drafts",
+        as_user=user,
+        json={
+            "name": "Race to 10",
+            "description": "",
+            "allowed_player_counts": [2],
+            "allows_leave_mid_match": False,
+            "allows_join_mid_match": False,
+            "code": "<html><body>race</body></html>",
+            "expected_revision": None,
+        },
+    )
+
+
+def _chat(api: Api, user: str, game_id: str | None, text: str) -> dict:
+    body = _request(messages=[{"role": "user", "content": text}]).model_dump()
+    body["game_id"] = game_id
+    return api.ok("POST", "/agent/chat", as_user=user, json=body)
+
+
+def test_chat_is_recorded_against_the_draft(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_fake_agent(api, monkeypatch)
+    alice = api.new_user("alice")
+    draft = _new_draft(api, alice)
+
+    _chat(api, alice, draft["id"], "make the target 20")
+
+    conversation = api.ok("GET", f"/admin/games/{draft['id']}/agent-conversation")
+    assert conversation["game_id"] == draft["id"]
+    assert [(e["role"], e["text"]) for e in conversation["entries"]] == [
+        ("user", "make the target 20"),
+        ("assistant", "Done!"),
+    ]
+    # Never published yet, so both entries are stamped with version 0, and
+    # each carries a timestamp.
+    assert [e["game_version"] for e in conversation["entries"]] == [0, 0]
+    assert all(e["created_at"] for e in conversation["entries"])
+
+
+def test_recorded_version_tracks_publication(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_fake_agent(api, monkeypatch)
+    alice = api.new_user("alice")
+    draft = _new_draft(api, alice)
+
+    _chat(api, alice, draft["id"], "first draft please")
+    game = api.ok(
+        "POST",
+        f"/game-drafts/{draft['id']}/publish",
+        as_user=alice,
+        json={"expected_revision": draft["revision"]},
+    )
+    assert game["version"] == 1
+    _chat(api, alice, draft["id"], "now tweak it")
+
+    conversation = api.ok("GET", f"/admin/games/{draft['id']}/agent-conversation")
+    assert [e["game_version"] for e in conversation["entries"]] == [0, 0, 1, 1]
+
+
+def test_chat_for_another_users_game_is_not_recorded(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use_fake_agent(api, monkeypatch)
+    alice, bob = api.new_user("alice"), api.new_user("bob")
+    draft = _new_draft(api, alice)
+
+    _chat(api, bob, draft["id"], "sneaky edit")
+
+    response = api.request("GET", f"/admin/games/{draft['id']}/agent-conversation")
+    assert response.status_code == 404
+
+
+def test_chat_without_a_game_id_records_nothing(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use_fake_agent(api, monkeypatch)
+    alice = api.new_user("alice")
+    draft = _new_draft(api, alice)
+
+    _chat(api, alice, None, "no game attached")
+
+    response = api.request("GET", f"/admin/games/{draft['id']}/agent-conversation")
+    assert response.status_code == 404
+
+
+def test_conversation_stays_out_of_game_responses(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use_fake_agent(api, monkeypatch)
+    alice = api.new_user("alice")
+    draft = _new_draft(api, alice)
+    _chat(api, alice, draft["id"], "make the target 20")
+    game = api.ok(
+        "POST",
+        f"/game-drafts/{draft['id']}/publish",
+        as_user=alice,
+        json={"expected_revision": draft["revision"]},
+    )
+
+    for payload in (
+        api.ok("GET", f"/games/{game['id']}"),
+        api.ok("GET", "/games")[0],
+        api.ok("GET", "/builder/games", as_user=alice)[0],
+        api.ok("GET", f"/game-drafts/{draft['id']}", as_user=alice),
+    ):
+        assert "agent_conversation" not in payload
+        assert "entries" not in payload
+
+    # The debug dump (admin-only) does include the conversations.
+    all_data = api.ok("GET", "/debug/all-data")
+    assert [c["game_id"] for c in all_data["agent_conversations"]] == [draft["id"]]
+
+
+def test_agent_conversation_survives_a_restart(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    from pathlib import Path
+
+    from game_platform.json_file_store import JsonFileStore
+
+    path = Path(tmp_path) / "data.json"
+    store = JsonFileStore(path)
+    api = Api(store=store)
+    _use_fake_agent(api, monkeypatch)
+    alice = api.new_user("alice")
+    draft = _new_draft(api, alice)
+    _chat(api, alice, draft["id"], "make the target 20")
+    store.close()
+
+    restarted = JsonFileStore(path)
+    after = Api(store=restarted).ok(
+        "GET", f"/admin/games/{draft['id']}/agent-conversation"
+    )
+    restarted.close()
+    assert [e["text"] for e in after["entries"]] == ["make the target 20", "Done!"]
