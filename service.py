@@ -18,6 +18,8 @@ from typing import Final
 from pydantic import JsonValue
 
 from game_platform.models import (
+    AgentConversation,
+    AgentConversationEntry,
     Game,
     GameDraft,
     GameRules,
@@ -38,6 +40,8 @@ class AllData:
     # Every version of every game, including deleted games.
     game_versions: list[Game]
     matches: list[Match]
+    # Recorded conversations with the game-building agent, admin-only.
+    agent_conversations: list[AgentConversation] = ()
 
 
 class PlatformError(Exception):
@@ -1090,6 +1094,69 @@ class GamePlatform:
                 )
             )
 
+    # Agent conversations
+
+    # Bounds the stored history per game so a long-lived game can't grow the
+    # data file without limit; far beyond any real building session.
+    MAX_AGENT_CONVERSATION_ENTRIES: Final = 1000
+
+    def record_agent_exchange(
+        self, *, caller_id: str, game_id: str, user_text: str, assistant_text: str
+    ) -> bool:
+        """Records one exchange with the game-building agent against a game.
+
+        The [game_id] is a draft id (draft ids become game ids on publication).
+        Returns False and records nothing when the id names no draft or game
+        owned by the caller — older clients send no id at all, and their chats
+        simply stay unrecorded. Each entry is stamped with the game's current
+        published version (the draft's base version; 0 when never published).
+        """
+        with self._lock:
+            draft = self._store.get_game_draft(game_id)
+            game = self._store.get_game(game_id)
+            if draft is not None:
+                if draft.owner_user_id != caller_id:
+                    return False
+                version = draft.base_version
+            elif game is not None:
+                if game.owner_user_id != caller_id:
+                    return False
+                version = game.version
+            else:
+                return False
+            now = self._clock()
+            entries = [
+                AgentConversationEntry(
+                    role="user", text=user_text, created_at=now, game_version=version
+                ),
+                AgentConversationEntry(
+                    role="assistant",
+                    text=assistant_text,
+                    created_at=self._clock(),
+                    game_version=version,
+                ),
+            ]
+            self._store.append_agent_conversation_entries(game_id, entries)
+            conversation = self._store.get_agent_conversation(game_id)
+            if (
+                conversation is not None
+                and len(conversation.entries) > self.MAX_AGENT_CONVERSATION_ENTRIES
+            ):
+                self._store.put_agent_conversation(
+                    AgentConversation(
+                        game_id=game_id,
+                        entries=conversation.entries[
+                            -self.MAX_AGENT_CONVERSATION_ENTRIES :
+                        ],
+                    )
+                )
+            return True
+
+    def agent_conversation(self, game_id: str) -> AgentConversation | None:
+        """The recorded agent conversation for a game, for the admin pages."""
+        with self._lock:
+            return self._store.get_agent_conversation(game_id)
+
     # Debugging
 
     def all_data(self) -> AllData:
@@ -1099,6 +1166,7 @@ class GamePlatform:
                 users=self._store.list_users(),
                 game_versions=self._store.list_all_game_versions(),
                 matches=self._store.list_all_matches(),
+                agent_conversations=self._store.list_agent_conversations(),
             )
 
     def stats(self) -> dict[str, JsonValue]:

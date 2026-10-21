@@ -115,6 +115,30 @@ class GameDraft:
     revision: int = 1
 
 
+AgentMessageRole = Literal["user", "assistant"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentConversationEntry:
+    """One message exchanged with the game-building agent about one game."""
+
+    role: AgentMessageRole
+    text: str
+    created_at: dt.datetime
+    # The game's published version when the message was exchanged; 0 while the
+    # game had never been published (it existed only as a draft).
+    game_version: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentConversation:
+    """The whole recorded agent conversation for one game (or draft), oldest
+    first. Admin-only: it is never part of a game or draft API response."""
+
+    game_id: str
+    entries: tuple[AgentConversationEntry, ...] = ()
+
+
 @dataclass(frozen=True, kw_only=True)
 class Seat:
     player_index: int

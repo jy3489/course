@@ -8,7 +8,7 @@ the service or the HTTP layer.
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from game_platform.models import Game, GameDraft, Match, User
+from game_platform.models import AgentConversation, AgentConversationEntry, Game, GameDraft, Match, User
 
 
 class Store(Protocol):
@@ -74,6 +74,16 @@ class Store(Protocol):
 
     def list_all_matches(self) -> list[Match]: ...
 
+    def append_agent_conversation_entries(
+        self, game_id: str, entries: list[AgentConversationEntry]
+    ) -> None: ...
+
+    def put_agent_conversation(self, conversation: AgentConversation) -> None: ...
+
+    def get_agent_conversation(self, game_id: str) -> AgentConversation | None: ...
+
+    def list_agent_conversations(self) -> list[AgentConversation]: ...
+
 
 @dataclass(frozen=True, kw_only=True)
 class Snapshot:
@@ -87,6 +97,8 @@ class Snapshot:
     # Optional so existing data files load without a migration. Never public games.
     game_drafts: tuple[GameDraft, ...] = ()
     unpublished_game_ids: tuple[str, ...] = ()
+    # Optional so existing data files load without a migration. Admin-only data.
+    agent_conversations: tuple[AgentConversation, ...] = ()
 
 
 class InMemoryStore:
@@ -101,6 +113,7 @@ class InMemoryStore:
         self._matches: dict[str, Match] = {}
         self._game_drafts: dict[str, GameDraft] = {}
         self._unpublished_game_ids: set[str] = set()
+        self._agent_conversations: dict[str, list[AgentConversationEntry]] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -115,6 +128,8 @@ class InMemoryStore:
             store.put_match(match)
         for draft in snapshot.game_drafts:
             store.put_game_draft(draft)
+        for conversation in snapshot.agent_conversations:
+            store._agent_conversations[conversation.game_id] = list(conversation.entries)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -128,6 +143,10 @@ class InMemoryStore:
             matches=tuple(self._matches.values()),
             game_drafts=tuple(self._game_drafts.values()),
             unpublished_game_ids=tuple(sorted(self._unpublished_game_ids)),
+            agent_conversations=tuple(
+                AgentConversation(game_id=game_id, entries=tuple(entries))
+                for game_id, entries in self._agent_conversations.items()
+            ),
         )
 
     def put_user(self, user: User) -> None:
@@ -220,3 +239,23 @@ class InMemoryStore:
 
     def list_all_matches(self) -> list[Match]:
         return list(self._matches.values())
+
+    def append_agent_conversation_entries(
+        self, game_id: str, entries: list[AgentConversationEntry]
+    ) -> None:
+        self._agent_conversations.setdefault(game_id, []).extend(entries)
+
+    def put_agent_conversation(self, conversation: AgentConversation) -> None:
+        self._agent_conversations[conversation.game_id] = list(conversation.entries)
+
+    def get_agent_conversation(self, game_id: str) -> AgentConversation | None:
+        entries = self._agent_conversations.get(game_id)
+        if entries is None:
+            return None
+        return AgentConversation(game_id=game_id, entries=tuple(entries))
+
+    def list_agent_conversations(self) -> list[AgentConversation]:
+        return [
+            AgentConversation(game_id=game_id, entries=tuple(entries))
+            for game_id, entries in self._agent_conversations.items()
+        ]

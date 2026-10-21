@@ -18,17 +18,18 @@ from typing import Final
 
 from pydantic import TypeAdapter
 
-from game_platform.models import Game, GameDraft, Match, User
+from game_platform.models import AgentConversation, AgentConversationEntry, Game, GameDraft, Match, User
 from game_platform.store import InMemoryStore, Snapshot
 
 logger = logging.getLogger(__name__)
 
 # Bump when the file layout changes incompatibly.
-FORMAT_VERSION: Final = 4
+FORMAT_VERSION: Final = 5
 # Version 1 stored each turn as a single player index; version 2 stores a set of
-# them. Version 3 adds private drafts; version 4 adds publication state. Older
-# servers must reject new formats rather than lose drafts or re-expose unpublished
-# games. Versions 1, 2 and 3 still load with all existing public games unchanged.
+# them. Version 3 adds private drafts; version 4 adds publication state; version
+# 5 adds recorded agent conversations. Older servers must reject new formats
+# rather than lose drafts, re-expose unpublished games or drop conversations.
+# Versions 1, 2, 3 and 4 still load with all existing public games unchanged.
 _V1_FORMAT_VERSION: Final = 1
 
 
@@ -242,6 +243,26 @@ class JsonFileStore:
         with self._lock:
             return self._inner.list_all_matches()
 
+    def append_agent_conversation_entries(
+        self, game_id: str, entries: list[AgentConversationEntry]
+    ) -> None:
+        with self._lock:
+            self._inner.append_agent_conversation_entries(game_id, entries)
+            self._set_dirty()
+
+    def put_agent_conversation(self, conversation: AgentConversation) -> None:
+        with self._lock:
+            self._inner.put_agent_conversation(conversation)
+            self._set_dirty()
+
+    def get_agent_conversation(self, game_id: str) -> AgentConversation | None:
+        with self._lock:
+            return self._inner.get_agent_conversation(game_id)
+
+    def list_agent_conversations(self) -> list[AgentConversation]:
+        with self._lock:
+            return self._inner.list_agent_conversations()
+
 
 def read_snapshot(path: Path) -> Snapshot:
     contents = path.read_bytes()
@@ -252,7 +273,7 @@ def read_snapshot(path: Path) -> Snapshot:
             contents = _migrate_v1_to_v2(contents)
         except (KeyError, TypeError):
             pass  # fall through; validation below reports the real problem
-    elif format_version not in (2, 3, FORMAT_VERSION):
+    elif format_version not in (2, 3, 4, FORMAT_VERSION):
         raise ValueError(
             f"{path} has format version {format_version}, expected {FORMAT_VERSION}"
         )
