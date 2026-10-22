@@ -1,16 +1,20 @@
 "use strict";
 // Scope deliberately stays /static/: no backend route or Service-Worker-Allowed change.
-const CACHE = "playroom-portal-shell-v17";
+const CACHE = "playroom-portal-shell-v18";
 const SHELL = [
   "/static/portal.html",
   "/static/common.css?v=7",
   "/static/portal.css?v=11",
   "/static/common.js?v=4",
-  "/static/auth.js?v=1",
-  "/static/portal.js?v=15",
+  "/static/auth.js?v=2",
+  "/static/portal.js?v=17",
   "/static/portal-offline.js?v=1",
   "/static/portal.webmanifest",
   "/static/portal-icon.svg",
+  "/static/portal-install.js?v=1",
+  "/static/portal-icon-180.png",
+  "/static/portal-icon-192.png",
+  "/static/portal-icon-512.png",
 ];
 self.addEventListener("install", (event) =>
   event.waitUntil(
