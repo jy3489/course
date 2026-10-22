@@ -13,6 +13,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101827" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/static/portal-icon-180.png" />
+    <meta name="apple-mobile-web-app-title" content="Playroom" />
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=7" />
@@ -41,6 +43,10 @@
         </div>
         <details id="group-open" class="match-group open-group"><summary>Open matches you can join <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
         <div class="sidebar-footer"><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button">Retry sync</button><button id="notify-toggle" type="button" aria-pressed="false" hidden>Enable notifications</button></div></div>
+        <div class="install-controls">
+          <button id="install-portal" type="button" hidden>Install Playroom</button>
+          <details id="install-help"><summary>Add to Home Screen</summary><p>On iPhone or iPad, open this page in Safari, tap Share, then Add to Home Screen. On Android or desktop, use Install Playroom or your browser’s install menu.</p><p>Open games and matches online first. Wait for “Portal saved for offline” before disconnecting. Offline moves sync when you reconnect.</p><p id="install-message" role="status"></p></details>
+        </div>
       </aside>
       <main class="work portal-main">
         <details id="match-creator" class="match-creator" open>
@@ -114,6 +120,7 @@
     <script src="/static/common.js?v=4"></script>
     <script src="/static/auth.js?v=2"></script>
     <script src="/static/portal-offline.js?v=1"></script>
-    <script src="/static/portal.js?v=16"></script>
+    <script src="/static/portal-install.js?v=1"></script>
+    <script src="/static/portal.js?v=17"></script>
   </body>
 </html>
