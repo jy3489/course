@@ -126,7 +126,11 @@ router = APIRouter()
 def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
     """Returns the new user's password, which authenticated requests need. Apart from
     the debug tools, this is the only place the API returns it."""
-    user = platform.create_user(display_name=body.display_name, locale=body.locale)
+    user = platform.create_user(
+        display_name=body.display_name,
+        locale=body.locale,
+        invited_by_user_id=body.invited_by_user_id,
+    )
     return UserWithPasswordOut.of_user(user)
 
 
@@ -200,6 +204,7 @@ def _login_or_link(
     email: str = "",
     picture_url: str = "",
     as_user_id: str | None,
+    invited_by_user_id: str | None = None,
 ) -> AuthResponse:
     user, merged_from = platform.login_with_linked_account(
         kind=kind,
@@ -208,6 +213,7 @@ def _login_or_link(
         email=email,
         picture_url=picture_url,
         as_user_id=as_user_id,
+        invited_by_user_id=invited_by_user_id,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -240,6 +246,7 @@ def auth_google(
         email=email,
         picture_url=picture_url,
         as_user_id=caller_id,
+        invited_by_user_id=body.invited_by_user_id,
     )
 
 
@@ -276,6 +283,7 @@ def phone_verify(
         code=body.code,
         display_name=body.display_name,
         as_user_id=caller_id,
+        invited_by_user_id=body.invited_by_user_id,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -313,6 +321,7 @@ def email_verify(
         code=body.code,
         display_name=body.display_name,
         as_user_id=caller_id,
+        invited_by_user_id=body.invited_by_user_id,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -717,6 +726,11 @@ def stats_page() -> FileResponse:
     return FileResponse(_STATIC_DIR / "stats.html")
 
 
+@debug_router.get("/invites", dependencies=[MasterPassword])
+def invites_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "invites.html")
+
+
 @debug_router.get("/admin", dependencies=[MasterPassword])
 def admin() -> FileResponse:
     """Hub page for the super-admin tools (API console, data browser,
@@ -739,6 +753,13 @@ def all_data(platform: Platform) -> AllDataOut:
 def admin_stats(platform: Platform) -> dict[str, JsonValue]:
     """Counts about users, games and matches (the backoffice's statistics page)."""
     return platform.stats()
+
+
+@debug_router.get("/admin/invites", dependencies=[MasterPassword])
+def admin_invites(platform: Platform) -> dict[str, JsonValue]:
+    """The invite tree: who brought whom, with direct and total (transitive)
+    invites per user (the backoffice's invites page)."""
+    return platform.invite_stats()
 
 
 @debug_router.delete(

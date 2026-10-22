@@ -59,6 +59,12 @@ class User:
     # directly at this user, so there are never replacement chains. Defaults to
     # empty so older data files still load.
     replaced_user_ids: tuple[str, ...] = ()
+    # The user whose invite link brought this user here, recorded once, when the
+    # account is created (see GamePlatform.create_user). None for users who came
+    # without an invite link. It may name an account that was later merged into
+    # another one; GamePlatform.invite_stats resolves it to the survivor.
+    # Defaults to None so older data files still load.
+    invited_by_user_id: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
 

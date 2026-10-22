@@ -232,7 +232,12 @@ class GamePlatform:
         picture_url: str = "",
         linked_accounts: tuple[LinkedAccount, ...] = (),
         locale: str = "",
+        invited_by_user_id: str | None = None,
     ) -> User:
+        """[invited_by_user_id] is the user whose invite link brought this one here.
+        An unknown id is ignored rather than rejected, so a stale or mistyped invite
+        link never stops anyone from signing up; a merged-away id is recorded as the
+        account it was merged into."""
         with self._lock:
             now = self._clock()
             user = User(
@@ -243,6 +248,7 @@ class GamePlatform:
                 locale=locale,
                 password=self._new_password(),
                 linked_accounts=linked_accounts,
+                invited_by_user_id=self._existing_user_id(invited_by_user_id),
                 created_at=now,
                 updated_at=now,
             )
@@ -348,6 +354,34 @@ class GamePlatform:
                 return final
         return survivor
 
+    def _existing_user_id(self, user_id: str | None) -> str | None:
+        """[user_id] resolved to its surviving account, or None when there is no such
+        user. The caller holds the lock."""
+        if not user_id:
+            return None
+        user = self._store.get_user(user_id)
+        return None if user is None else self._resolve_replaced(user).id
+
+    def _inviter_of(self, user: User) -> str | None:
+        """Who invited [user], resolved through merges; None if nobody did (or the
+        inviter resolves to [user] itself). The caller holds the lock."""
+        inviter = self._existing_user_id(user.invited_by_user_id)
+        return None if inviter == user.id else inviter
+
+    def _invited_by_descendant(self, *, inviter_id: str, user_id: str) -> bool:
+        """Whether [inviter_id] is [user_id] or someone [user_id] brought in, directly
+        or through others; making [inviter_id] the inviter of [user_id] would then
+        create a cycle. The caller holds the lock."""
+        seen: set[str] = set()
+        current: str | None = inviter_id
+        while current is not None and current not in seen:
+            if current == user_id:
+                return True
+            seen.add(current)
+            user = self._store.get_user(current)
+            current = None if user is None else self._inviter_of(user)
+        return False
+
     def start_verification(
         self, *, kind: LinkedAccountKind, identifier: str
     ) -> tuple[str, str, str]:
@@ -386,6 +420,7 @@ class GamePlatform:
         code: str,
         display_name: str | None = None,
         as_user_id: str | None = None,
+        invited_by_user_id: str | None = None,
     ) -> tuple[User, str | None]:
         """Checks a login code, then logs the owner in (see
         [login_with_linked_account]). Returns (user, merged_from_user_id)."""
@@ -419,6 +454,7 @@ class GamePlatform:
                 identifier=verification.identifier,
                 display_name=name,
                 as_user_id=as_user_id,
+                invited_by_user_id=invited_by_user_id,
             )
 
     def login_with_linked_account(
@@ -430,6 +466,7 @@ class GamePlatform:
         email: str = "",
         picture_url: str = "",
         as_user_id: str | None = None,
+        invited_by_user_id: str | None = None,
     ) -> tuple[User, str | None]:
         """Logs in with a verified Google subject, phone number or email.
 
@@ -439,7 +476,8 @@ class GamePlatform:
         different user, the two accounts merge, and the one with the stronger
         login method survives (google > phone > email > guest). The provider's
         profile (name, email, picture) is saved on the user and refreshed on each
-        login. Returns (user, merged_from_user_id).
+        login. [invited_by_user_id] is recorded only when this creates a new user.
+        Returns (user, merged_from_user_id).
         """
         with self._lock:
             user = self._find_by_linked_account(kind, identifier)
@@ -456,6 +494,7 @@ class GamePlatform:
                             email=email.strip(),
                             picture_url=picture_url.strip(),
                             linked_accounts=(linked,),
+                            invited_by_user_id=invited_by_user_id,
                         ),
                         None,
                     )
@@ -601,10 +640,21 @@ class GamePlatform:
         # points directly at the survivor. There are never replacement chains.
         absorbed = (from_user_id, *source.replaced_user_ids)
         replaced_ids = _dedupe((*into.replaced_user_ids, *absorbed))
+        # Invites: whoever the source invited now counts for the survivor (invite
+        # stats resolve merged-away inviters). If only the source was invited, the
+        # survivor inherits that inviter, unless it would make a cycle.
+        invited_by = into.invited_by_user_id
+        if self._inviter_of(into) is None:
+            source_inviter = self._inviter_of(source)
+            if source_inviter is not None and not self._invited_by_descendant(
+                inviter_id=source_inviter, user_id=into_user_id
+            ):
+                invited_by = source_inviter
         into = replace(
             into,
             linked_accounts=(*into.linked_accounts, *moved),
             replaced_user_ids=replaced_ids,
+            invited_by_user_id=invited_by,
             updated_at=self._clock(),
         )
         self._store.put_user(into)
@@ -1489,6 +1539,84 @@ class GamePlatform:
             },
         }
 
+    def invite_stats(self) -> dict[str, JsonValue]:
+        """The invite tree, for the backoffice: who brought whom to the platform.
+
+        Each live (not merged-away) user appears once, with the inviter recorded when
+        their account was created (resolved through merges), how many users they
+        invited directly, and how many in total: the people they invited, the people
+        those people invited, and so on. [depth] is how many invites separate the user
+        from someone who came without one. Users are sorted by total invites, most
+        first.
+        """
+        with self._lock:
+            now = self._clock()
+            users = [u for u in self._store.list_users() if u.replaced_by_user_id is None]
+            parent = {user.id: self._inviter_of(user) for user in users}
+        live = {user.id for user in users}
+        for user_id, inviter in parent.items():
+            if inviter not in live:
+                parent[user_id] = None
+        # Merges can in principle make someone their own (indirect) inviter. Cut any
+        # such loop at the user who was created last, so every chain ends.
+        order = sorted(users, key=lambda u: (u.created_at, u.id))
+        for user in order:
+            seen = {user.id}
+            current = parent[user.id]
+            while current is not None:
+                if current in seen:
+                    parent[user.id] = None
+                    break
+                seen.add(current)
+                current = parent[current]
+        children: dict[str, list[str]] = {user.id: [] for user in users}
+        for user_id, inviter in parent.items():
+            if inviter is not None:
+                children[inviter].append(user_id)
+        # Total invites: everyone below a user. Children are always counted before
+        # their inviter (reverse breadth-first order), so no recursion is needed.
+        roots = [user.id for user in order if parent[user.id] is None]
+        depth: dict[str, int] = {}
+        queue = collections.deque((root, 0) for root in roots)
+        visit_order: list[str] = []
+        while queue:
+            user_id, level = queue.popleft()
+            depth[user_id] = level
+            visit_order.append(user_id)
+            queue.extend((child, level + 1) for child in children[user_id])
+        total: dict[str, int] = {}
+        for user_id in reversed(visit_order):
+            total[user_id] = sum(1 + total[child] for child in children[user_id])
+        names = {user.id: user.display_name for user in users}
+        rows = sorted(
+            users,
+            key=lambda u: (-total[u.id], -len(children[u.id]), u.display_name.lower(), u.id),
+        )
+        return {
+            "generated_at": now.isoformat(),
+            "summary": {
+                "users": len(users),
+                "invited_users": sum(1 for u in users if parent[u.id] is not None),
+                "inviters": sum(1 for u in users if children[u.id]),
+                "biggest_tree": max((1 + total[root] for root in roots), default=0),
+                "longest_chain": max(depth.values(), default=0),
+            },
+            "users": [
+                {
+                    "id": user.id,
+                    "display_name": user.display_name,
+                    "picture_url": user.picture_url,
+                    "invited_by_user_id": parent[user.id],
+                    "invited_by_name": names.get(parent[user.id] or "", ""),
+                    "direct_invites": len(children[user.id]),
+                    "total_invites": total[user.id],
+                    "depth": depth[user.id],
+                    "created_at": user.created_at.isoformat(),
+                }
+                for user in rows
+            ],
+        }
+
     # Administration (the caller has the master password, not a user's credentials)
 
     def admin_delete_user(self, user_id: str) -> None:
@@ -1507,6 +1635,19 @@ class GamePlatform:
                 self._store.delete_game_draft(draft.id)
             for subscription in self._store.list_push_subscriptions(user_id=user_id):
                 self._store.delete_push_subscription(subscription.id)
+            # The people this user invited now count as invited by this user's own
+            # inviter (or nobody), so everyone above keeps the credit.
+            deleted = self._require_user(user_id)
+            new_inviter = self._inviter_of(deleted)
+            for user in self._store.list_users():
+                if user.id != user_id and self._inviter_of(user) == user_id:
+                    self._store.put_user(
+                        replace(
+                            user,
+                            invited_by_user_id=new_inviter,
+                            updated_at=self._clock(),
+                        )
+                    )
             self._store.delete_user(user_id)
 
     def admin_delete_game(self, game_id: str) -> None:

@@ -99,6 +99,9 @@ class UserCreate(_Request):
     # The user's preferred language (see GET /i18n/locales); responses to their requests
     # are in it unless a request says otherwise.
     locale: LocaleCode = ""
+    # The user whose invite link brought this person here; recorded only when this
+    # creates a new account. Unknown ids are ignored.
+    invited_by_user_id: str | None = None
 
 
 class UserUpdate(_Request):
@@ -210,6 +213,9 @@ class AuthResponse(BaseModel):
 class GoogleLogin(_Request):
     # The ID token from the website's Sign in with Google button.
     id_token: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    # The user whose invite link brought this person here; recorded only when this
+    # creates a new account. Unknown ids are ignored.
+    invited_by_user_id: str | None = None
 
 
 class PhoneStart(_Request):
@@ -237,6 +243,9 @@ class VerifyCode(_Request):
     code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     # The new account's display name, used only on first login with this credential.
     display_name: Name | None = None
+    # The user whose invite link brought this person here; recorded only when this
+    # creates a new account. Unknown ids are ignored.
+    invited_by_user_id: str | None = None
 
 
 class MergeRequest(_Request):
