@@ -9,6 +9,11 @@
   font-family:'Trebuchet MS','Segoe UI',sans-serif; grid-template-columns:275px minmax(0,1fr);
 }
 .portal-shell [hidden] { display:none!important; }
+.game-detail-mode #match-creator > summary { display:none; }
+.game-detail-mode .creator-content { padding-top:0; }
+.back-to-games { display:inline-block; margin:0 0 20px; color:#5fd4ff; font-size:13px; text-decoration:none; }
+.back-to-games:hover { text-decoration:underline; }
+.game-detail-mode #game-detail-content { max-width:900px; margin:0 auto; }
 .portal-sidebar { padding:28px 18px; background:#131825; display:flex; flex-direction:column; gap:16px; }
 .portal-shell button { min-height:40px; border-radius:6px; padding:9px 14px; font-weight:600; box-shadow:none; }
 .portal-shell button.primary { color:#10141f; background:#c6f432; border-color:#c6f432; }

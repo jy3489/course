@@ -4,24 +4,25 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 
-function setup(request=async()=>{}) {
+function setup(request=async()=>{}, hash='') {
   const nodes=new Map();
   const node=id=>{
     if(!nodes.has(id)) nodes.set(id,{value:'',hidden:false,disabled:false,dataset:{},children:[],
       replaceChildren(...children){this.children=children;},setAttribute(){},addEventListener(){},focus(){}});
     return nodes.get(id);
   };
+  const opened=[];
   const ctx=vm.createContext({console,Map,Set,URLSearchParams,
-    navigator:{onLine:true},localStorage:{},PortalOffline:class {api(...args){return request(...args);}read(){return {};}write(){}},
-    document:{getElementById:node},window:{addEventListener(){}},
-    location:{hash:''},history:{replaceState(){}},
+    navigator:{onLine:true},localStorage:{},PortalOffline:class {api(...args){return request(...args);}read(){return {};}write(){}} ,
+    document:{getElementById:node,body:{classList:{toggle(){}}}},window:{addEventListener(){},open(...args){opened.push(args);}},
+    location:{hash},history:{replaceState(){}},
     Auth:{current:()=>({id:'owner'})},GameFrame:class{load(){}unload(){}send(){}},
     apiRequest:request,formatTime:()=>'',shortId:x=>x,showPageError(){},el:(tag,attrs={},...children)=>({...attrs,children})});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/portal.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
   run('refresh=async()=>{};state.games=[{id:"game",version:2,name:"Hanoi",allowed_player_counts:[1]}]');
   node('new-game').value='game';
-  return {node,run};
+  return {node,run,opened};
 }
 
 test('creating a solo-only game starts one human immediately',async()=>{
@@ -73,19 +74,21 @@ test('polling preserves collapsed groups and unchanged match buttons',()=>{
   assert.equal(node('list-over').children,original);
 });
 
-test('typed search finds a game in a large catalog and Enter selects it',()=>{
-  const {node,run}=setup();
+test('typed search opens a game from a large catalog with Enter',()=>{
+  const {node,run,opened}=setup();
   run('state.games=Array.from({length:100},(_,i)=>({id:"game-"+i,name:"Puzzle "+i,version:1,allowed_player_counts:[2]}));state.gameSearchOriginal="game-0"');
   node('game-search').value='PUZZLE 83';run('onGameSearchInput()');
   assert.equal(run('state.filteredGames.length'),1);
   assert.equal(node('create').disabled,true);
   run('onGameSearchKey({key:"Enter",preventDefault(){}})');
-  assert.equal(node('new-game').value,'game-83');assert.equal(node('game-search').value,'Puzzle 83');
-  assert.equal(node('create').disabled,false);assert.equal(node('game-search-popup').hidden,true);
+  assert.equal(opened[0][0],'/static/portal.html#game=game-83');
+  assert.equal(opened[0][1],'_blank');
+  assert.equal(node('new-game').value,'');assert.equal(node('game-search').value,'PUZZLE 83');
+  assert.equal(node('game-search-popup').hidden,false);
 });
 
 test('browsing the full catalog reaches games beyond the first twelve without a name',()=>{
-  const {node,run}=setup();
+  const {node,run,opened}=setup();
   run('state.games=Array.from({length:100},(_,i)=>({id:"game-"+i,name:"Puzzle "+i,version:1,allowed_player_counts:[2]}));state.gameSearchOriginal="game-0"');
   node('game-search').value='previous search';run('browseAllGames()');
   assert.equal(node('game-results').children.length,100);
@@ -93,8 +96,7 @@ test('browsing the full catalog reaches games beyond the first twelve without a 
   assert.doesNotMatch(node('game-results-note').textContent,/Showing 12/);
   for(let i=0;i<99;i++)run('onGameSearchKey({key:"ArrowDown",preventDefault(){}})');
   run('onGameSearchKey({key:"Enter",preventDefault(){}})');
-  assert.equal(node('new-game').value,'game-99');
-  assert.equal(node('game-search').value,'Puzzle 99');
+  assert.equal(opened[0][0],'/static/portal.html#game=game-99');
 });
 
 test('description searches remain complete and Browse all clears the filter',()=>{
@@ -122,10 +124,10 @@ test('Your turn is absent when no human turn needs attention',()=>{
   assert.equal(node('group-turn').hidden,false);assert.equal(node('count-turn').textContent,'1');
 });
 
-test('catalog updates preserve a searched choice instead of restoring an old URL choice',()=>{
-  const {node,run}=setup();
-  run('location.hash="#game=game";state.games.push({id:"other",version:1,name:"Other",allowed_player_counts:[2]});renderLists();chooseGame("other");state.games[0].version++;renderLists()');
-  assert.equal(node('new-game').value,'other');assert.equal(node('game-search').value,'Other');
+test('catalog updates preserve the detail game when its version changes',()=>{
+  const {node,run}=setup(async()=>{},'#game=game');
+  run('state.games.push({id:"other",version:1,name:"Other",allowed_player_counts:[2]});renderLists();state.games[0].version++;renderLists()');
+  assert.equal(node('new-game').value,'game');assert.equal(node('selected-game-name').textContent,'Hanoi');
 });
 
 test('gallery filters by description and player support without losing the selected match',()=>{
@@ -139,14 +141,31 @@ test('gallery filters by description and player support without losing the selec
   assert.equal(node('library-empty').hidden,false);
 });
 
-test('gallery selection uses existing match controls and polling preserves card nodes',()=>{
-  const {node,run}=setup();
+test('gallery cards open detail pages and polling preserves card nodes',()=>{
+  const {node,run,opened}=setup();
   run('renderLibrary()');const original=node('game-library').children;
   run('renderLibrary()');assert.equal(node('game-library').children,original);
-  run('chooseGame("game")');assert.equal(node('new-game').value,'game');
-  assert.equal(node('create').textContent,'Play solo ↗');
+  original[0].onclick();
+  assert.equal(opened[0][0],'/static/portal.html#game=game');
   run('state.libraryView="list";renderLibrary()');
   assert.match(node('game-library').className,/is-list/);
+});
+
+test('game detail route shows the existing match controls and hides the catalog',()=>{
+  const {node,run}=setup(async()=>{},'#game=game');
+  run('renderLists()');
+  assert.equal(node('game-catalog').hidden,true);
+  assert.equal(node('game-detail-page').hidden,false);
+  assert.equal(node('new-game').value,'game');
+  assert.equal(node('selected-game-name').textContent,'Hanoi');
+  assert.equal(node('create').textContent,'Play solo ↗');
+});
+
+test('opening a sidebar match keeps the game detail view available',()=>{
+  const {node,run}=setup(async()=>{},'#game=game');
+  node('match-creator').open=true;
+  run('selectMatch("match-1")');
+  assert.equal(node('match-creator').open,true);
 });
 
 test('finished results are personalized including seat zero, draws, and spectators',()=>{

@@ -18,7 +18,7 @@
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=7" />
-    <link rel="stylesheet" href="/static/portal.css?v=11" />
+    <link rel="stylesheet" href="/static/portal.css?v=12" />
   </head>
   <body>
     <header class="topbar">
@@ -52,51 +52,58 @@
         <details id="match-creator" class="match-creator" open>
           <summary><span class="creator-title">Find your next game</span><span class="creator-toggle" aria-hidden="true">+</span></summary>
           <div class="creator-content">
-            <p class="creator-description">A quick round or a new rivalry. Pick a game and make it yours.</p>
-            <label class="game-label" for="game-search">Choose your game</label>
-            <div id="game-chooser" class="game-chooser">
-              <input id="new-game" type="hidden" />
-              <div class="game-search-controls"><input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Search by name or description…" /><button id="browse-games" type="button">Browse all games</button></div>
-              <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
-            </div>
-            <section class="game-library" aria-label="Browse games">
-              <div class="library-toolbar">
-                <div class="library-filters" role="group" aria-label="Filter games">
-                  <button type="button" data-game-filter="all" aria-pressed="true">All games</button>
-                  <button type="button" data-game-filter="solo" aria-pressed="false">Solo</button>
-                  <button type="button" data-game-filter="multiplayer" aria-pressed="false">Multiplayer</button>
-                </div>
-                <div class="library-views" role="group" aria-label="Game layout">
-                  <button type="button" data-game-view="grid" aria-pressed="true">Grid</button>
-                  <button type="button" data-game-view="list" aria-pressed="false">List</button>
-                </div>
+            <div id="game-catalog">
+              <p class="creator-description">A quick round or a new rivalry. Pick a game and make it yours.</p>
+              <label class="game-label" for="game-search">Choose your game</label>
+              <div id="game-chooser" class="game-chooser">
+                <input id="new-game" type="hidden" />
+                <div class="game-search-controls"><input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Search by name or description…" /><button id="browse-games" type="button">Browse all games</button></div>
+                <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
               </div>
-              <p id="library-count" class="library-count" role="status"></p>
-              <div id="game-library" class="game-library-grid"></div>
-              <div id="library-empty" class="library-empty" hidden><h3>No games found</h3><p>Try another name, description, or player filter.</p><button id="reset-games" type="button">Show all games</button></div>
-            </section>
-            <div id="selected-game-card" class="selected-game-card">
-              <div class="game-symbol" aria-hidden="true">✳</div>
-              <div><h2 id="selected-game-name">Choose a game</h2><p id="selected-game-description"></p><span id="selected-game-mode" class="mode-label"></span></div>
-            </div>
-            <div class="play-options">
-              <section class="play-option" aria-labelledby="online-play-title">
-                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title">Online match</h3><p>Set up your opponents in the lobby.</p></div></div>
-                <div class="create-controls">
-                  <button id="create" type="button" class="primary">Create match ↗</button>
+              <section class="game-library" aria-label="Browse games">
+                <div class="library-toolbar">
+                  <div class="library-filters" role="group" aria-label="Filter games">
+                    <button type="button" data-game-filter="all" aria-pressed="true">All games</button>
+                    <button type="button" data-game-filter="solo" aria-pressed="false">Solo</button>
+                    <button type="button" data-game-filter="multiplayer" aria-pressed="false">Multiplayer</button>
+                  </div>
+                  <div class="library-views" role="group" aria-label="Game layout">
+                    <button type="button" data-game-view="grid" aria-pressed="true">Grid</button>
+                    <button type="button" data-game-view="list" aria-pressed="false">List</button>
+                  </div>
                 </div>
-                <p id="create-hint" class="play-option-note"></p>
-              </section>
-              <section class="play-option practice-option" aria-labelledby="local-play-title">
-                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">⌂</span><div><h3 id="local-play-title">Local practice</h3><p>A quick game, saved on this device.</p></div></div>
-                <div class="practice-controls">
-                  <label for="practice-mode">Play style<select id="practice-mode"><option value="computer">Against computer</option><option value="pass">Pass and play</option></select></label>
-                  <button id="practice" type="button">Play on this device ↗</button>
-                </div>
-                <p class="play-option-note">For offline play, open the game online first.</p>
+                <p id="library-count" class="library-count" role="status"></p>
+                <div id="game-library" class="game-library-grid"></div>
+                <div id="library-empty" class="library-empty" hidden><h3>No games found</h3><p>Try another name, description, or player filter.</p><button id="reset-games" type="button">Show all games</button></div>
               </section>
             </div>
-            <div id="create-message" class="message" role="status"></div>
+            <div id="game-detail-page" hidden>
+              <a class="back-to-games" href="/static/portal.html">← All games</a>
+              <div id="game-detail-content">
+                <div id="selected-game-card" class="selected-game-card">
+                  <div class="game-symbol" aria-hidden="true">✳</div>
+                  <div><h2 id="selected-game-name">Choose a game</h2><p id="selected-game-description"></p><span id="selected-game-mode" class="mode-label"></span></div>
+                </div>
+                <div class="play-options">
+                  <section class="play-option" aria-labelledby="online-play-title">
+                    <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title">Online match</h3><p>Set up your opponents in the lobby.</p></div></div>
+                    <div class="create-controls">
+                      <button id="create" type="button" class="primary">Create match ↗</button>
+                    </div>
+                    <p id="create-hint" class="play-option-note"></p>
+                  </section>
+                  <section class="play-option practice-option" aria-labelledby="local-play-title">
+                    <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">⌂</span><div><h3 id="local-play-title">Local practice</h3><p>A quick game, saved on this device.</p></div></div>
+                    <div class="practice-controls">
+                      <label for="practice-mode">Play style<select id="practice-mode"><option value="computer">Against computer</option><option value="pass">Pass and play</option></select></label>
+                      <button id="practice" type="button">Play on this device ↗</button>
+                    </div>
+                    <p class="play-option-note">For offline play, open the game online first.</p>
+                  </section>
+                </div>
+                <div id="create-message" class="message" role="status"></div>
+              </div>
+            </div>
           </div>
         </details>
         <div id="placeholder" class="muted">Your match will open here. You can also select a match from the sidebar.</div>
@@ -121,6 +128,6 @@
     <script src="/static/auth.js?v=2"></script>
     <script src="/static/portal-offline.js?v=1"></script>
     <script src="/static/portal-install.js?v=1"></script>
-    <script src="/static/portal.js?v=17"></script>
+    <script src="/static/portal.js?v=18"></script>
   </body>
 </html>

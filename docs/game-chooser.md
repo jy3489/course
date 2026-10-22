@@ -1,6 +1,6 @@
 # Visual game chooser
 
-The shared portal now includes a grid/list gallery, name/description search, player-support filters, selected-game feedback, and accessible native card buttons. It reuses the current game catalog and match-creation flow. The service-worker shell version is bumped with the changed assets.
+The shared portal includes a grid/list gallery, name/description search, player-support filters, and accessible native card buttons. Clicking a game card or search result opens that game's detail view in a new tab; the description and existing online/local match controls appear there, not below the gallery. The detail view reuses the current match-creation flow and can return to the catalog. The service-worker shell version is bumped with the changed assets.
 
 ## Image integration pending
 

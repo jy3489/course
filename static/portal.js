@@ -205,6 +205,7 @@ const state = {
   libraryView: "grid",
   libraryKey: null,
   requestedGameHandled: false,
+  detailGameId: new URLSearchParams(location.hash.slice(1)).get("game"),
 };
 
 class PortalGameFrame extends GameFrame {
@@ -473,14 +474,23 @@ function renderLists() {
   const key = JSON.stringify(games.map((game) => [game.id, game.version]));
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    const requested = state.requestedGameHandled ? null : new URLSearchParams(location.hash.slice(1)).get("game");
-    state.requestedGameHandled = true;
-    const chosen = requested || previous;
-    if (!state.gameSearchOpen) select.value = games.some((game) => game.id === chosen) ? chosen : games[0]?.id ?? "";
-    else if (!games.some((game) => game.id === previous)) select.value = "";
+    if (state.detailGameId) {
+      select.value = games.some((game) => game.id === state.detailGameId) ? state.detailGameId : "";
+    } else {
+      const requested = state.requestedGameHandled ? null : new URLSearchParams(location.hash.slice(1)).get("game");
+      if (games.length) state.requestedGameHandled = true;
+      const chosen = requested || previous;
+      if (!state.gameSearchOpen) select.value = games.some((game) => game.id === chosen) ? chosen : "";
+      else if (!games.some((game) => game.id === previous)) select.value = "";
+    }
   }
   renderGameSearch();
   updateMatchSetup();
+}
+
+function openGamePage(id) {
+  if (!state.games.some((game) => game.id === id)) return;
+  window.open(`/static/portal.html#game=${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
 }
 
 function gameCountLabel(game) {
@@ -510,14 +520,14 @@ function renderLibrary() {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
     const initials = game.name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
-      "aria-label":`Choose ${game.name}, ${gameCountLabel(game)}`, onclick:() => chooseGame(game.id)},
+      "aria-label":`Open ${game.name}, ${gameCountLabel(game)}`, onclick:() => openGamePage(game.id)},
       el("span", {class:"library-art", style:`--art-hue:${hue}`, "aria-hidden":"true"},
         el("span", {class:"library-monogram", textContent:initials}),
         el("span", {class:"library-art-label", textContent:"GAME PLATFORM"})),
       el("span", {class:"library-copy"}, el("span", {class:"library-mode", textContent:gameCountLabel(game)}),
         el("span", {class:"library-title", textContent:game.name}),
         el("span", {class:"library-description", textContent:game.description || "Choose this game to start a new match."}),
-        el("span", {class:"library-select", textContent:game.id === selected ? "Selected ✓" : "Choose game ↗"})));
+        el("span", {class:"library-select", textContent:"Open game ↗"})));
   }));
 }
 
@@ -540,13 +550,13 @@ function renderGameSearch() {
   $("game-results").replaceChildren(...state.filteredGames.map((game, index) => el("button", {
     id: `game-result-${index}`, type: "button", role: "option", tabIndex: -1,
     class: "game-option", "aria-selected": String(index === state.gameSearchActive),
-    onclick: () => chooseGame(game.id),
+    onclick: () => openGamePage(game.id),
   }, el("span", {class: "game-option-copy"},
     el("span", {textContent: game.name}),
     ...(game.description ? [el("span", {class: "game-option-description", textContent: game.description})] : [])),
     el("small", {textContent: gameCountLabel(game)}))));
   $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
-    : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to select.`;
+    : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to open a game.`;
 }
 
 function browseAllGames() {
@@ -554,17 +564,6 @@ function browseAllGames() {
   $("game-search").value = "";
   onGameSearchInput();
   $("game-search").focus();
-}
-
-function chooseGame(id) {
-  if (!state.games.some((game) => game.id === id)) return;
-  $("new-game").value = id;
-  state.gameSearchOpen = false;
-  state.gameSearchQuery = "";
-  state.gameSearchOriginal = id;
-  $("create-message").textContent = "";
-  renderGameSearch();
-  updateMatchSetup();
 }
 
 function closeGameSearch(restore = false) {
@@ -590,7 +589,7 @@ function onGameSearchKey(event) {
   if (event.key === "Enter" && state.gameSearchOpen) {
     event.preventDefault();
     const game = state.filteredGames[state.gameSearchActive];
-    if (game) chooseGame(game.id);
+    if (game) openGamePage(game.id);
   } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     const wasOpen = state.gameSearchOpen;
@@ -615,7 +614,12 @@ function renderMatchList(node, matches) {
 // The selected match
 
 function updateMatchSetup() {
-  const game = state.games.find((game) => game.id === $("new-game").value);
+  const detailPage = Boolean(state.detailGameId);
+  const game = state.games.find((game) => game.id === (detailPage ? state.detailGameId : $("new-game").value));
+  document.body?.classList.toggle("game-detail-mode", detailPage);
+  $("game-catalog").hidden = detailPage;
+  $("game-detail-page").hidden = !detailPage;
+  $("show-creator").hidden = detailPage;
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
   $("practice").disabled = !me() || !game;
@@ -637,9 +641,13 @@ function selectMatch(id) {
   state.match = null;
   state.armed = null;
   state.lastSent = null;
-  $("match-creator").open = false;
+  if (!state.detailGameId) $("match-creator").open = false;
   showMessage("");
-  history.replaceState(null, "", id ? `#match=${id}` : "#");
+  const route = new URLSearchParams();
+  if (state.detailGameId) route.set("game", state.detailGameId);
+  if (id) route.set("match", id);
+  const routeHash = route.toString();
+  history.replaceState(null, "", routeHash ? `#${routeHash}` : "#");
   refresh();
 }
 
@@ -1050,7 +1058,7 @@ async function main() {
     state.nameCache.clear();
     frame.unload();
     state.loaded = null;
-    history.replaceState(null, "", "#");
+    history.replaceState(null, "", state.detailGameId ? `#game=${encodeURIComponent(state.detailGameId)}` : "#");
     showMessage("");
     refresh();
     setupNotifications();
