@@ -184,6 +184,26 @@ as the merged-away user, so nobody can absorb someone else's account; merging a 
 into itself is a 400. The website uses this when you link a login that belongs to
 another of your accounts.
 
+#### Invite links (referrals)
+
+Every invite link names the person who shared it: `/portal#ref=<userId>`, or
+`/portal#match=<id>&ref=<userId>` from a match's Invite friends button. "Copy my invite
+link" in the account menu copies your own. The browser remembers the first `ref` it
+sees (ignoring links from its own accounts) until an account is created, and then sends
+it as `invited_by_user_id` with `POST /users`, `POST /auth/google` or the code verify
+call. The server records it on the new user only when that call creates an account;
+logging in to an existing account never changes who invited it, and an unknown id is
+ignored, so a bad link never blocks signing up.
+
+Invites survive account changes: an inviter that was merged away counts as the account
+it was merged into, a merged account keeps the inviter of the account merged into it if
+it had none (unless that would make someone their own inviter), and deleting a user
+(`DELETE /admin/users/{id}`) passes the people they invited up to their own inviter.
+
+A user's *total* invites count everyone they brought in transitively: the people they
+invited, the people those people invited, and so on. See `/invites` under
+[Pages](#pages).
+
 ### Web push notifications
 
 The platform can push browser notifications when something happens in a match you're
@@ -487,6 +507,12 @@ Once the server is running, open these pages in a browser:
   deleted, versions, builders, matches per game, top builders), matches (by status, moves,
   computer seats, ended by leaving) and 14-day charts of new users, games and matches.
   The numbers come from `GET /admin/stats`.
+- `/invites`: referral dashboard (needs the [master password](#master-password)): who
+  brought the most users (a leaderboard by total invites, direct and transitive), a
+  search by name or id that shows a user's invite chain ("Yoav → Marcelle → Ana") and
+  everyone they brought in, and the whole invite tree. The numbers come from
+  `GET /admin/invites`; see [Invite links](#invite-links-referrals). It's also a tab
+  in `/admin`.
 - `/docs`: FastAPI's generated OpenAPI docs.
 
 The `/console` and `/browse` pages read `/debug/all-data`, which returns everything,
@@ -503,6 +529,7 @@ don't need a user's credentials:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /admin/stats` | The statistics behind `/stats` |
+| `GET /admin/invites` | The invite tree behind `/invites`: a summary, and per user their inviter, direct and total (transitive) invites and depth, sorted by total |
 | `DELETE /admin/users/{id}` | Delete a user and the matches they own; their games are marked deleted, and they leave the matches they're seated in |
 | `DELETE /admin/games/{id}` | Mark a game deleted (its versions are kept for existing matches) |
 | `DELETE /admin/matches/{id}` | Delete a match |
@@ -518,7 +545,7 @@ filter (bulk).
   those users (passwords equal to ids; real users' are random) with their games and
   matches, and exits. At startup the server warns when such users exist or when the
   debug tools have no master password.
-- **Set `master_password`.** `/browse`, `/stats` and `/admin/*` show or change everything.
+- **Set `master_password`.** `/browse`, `/stats`, `/invites` and `/admin/*` show or change everything.
 - **CORS behind a proxy.** If Caddy adds `Access-Control-Allow-Origin`, set
   `"server": {"cors_allow_origins": []}`; otherwise remove the proxy's header. Check with
   `curl -si -H 'Origin: https://x.github.io' https://<host>/games | grep -i allow-origin`:

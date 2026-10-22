@@ -1,12 +1,13 @@
 // Admin hub: tabs that embed the super-admin tools (API console, data browser,
-// statistics, API docs) as iframes. The /browse and /stats pages need the master
-// password; the browser reuses the credentials entered for /admin itself.
+// statistics, invites, API docs) as iframes. The /browse, /stats and /invites pages
+// need the master password; the browser reuses the credentials entered for /admin
+// itself.
 
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 
-const TABS = ["console", "browse", "stats", "docs"];
+const TABS = ["console", "browse", "stats", "invites", "docs"];
 const loaded = new Set();
 
 function showTab(name) {

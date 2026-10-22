@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-6CCXZQYVE7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-6CCXZQYVE7');
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game platform · Invites</title>
+    <link rel="stylesheet" href="/static/common.css?v=8" />
+    <script>
+      // Framed mode for the /admin tabs: hide this page's own top bar.
+      if (new URLSearchParams(location.search).has("frame")) {
+        document.documentElement.classList.add("framed");
+      }
+    </script>
+    <style>
+      main {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 0 var(--space-lg) var(--space-xl);
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-md);
+        padding: var(--space-sm) 0;
+      }
+      h2 {
+        font-size: var(--font-size-md);
+        font-weight: 600;
+        margin: var(--space-lg) 0 var(--space-sm);
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: var(--space-md);
+        margin-bottom: var(--space-md);
+      }
+      .card,
+      .panel {
+        background: var(--color-bg-1);
+        border: 1px solid var(--color-border-2);
+        border-radius: var(--radius-md);
+        padding: var(--space-md);
+      }
+      .card .value {
+        font-size: 26px;
+        font-weight: 700;
+      }
+      .card .label {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: var(--space-md);
+        align-items: start;
+      }
+      .panel h3 {
+        margin: 0 0 var(--space-sm);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 3px var(--space-sm);
+        border-bottom: 1px solid var(--color-border-1);
+      }
+      th {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+      }
+      td.num,
+      th.num {
+        text-align: right;
+      }
+      tr.pick {
+        cursor: pointer;
+      }
+      tr.pick:hover,
+      tr.pick.selected {
+        background: var(--color-bg-2);
+      }
+      .search {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: var(--space-sm);
+      }
+      .linkish {
+        border: none;
+        box-shadow: none;
+        background: none;
+        padding: 0;
+        color: var(--color-accent-hover);
+        cursor: pointer;
+        font: inherit;
+      }
+      .chain {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        margin: var(--space-sm) 0;
+      }
+      .tree,
+      .tree ul {
+        list-style: none;
+        margin: 0;
+        padding-left: var(--space-lg);
+      }
+      .tree {
+        padding-left: 0;
+      }
+      .tree summary {
+        cursor: pointer;
+      }
+      .tree .leaf {
+        padding-left: 14px;
+      }
+      .count {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-xs);
+        margin-left: 4px;
+      }
+      #error {
+        color: var(--color-error);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Game platform</h1>
+      <nav>
+        <a href="/portal">Portal</a>
+        <a href="/builder">Builder</a>
+        <a href="/admin">Admin</a>
+      </nav>
+    </header>
+    <main>
+      <div class="toolbar">
+        <button id="refresh">Refresh</button>
+        <span id="freshness" class="muted"></span>
+        <span id="error"></span>
+      </div>
+      <div id="summary"></div>
+      <div class="panels">
+        <div class="panel">
+          <h3>Leaderboard: who brought the most users (directly and through the people they invited)</h3>
+          <div id="leaderboard"></div>
+        </div>
+        <div class="panel">
+          <h3>Find a user</h3>
+          <input id="search" class="search" type="search" placeholder="Name or user id" aria-label="Find a user by name or id" />
+          <div id="results"></div>
+          <div id="detail"></div>
+        </div>
+      </div>
+      <h2>Invite tree</h2>
+      <div class="panel">
+        <div id="tree"></div>
+      </div>
+    </main>
+    <script src="/static/common.js?v=2"></script>
+    <script src="/static/invites.js?v=2"></script>
+  </body>
+</html>
