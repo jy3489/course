@@ -848,7 +848,13 @@ function renderMatch() {
         textContent: "Invite friends",
         onclick: () =>
           navigator.clipboard
-            .writeText(`${location.origin}/portal#match=${match.id}`)
+            // With the sender's id as "ref", whoever signs up through the link
+            // counts as invited by them.
+            .writeText(
+              Auth.current() && Auth.inviteLink
+                ? Auth.inviteLink(Auth.current(), `match=${match.id}`)
+                : `${location.origin}/portal#match=${match.id}`,
+            )
             .then(() => toast("Copied the link")),
       }),
     );

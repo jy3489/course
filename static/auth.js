@@ -61,6 +61,8 @@ const Auth = (() => {
       linked: response.linked_accounts ?? [],
     });
     save(rest);
+    // This browser has an account now, so a remembered invite has done its job.
+    forgetInviter();
     setCurrent(response.user_id);
     return response;
   }
@@ -83,6 +85,63 @@ const Auth = (() => {
       ? { "X-User-Id": account.id, "X-User-Password": account.password }
       : {};
   }
+
+  // Invite links
+  //
+  // An invite link carries its sender's user id as "ref": /portal#ref=<id>, or
+  // /portal#match=<match id>&ref=<id> for a match. The first ref this browser sees is
+  // remembered until an account is created or logged in here, so it still counts if
+  // the person looks around first and signs up later. The server records it as the
+  // new account's inviter (and ignores it for accounts that already exist).
+
+  const INVITER_KEY = "game-platform.invited-by.v1";
+
+  function refInUrl() {
+    for (const part of [location.hash.slice(1), location.search.slice(1)]) {
+      const ref = new URLSearchParams(part).get("ref");
+      if (ref) return ref;
+    }
+    return null;
+  }
+
+  /** Remembers the inviter named in the current URL, unless one is remembered already
+   * or the link is one of this browser's own accounts. */
+  function rememberInviter() {
+    try {
+      const ref = refInUrl();
+      if (!ref || localStorage.getItem(INVITER_KEY)) return;
+      if (load().some((account) => account.id === ref)) return;
+      localStorage.setItem(INVITER_KEY, ref);
+    } catch {
+      // Storage can be unavailable (private mode); the invite just isn't counted.
+    }
+  }
+
+  function forgetInviter() {
+    try {
+      localStorage.removeItem(INVITER_KEY);
+    } catch {}
+  }
+
+  /** [body] for a request that may create an account, plus the remembered inviter. */
+  function newAccountBody(body) {
+    let ref = null;
+    try {
+      ref = localStorage.getItem(INVITER_KEY);
+    } catch {}
+    return ref ? { ...body, invited_by_user_id: ref } : body;
+  }
+
+  /** A portal link that credits [account] with everyone who signs up through it.
+   * [hash] adds more of the portal's hash parameters, e.g. "match=<id>". */
+  function inviteLink(account, hash = "") {
+    const params = new URLSearchParams(hash);
+    params.set("ref", account.id);
+    return `${location.origin}/portal#${params}`;
+  }
+
+  rememberInviter();
+  window.addEventListener?.("hashchange", rememberInviter);
 
   // Login dialog
 
@@ -184,7 +243,7 @@ const Auth = (() => {
       try {
         const response = await apiRequest("POST", "/auth/google", {
           user: mode === "link" ? account : null,
-          body: { id_token: idToken },
+          body: mode === "link" ? { id_token: idToken } : newAccountBody({ id_token: idToken }),
         });
         finishLogin(dialog, response);
       } catch (error) {
@@ -272,9 +331,10 @@ const Auth = (() => {
       message.textContent = "";
       message.className = "message";
       try {
+        const body = { verification_id: verificationId, code: codeInput.value };
         const response = await apiRequest("POST", `${base}/verify`, {
           user: dialog.mode === "link" ? dialog.account : null,
-          body: { verification_id: verificationId, code: codeInput.value },
+          body: dialog.mode === "link" ? body : newAccountBody(body),
         });
         finishLogin(dialog, response);
       } catch (error) {
@@ -294,7 +354,9 @@ const Auth = (() => {
     button.onclick = async () => {
       const name = input.value.trim() || `Guest ${accounts().length + 1}`;
       try {
-        const user = await apiRequest("POST", "/users", { body: { display_name: name } });
+        const user = await apiRequest("POST", "/users", {
+          body: newAccountBody({ display_name: name }),
+        });
         finishLogin(dialog, {
           user_id: user.id,
           display_name: user.display_name,
@@ -354,7 +416,18 @@ const Auth = (() => {
         );
       }
       panel.append(
-        el("button", { type: "button", textContent: "Link a login method", onclick: () => { panel.hidden = true; openDialog("link"); } })
+        el("button", { type: "button", textContent: "Link a login method", onclick: () => { panel.hidden = true; openDialog("link"); } }),
+        el("button", {
+          type: "button",
+          textContent: "Copy my invite link",
+          title: "Everyone who signs up through this link counts as invited by you",
+          onclick: () => {
+            panel.hidden = true;
+            navigator.clipboard
+              .writeText(inviteLink(account))
+              .then(() => toast("Copied your invite link"));
+          },
+        })
       );
     }
     if (all.length > 1 || (all.length === 1 && !account)) {
@@ -391,6 +464,8 @@ const Auth = (() => {
     remove,
     removeAll,
     headers,
+    inviteLink,
+    newAccountBody,
     openDialog,
     closeDialog,
     renderMenu,
