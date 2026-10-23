@@ -24,6 +24,7 @@
     height: 32px; padding: 0 10px; border: 1.5px solid var(--lime); border-radius: 4px; background: none;
     color: var(--lime); font: 700 12px var(--mono); cursor: pointer;
   }
+  #helpButton[aria-pressed="true"] { background: var(--lime); color: var(--ink); }
   #scores { display: flex; gap: 6px; }
   .score { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
   .score .name { display: flex; align-items: center; gap: 5px; font: 700 12px var(--mono); white-space: nowrap; overflow: hidden; }
@@ -107,36 +108,51 @@
     position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; padding: 24px; text-align: center; background: rgba(16, 20, 31, 0.95);
   }
-  /* How to play scrolls when it doesn't fit (phone landscape); auto margins keep it centered otherwise. */
-  #help { justify-content: flex-start; overflow-y: auto; padding: 16px; }
-  #help > :first-child { margin-top: auto; }
-  #help > :last-child { margin-bottom: auto; flex: none; }
-  #order { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 6px; }
-  #order .ends { display: flex; align-items: center; gap: 8px; font: 700 12px var(--mono); color: var(--muted); }
+  /* Quick help: only the card values, floating over the top area (scores and opponents) so the
+     table never moves and the hand, the cards played and the buttons stay uncovered. */
+  #quick {
+    position: absolute; z-index: 5; top: 46px; right: 10px; width: min(300px, calc(100% - 20px));
+    display: flex; flex-direction: column; gap: 5px; padding: 8px 10px;
+    background: rgba(16, 20, 31, 0.9); border: 1px solid var(--lime); border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); font: 11px var(--mono); color: var(--muted);
+  }
+  #quick .ranks { display: flex; gap: 7px; font: 700 15px var(--mono); color: var(--text); }
+  #quick .ranks .super { background: var(--lime); color: var(--ink); padding: 0 3px; border-radius: 2px; }
+  #quick .names { font-size: 10px; }
+  #fullRules {
+    align-self: flex-start; padding: 2px 0; border: 0; background: none; cursor: pointer;
+    color: var(--lime); font: 700 11px var(--mono); text-decoration: underline;
+  }
+  /* Full rules: a scrollable box, at most 60% of the screen tall, with text-sized cards. */
+  #help {
+    position: fixed; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(520px, calc(100% - 24px)); max-height: 60vh; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; text-align: center;
+    background: rgba(16, 20, 31, 0.97); border: 1px solid var(--lime); border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  }
+  #help > * { flex: none; }
+  /* Landscape and iPad: the box sits in the space right of the cards (placeHelp sets its edges). */
+  #help.side { transform: none; max-width: none; }
+  #order { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+  #order .ends { display: flex; align-items: center; gap: 8px; font: 700 11px var(--mono); color: var(--muted); }
   #order .ends .arrow { flex: 1; height: 2px; background: var(--muted); position: relative; }
   #order .ends .arrow::after {
     content: ""; position: absolute; right: -1px; top: -4px;
     border: 5px solid transparent; border-left: 8px solid var(--muted); border-right: 0;
   }
   #order .ends .strong { color: var(--lime); }
-  #orderCards { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
-  @media (max-width: 520px) { #orderCards { grid-template-columns: repeat(5, minmax(0, 1fr)); row-gap: 14px; } }
+  #orderCards { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
   .ocard {
-    position: relative; aspect-ratio: 5 / 7; max-height: 96px; justify-self: center; width: 100%; max-width: 68px;
-    display: flex; align-items: center; justify-content: center; border-radius: 6px;
-    background: var(--paper); color: var(--ink); font-size: clamp(20px, 6vw, 32px); font-weight: 800;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    width: 24px; height: 33px; display: flex; align-items: center; justify-content: center; border-radius: 4px;
+    background: var(--paper); color: var(--ink); font: 800 14px var(--mono);
   }
-  .ocard i { position: absolute; bottom: 3px; right: 5px; font: 10px var(--mono); font-style: normal; color: #6B7280; }
-  .ocard.super { box-shadow: 0 0 0 3px var(--lime); }
-  .ocard.super .tag {
-    position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); white-space: nowrap;
-    background: var(--lime); color: var(--ink); font: 700 9px var(--mono); padding: 1px 5px; border-radius: 3px;
-  }
+  .ocard.super { box-shadow: 0 0 0 2px var(--lime); }
   #order .note { font: 11px var(--mono); color: var(--muted); }
   #help .intro { margin: 0; color: var(--lime); font: 13px var(--mono); max-width: 320px; }
   #help ol { text-align: left; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
-  #help h2, #end h2 { margin: 0; font-size: 24px; }
+  #help h2 { margin: 0; font-size: 18px; }
+  #end h2 { margin: 0; font-size: 24px; }
   #help button {
     height: 44px; padding: 0 24px; border: 0; border-radius: 4px; background: var(--lime); color: var(--ink);
     font: 700 14px var(--mono); cursor: pointer;
@@ -148,7 +164,13 @@
 </style>
 </head>
 <body>
-<div id="top"><h1>Brazilian Truco</h1><button id="helpButton">? how to play</button></div>
+<div id="top"><h1>Brazilian Truco</h1><button id="helpButton" aria-pressed="false">? how to play</button></div>
+<div id="quick" role="dialog" aria-label="Card values" hidden>
+  <div>weakest → strongest</div>
+  <div class="ranks" id="quickRanks"></div>
+  <div class="names">Q = Queen · J = Jack · K = King · A = Ace</div>
+  <button id="fullRules" type="button">full rules</button>
+</div>
 <div id="scores"></div>
 <div id="status"></div>
 <button id="cheat" aria-label="Card order, weakest to strongest. Tap for how to play." hidden></button>
@@ -161,7 +183,7 @@
 <div id="hand"></div>
 <div id="buttons"></div>
 
-<div id="help" class="overlay" hidden>
+<div id="help" role="dialog" aria-label="Full rules" hidden>
   <h2>How to play</h2>
   <div id="order">
     <div class="ends"><span>weakest</span><span class="arrow"></span><span class="strong">strongest</span></div>
@@ -375,7 +397,8 @@ const STAR = `<svg viewBox="0 0 10 10"><path fill="#C6F432" d="M5 0.5 L6 4 L9.5 
 let latest = null;     // the last state_changed message
 let moveSent = false;  // at most one make_move per state_changed
 let selected = null;   // the card picked in my hand
-let helpOpen = false;
+let helpOpen = false;  // the full rules
+let quickOpen = false; // the quick card values popover
 
 const $ = (id) => document.getElementById(id);
 const playerName = (seat) => latest.players[seat]?.name ?? `Player ${seat + 1}`;
@@ -410,6 +433,7 @@ function makeMove(newState, nextTurn) {
 }
 
 function act(seat, action) {
+  if (latest.players[seat]?.kind === "human") setQuick(false); // the player made their move
   const { state, nextTurn } = Logic.apply(latest.state, seat, action);
   selected = null;
   makeMove(state, nextTurn);
@@ -455,9 +479,8 @@ function render() {
     Logic.RANKS.map((r) => `<span class="r${r === superRank ? " super" : ""}">${r}</span>`).join("") +
     `<span>strong</span><span class="sup">★ <span class="long">super card: </span>${superRank}</span>`;
   $("cheat").hidden = false;
-  $("orderCards").innerHTML = Logic.RANKS.map((r, i) => r === superRank
-    ? `<div class="ocard super">${r}<i>${i + 1}</i><span class="tag">★ super</span></div>`
-    : `<div class="ocard">${r}<i>${i + 1}</i></div>`).join("");
+  $("quickRanks").innerHTML = Logic.RANKS.map((r) => `<span${r === superRank ? ' class="super"' : ""}>${r}</span>`).join("");
+  $("orderCards").innerHTML = Logic.RANKS.map((r) => `<div class="ocard${r === superRank ? " super" : ""}">${r}</div>`).join("");
   $("orderNote").textContent = `this hand: the turned card is ${Logic.rank(state.turned)}, so ${superRank} is the super card and beats every other card`;
 
   // Everyone else's cards, face down (spectators see every seat face down).
@@ -573,11 +596,40 @@ function render() {
     end.hidden = true;
   }
   $("help").hidden = !helpOpen;
+  placeHelp();
 }
 
-$("helpButton").onclick = () => { helpOpen = true; render(); };
-$("cheat").onclick = () => { helpOpen = true; render(); };
+/** Full rules on landscape screens and iPads: beside the table, between the cheat strip and the
+ * buttons, right of the hand and the cards played, so nothing on the table is covered or moved.
+ * Phones in portrait keep the centered reading box. */
+function placeHelp() {
+  const box = $("help");
+  box.classList.remove("side");
+  for (const k of ["left", "top", "width", "maxHeight"]) box.style[k] = "";
+  if (box.hidden || !(innerWidth > innerHeight || innerWidth >= 700)) return;
+  const cards = [...document.querySelectorAll("#hand .card, #trick > *, #turnedBox")];
+  const left = Math.max(innerWidth * 0.55, ...cards.map((e) => e.getBoundingClientRect().right + 12));
+  const top = $("cheat").getBoundingClientRect().bottom + 8;
+  const bottom = $("buttons").getBoundingClientRect().top - 8;
+  box.classList.add("side");
+  Object.assign(box.style, { left: `${left}px`, top: `${top}px`, width: `${innerWidth - 10 - left}px`, maxHeight: `${bottom - top}px` });
+}
+window.addEventListener("resize", () => helpOpen && placeHelp());
+
+function setQuick(open) {
+  quickOpen = open;
+  $("quick").hidden = !open;
+  $("helpButton").setAttribute("aria-pressed", String(open));
+}
+
+$("helpButton").onclick = () => setQuick(!quickOpen);
+$("cheat").onclick = () => setQuick(!quickOpen);
+$("fullRules").onclick = () => { setQuick(false); helpOpen = true; render(); };
 $("helpClose").onclick = () => { helpOpen = false; render(); };
+// A tap anywhere outside the popover closes it (the tap still does what it normally does).
+document.addEventListener("pointerdown", (event) => {
+  if (quickOpen && !event.target.closest("#quick, #helpButton, #cheat")) setQuick(false);
+}, true);
 
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
