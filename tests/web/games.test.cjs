@@ -6,8 +6,10 @@ const { test } = require("node:test"),
 function logic(name) {
   const code = fs
     .readFileSync(path.join(__dirname, `../../games/playroom/${name}.html`), "utf8")
-    .match(/<script>([\s\S]*?)<\/script>/)[1];
-  return vm.runInNewContext(code + ";Logic", { structuredClone, Math });
+    .matchAll(/<script>([\s\S]*?)<\/script>/g);
+  const game = [...code].map(match => match[1]).find(script => /const Logic\s*=/.test(script));
+  assert.ok(game, "game logic script exists alongside optional platform scripts");
+  return vm.runInNewContext(game + ";Logic", { structuredClone, Math });
 }
 const dots = logic("dots-and-boxes"),
   reversi = logic("reversi"),
