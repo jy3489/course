@@ -168,6 +168,8 @@ async function updateTokenWallet(user) {
   try {
     const record = await portalTransport("GET", `/users/${encodeURIComponent(user.id)}`, {user});
     if (me()?.id !== user.id) return;
+    // Accounts saved before short invite links learn their referral code here.
+    if (record.referral_code) Auth.setReferralCode?.(user.id, record.referral_code);
     if (!Number.isSafeInteger(record.token_balance) || record.token_balance < 0) {
       wallet.hidden = true; walletBalance = null; updateStakePreview(); return;
     }

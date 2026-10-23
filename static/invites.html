@@ -99,6 +99,11 @@
         box-sizing: border-box;
         margin-bottom: var(--space-sm);
       }
+      .code {
+        margin-left: 6px;
+        font: var(--font-size-xs) var(--font-mono);
+        color: var(--color-text-tertiary);
+      }
       .linkish {
         border: none;
         box-shadow: none;
@@ -163,7 +168,7 @@
         </div>
         <div class="panel">
           <h3>Find a user</h3>
-          <input id="search" class="search" type="search" placeholder="Name or user id" aria-label="Find a user by name or id" />
+          <input id="search" class="search" type="search" placeholder="Name, user id or code" aria-label="Find a user by name, id or referral code" />
           <div id="results"></div>
           <div id="detail"></div>
         </div>
@@ -174,6 +179,6 @@
       </div>
     </main>
     <script src="/static/common.js?v=2"></script>
-    <script src="/static/invites.js?v=2"></script>
+    <script src="/static/invites.js?v=3"></script>
   </body>
 </html>

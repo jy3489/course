@@ -67,12 +67,23 @@ const Auth = (() => {
       picture_url: response.picture_url ?? "",
       password: response.password,
       linked: response.linked_accounts ?? [],
+      referral_code: response.referral_code ?? null,
     });
     save(rest);
     // This browser has an account now, so a remembered invite has done its job.
     forgetInviter();
     setCurrent(response.user_id);
     return response;
+  }
+
+  /** Saves [code] as account [id]'s referral code (accounts saved before codes existed
+   * learn theirs from the server later). */
+  function setReferralCode(id, code) {
+    const accounts = load();
+    const account = accounts.find((a) => a.id === id);
+    if (!account || !code || account.referral_code === code) return;
+    account.referral_code = code;
+    save(accounts);
   }
 
   /** Forgets an account (log out). Falls back to another remembered account. */
@@ -96,8 +107,10 @@ const Auth = (() => {
 
   // Invite links
   //
-  // An invite link carries its sender's user id as "ref": /portal#ref=<id>, or
-  // /portal#match=<match id>&ref=<id> for a match. The first ref this browser sees is
+  // An invite link names its sender: the short form is /r/<referral code>, or
+  // /r/<code>#match=<match id> for a match; the server redirects it to
+  // /portal?ref=<code> (keeping the #match part). Older links carry the sender's user
+  // id instead: /portal#ref=<id> or /portal#match=<match id>&ref=<id>. The first ref this browser sees is
   // remembered until an account is created or logged in here, so it still counts if
   // the person looks around first and signs up later. The server records it as the
   // new account's inviter (and ignores it for accounts that already exist).
@@ -118,7 +131,7 @@ const Auth = (() => {
     try {
       const ref = refInUrl();
       if (!ref || localStorage.getItem(INVITER_KEY)) return;
-      if (load().some((account) => account.id === ref)) return;
+      if (load().some((account) => account.id === ref || account.referral_code === ref)) return;
       localStorage.setItem(INVITER_KEY, ref);
     } catch {
       // Storage can be unavailable (private mode); the invite just isn't counted.
@@ -140,9 +153,13 @@ const Auth = (() => {
     return ref ? { ...body, invited_by_user_id: ref } : body;
   }
 
-  /** A portal link that credits [account] with everyone who signs up through it.
+  /** A link that credits [account] with everyone who signs up through it: the short
+   * /r/<code> form, or the long one for an account that has no code yet.
    * [hash] adds more of the portal's hash parameters, e.g. "match=<id>". */
   function inviteLink(account, hash = "") {
+    if (account.referral_code) {
+      return `${location.origin}/r/${encodeURIComponent(account.referral_code)}${hash ? `#${hash}` : ""}`;
+    }
     const params = new URLSearchParams(hash);
     params.set("ref", account.id);
     return `${location.origin}/portal#${params}`;
@@ -369,6 +386,7 @@ const Auth = (() => {
           user_id: user.id,
           display_name: user.display_name,
           password: user.password,
+          referral_code: user.referral_code,
           linked_accounts: [],
           merged_from_user_id: null,
         });
@@ -432,7 +450,8 @@ const Auth = (() => {
           onclick: () => {
             panel.hidden = true;
             navigator.clipboard
-              .writeText(inviteLink(account))
+              // Read again: the code may have arrived after the menu was drawn.
+              .writeText(inviteLink(current() ?? account))
               .then(() => toast(I18n.t("ui.auth.invite_copied", {}, "Copied your invite link")));
           },
         })
@@ -473,6 +492,7 @@ const Auth = (() => {
     removeAll,
     headers,
     inviteLink,
+    setReferralCode,
     newAccountBody,
     openDialog,
     closeDialog,

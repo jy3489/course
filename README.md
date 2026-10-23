@@ -188,17 +188,29 @@ another of your accounts.
 
 #### Invite links (referrals)
 
-Every invite link names the person who shared it: `/portal#ref=<userId>`, or
-`/portal#match=<id>&ref=<userId>` from a match's Invite friends button. "Copy my invite
-link" in the account menu copies your own. The browser remembers the first `ref` it
-sees (ignoring links from its own accounts) until an account is created, and then sends
-it as `invited_by_user_id` with `POST /users`, `POST /auth/google` or the code verify
-call. The server records it on the new user only when that call creates an account;
-logging in to an existing account never changes who invited it, and an unknown id is
-ignored, so a bad link never blocks signing up.
+Every user has a short *referral code*: a 5-digit number from 10000 to 99999, unique
+and separate from the user id. New accounts get one when they're created; accounts from
+before codes get one when the server starts. (Codes of long-inactive accounts aren't
+freed yet; a deleted account's code becomes free again.) The code appears as
+`referral_code` only in responses about your own account: `POST /users`, the
+`/auth/*` logins, and `GET`/`PATCH /users/{id}` when you're that user.
+
+Every invite link names the person who shared it: `/r/<code>` (for example
+`https://buildplay.fun/r/48213`), or `/r/<code>#match=<id>` from a match's Invite
+friends button. "Copy my invite link" in the account menu copies your own. `/r/<code>`
+redirects to `/portal?ref=<code>`; the code goes in the query so the browser keeps the
+link's `#match=` part. Older links name the user id instead (`/portal#ref=<userId>`,
+`/portal#match=<id>&ref=<userId>`) and still work, and so does the long form for an
+account that has no code yet. The browser remembers the first `ref` it sees (ignoring
+links from its own accounts) until an account is created, and then sends it as
+`invited_by_user_id` with `POST /users`, `POST /auth/google` or the code verify call:
+a 5-digit value is looked up as a code, anything else as a user id. The server records
+it on the new user only when that call creates an account; logging in to an existing
+account never changes who invited it, and an unknown code or id is ignored, so a bad
+link never blocks signing up.
 
 Invites survive account changes: an inviter that was merged away counts as the account
-it was merged into, a merged account keeps the inviter of the account merged into it if
+it was merged into (so do links with its code), a merged account keeps the inviter of the account merged into it if
 it had none (unless that would make someone their own inviter), and deleting a user
 (`DELETE /admin/users/{id}`) passes the people they invited up to their own inviter.
 
@@ -251,8 +263,8 @@ without). On iOS, push works only when the portal is installed to the home scree
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `GET /health` |  | 200 `{"status": "ok"}` when the server is up and saving data; 503 `"degraded"` when the data file can't be written. For uptime checks and load balancers |
-| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?, invite_token?}`; returns its `password` |
-| `GET /users/{id}` |  | Get a user |
+| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?, invite_token?}` (`invited_by_user_id` is the inviter's id or [referral code](#invite-links-referrals)); returns its `password` and `referral_code` |
+| `GET /users/{id}` | optional | Get a user; includes their `referral_code` only when you're that user |
 | `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |
 | `GET /i18n/locales` |  | The supported languages (see [Languages](#languages)) |
 | `GET /i18n/{locale}` |  | Every text in one language: UI labels, status labels, error messages |
@@ -599,6 +611,8 @@ Once the server is running, open these pages in a browser:
   leave, delete or hide), and runs the game in an iframe. The page checks the server
   every 2 seconds, so other players' moves show up on their own. Links like
   `/portal#match=<id>` open a match directly, also for people who aren't playing in it.
+- `/r/<code>`: a short invite link. Redirects to `/portal?ref=<code>`, keeping any
+  `#match=<id>`; see [Invite links](#invite-links-referrals).
 - `/builder`: create, edit and delete your games (those owned by the logged-in user).
   New games start from a small template that shows the [game API](#game-api). The Test
   tab runs the editor's code (saved or not) in pass-and-play mode: pick the number of
@@ -620,8 +634,9 @@ Once the server is running, open these pages in a browser:
   computer seats, ended by leaving) and 14-day charts of new users, games and matches.
   The numbers come from `GET /admin/stats`.
 - `/invites`: referral dashboard (needs the [master password](#master-password)): who
-  brought the most users (a leaderboard by total invites, direct and transitive), a
-  search by name or id that shows a user's invite chain ("Yoav → Marcelle → Ana") and
+  brought the most users (a leaderboard by total invites, direct and transitive, with
+  each user's referral code shown as a small `#48213`), a
+  search by name, id or referral code that shows a user's invite chain ("Yoav → Marcelle → Ana") and
   everyone they brought in, and the whole invite tree. The numbers come from
   `GET /admin/invites`; see [Invite links](#invite-links-referrals). It's also a tab
   in `/admin`.

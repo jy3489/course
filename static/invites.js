@@ -26,6 +26,11 @@ function plural(n, word) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** A user's referral code as a small "#48213" tag, or null when they have none. */
+function codeTag(user) {
+  return user.referral_code ? el("span", { class: "code", textContent: `#${user.referral_code}` }) : null;
+}
+
 /** A user's name as a button that opens their details. */
 function userLink(user) {
   return el("button", {
@@ -52,7 +57,7 @@ function userTable(users, { rank = false } = {}) {
           "tr",
           { class: `pick${user.id === state.selectedId ? " selected" : ""}`, onclick: () => select(user.id) },
           rank ? el("td", { class: "num", textContent: i + 1 }) : null,
-          el("td", { textContent: user.display_name, title: user.id }),
+          el("td", { title: user.id }, user.display_name, codeTag(user)),
           el("td", { class: "num", textContent: user.total_invites }),
           el("td", { class: "num", textContent: user.direct_invites }),
           el("td", { class: "muted", textContent: user.invited_by_name || "—" }),
@@ -85,12 +90,16 @@ function renderLeaderboard() {
 
 function renderSearch() {
   const query = $("search").value.trim().toLowerCase();
+  const code = query.replace(/^#/, "");
   if (!query) {
     $("results").replaceChildren();
     return;
   }
   const matches = state.users.filter(
-    (user) => user.display_name.toLowerCase().includes(query) || user.id.toLowerCase().includes(query),
+    (user) =>
+      user.display_name.toLowerCase().includes(query) ||
+      user.id.toLowerCase().includes(query) ||
+      (code !== "" && (user.referral_code ?? "").includes(code)),
   );
   show(
     "results",
@@ -110,7 +119,7 @@ function subtree(userId, { open = false } = {}) {
     "ul",
     { class: "tree" },
     kids.map((child) => {
-      const label = [userLink(child), el("span", { class: "count", textContent: child.total_invites ? `brought ${child.total_invites}` : "" })];
+      const label = [userLink(child), codeTag(child), el("span", { class: "count", textContent: child.total_invites ? `brought ${child.total_invites}` : "" })];
       return el(
         "li",
         {},
@@ -142,7 +151,7 @@ function renderDetail() {
   const chain = chainTo(user);
   show(
     "detail",
-    el("h3", { textContent: user.display_name, style: "margin-top: var(--space-md)" }),
+    el("h3", { style: "margin-top: var(--space-md)" }, user.display_name, codeTag(user)),
     el("div", { class: "muted", textContent: `${user.id} · joined ${formatTime(user.created_at)}` }),
     el(
       "div",
@@ -174,7 +183,7 @@ function renderTree() {
             el(
               "li",
               {},
-              el("details", {}, el("summary", {}, userLink(root), el("span", { class: "count", textContent: `brought ${root.total_invites}` })), subtree(root.id)),
+              el("details", {}, el("summary", {}, userLink(root), codeTag(root), el("span", { class: "count", textContent: `brought ${root.total_invites}` })), subtree(root.id)),
             ),
           ),
         )
