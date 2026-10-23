@@ -107,9 +107,25 @@ class PushConfig(_Section):
     max_subscriptions_per_user: Annotated[int, Field(ge=1)] = 10
 
 
+class FirestoreConfig(_Section):
+    # Save the data in Firestore instead of the data file (see "Firestore" in the
+    # README). data_file is then unused.
+    enabled: bool = False
+    # The Google Cloud project. Empty uses the project of the server's credentials
+    # (on a Google Cloud VM, the VM's project).
+    project_id: str = ""
+    database: str = "(default)"
+    # Prepended to every collection name, to keep several servers (e.g. staging) apart
+    # in one database.
+    collection_prefix: str = ""
+    # After a change, Firestore is written at most once per this many seconds.
+    save_interval_seconds: Annotated[float, Field(ge=0)] = 1.0
+
+
 class Config(_Section):
     server: ServerConfig = ServerConfig()
     data_file: DataFileConfig = DataFileConfig()
+    firestore: FirestoreConfig = FirestoreConfig()
     # Serve the /console and /browse pages and /debug/all-data, which expose all data.
     debug_tools: bool = True
     # Protects /browse and /debug/all-data (HTTP basic auth, any username). Empty means

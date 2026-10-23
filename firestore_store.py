@@ -20,8 +20,9 @@ Firestore documents hold at most 1 MiB, so:
 "meta/format" records the data format (json_file_store.FORMAT_VERSION) so that an
 older server refuses newer data instead of dropping the fields it doesn't know.
 
-To copy a data file into an empty database:
+To copy a data file into an empty database, or the database into a data file:
     python -m game_platform.firestore_store import data.json [--project ID]
+    python -m game_platform.firestore_store export data.json [--project ID]
 """
 
 import argparse
@@ -38,7 +39,7 @@ from typing import Any, Final
 from google.cloud import firestore
 from pydantic import TypeAdapter
 
-from game_platform.json_file_store import FORMAT_VERSION, read_snapshot
+from game_platform.json_file_store import FORMAT_VERSION, read_snapshot, write_snapshot
 from game_platform.saving_store import SavingStore
 from game_platform.store import InMemoryStore, Snapshot
 
@@ -399,6 +400,16 @@ def import_snapshot(
         store.close()
 
 
+def export_snapshot(client: firestore.Client, *, collection_prefix: str = "") -> Snapshot:
+    """Everything in the database, e.g. to write it back to a data file."""
+    store = FirestoreStore(client, collection_prefix=collection_prefix)
+    try:
+        with store._lock:
+            return store._inner.snapshot()
+    finally:
+        store.close()
+
+
 def _counts(snapshot: Snapshot) -> Iterable[str]:
     for kind in _KINDS:
         yield f"{len(getattr(snapshot, kind.field))} {kind.field}"
@@ -410,16 +421,27 @@ def main() -> None:
     importing = commands.add_parser(
         "import", help="copy a data file into an empty Firestore database"
     )
-    importing.add_argument("data_file", type=Path)
-    importing.add_argument("--project", default="", help="Google Cloud project id")
-    importing.add_argument("--database", default="(default)")
-    importing.add_argument("--collection-prefix", default="")
+    exporting = commands.add_parser(
+        "export", help="write the Firestore database to a new data file"
+    )
+    for command in (importing, exporting):
+        command.add_argument("data_file", type=Path)
+        command.add_argument("--project", default="", help="Google Cloud project id")
+        command.add_argument("--database", default="(default)")
+        command.add_argument("--collection-prefix", default="")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    snapshot = read_snapshot(args.data_file)
     client = firestore.Client(project=args.project or None, database=args.database)
-    import_snapshot(client, snapshot, collection_prefix=args.collection_prefix)
-    print(f"Imported into project {client.project}: " + ", ".join(_counts(snapshot)))
+    if args.command == "import":
+        snapshot = read_snapshot(args.data_file)
+        import_snapshot(client, snapshot, collection_prefix=args.collection_prefix)
+        print(f"Imported into project {client.project}: " + ", ".join(_counts(snapshot)))
+    else:
+        if args.data_file.exists():
+            raise SystemExit(f"{args.data_file} exists; refusing to overwrite it")
+        snapshot = export_snapshot(client, collection_prefix=args.collection_prefix)
+        write_snapshot(args.data_file, snapshot)
+        print(f"Exported project {client.project} to {args.data_file}: " + ", ".join(_counts(snapshot)))
 
 
 if __name__ == "__main__":

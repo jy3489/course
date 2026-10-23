@@ -19,7 +19,12 @@ pytestmark = pytest.mark.skipif(
 if os.environ.get("FIRESTORE_EMULATOR_HOST"):
     from google.cloud import firestore
 
-    from game_platform.firestore_store import FirestoreStore, import_snapshot, is_empty
+    from game_platform.firestore_store import (
+        FirestoreStore,
+        export_snapshot,
+        import_snapshot,
+        is_empty,
+    )
     from game_platform.tests.helpers import Api
 
 
@@ -145,3 +150,9 @@ def test_import_refuses_a_database_that_has_data(client, prefix) -> None:
     assert not is_empty(client, collection_prefix=prefix)
     with pytest.raises(ValueError, match="already has data"):
         import_snapshot(client, snapshot, collection_prefix=prefix)
+
+
+def test_export_gives_back_what_was_imported(client, prefix) -> None:
+    snapshot = read_snapshot(example_data.DEFAULT_OUTPUT)
+    import_snapshot(client, snapshot, collection_prefix=prefix)
+    assert export_snapshot(client, collection_prefix=prefix) == snapshot

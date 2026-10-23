@@ -459,6 +459,11 @@ stop the server at startup with an error naming the field.
 | `data_file.save_interval_seconds` | `1.0`                                    | After a change, the data file is rewritten at most once per this many seconds. `0` writes after every change |
 | `data_file.backup_interval_seconds` | `3600.0`                               | Copy the data file to `<path>.backups/data-<UTC time>.json` at most this often (checked when the file is written). `0` turns backups off |
 | `data_file.backup_keep`           | `48`                                     | How many of the newest backups to keep |
+| `firestore.enabled`               | `false`                                  | Save the data in Firestore instead of the data file; see [Firestore](#firestore) |
+| `firestore.project_id`            | `""`                                     | Google Cloud project; empty uses the project of the server's credentials |
+| `firestore.database`              | `"(default)"`                            | Firestore database id |
+| `firestore.collection_prefix`     | `""`                                     | Prepended to every collection name, to keep several servers apart in one database |
+| `firestore.save_interval_seconds` | `1.0`                                    | After a change, Firestore is written at most once per this many seconds |
 | `debug_tools`                     | `true`                                   | Serve `/console`, `/browse` and `/debug/all-data` (see [Pages](#pages)) |
 | `master_password`                 | `""`                                     | Password for `/browse` and `/debug/all-data` (see [Master password](#master-password)). Empty means none, which is only allowed when `server.host` is a numeric IP address |
 | `log_level`                       | `"INFO"`                                 | `"DEBUG"`, `"INFO"`, `"WARNING"` or `"ERROR"` |
@@ -521,6 +526,63 @@ games and referrer. Its layout is
   can lose the changes from the last `save_interval_seconds`.
 - To start from scratch, stop the server and delete the file. Don't edit the file while
   the server is running: it will be overwritten on the next change.
+
+### Firestore
+
+Instead of the data file, the server can keep its data in
+[Firestore](https://cloud.google.com/firestore), Google Cloud's managed database:
+the data then doesn't depend on one machine's disk, and Firestore's scheduled backups
+replace the file backups. Like the data file, everything is loaded into memory at
+startup and changes are saved in the background, so it still serves one server
+process at a time (`firestore_store.py`).
+
+**Layout.** One document per record, named after the record: `users/<id>`,
+`game_versions/<game id>@<version>`, `matches/<id>`, `invites/<token>`, ... Each
+document holds the record as JSON text in its `json` field (game states are arbitrary
+JSON, and Firestore can't store all of it natively). A match's moves are one document
+each in `matches/<id>/moves`, and an agent conversation's entries in
+`agent_conversations/<game id>/entries`, so long matches never hit Firestore's 1 MiB
+document limit; text over ~900 KB is split into a `chunks` subcollection.
+`meta/format` holds the data format, so an older server refuses newer data. A save
+writes only the records that changed.
+
+**Setting it up on Google Cloud** (once):
+
+1. Create the database: Firestore → Create database, Standard edition, Native mode,
+   **Restrictive** security rules (the server isn't subject to them; "Open" would let
+   anyone read every password), a region next to the server, and scheduled backups
+   (e.g. daily, kept 7 days).
+2. Grant the server's service account the **Cloud Datastore User** role (IAM & Admin →
+   IAM). On a Compute Engine VM that's the VM's service account, and the VM's access
+   scopes must also enable **Cloud Datastore** (changing scopes requires stopping the
+   VM; make its external IP static first if it's ephemeral, or it changes).
+3. Copy the existing data in, with the server stopped:
+
+   ```bash
+   python -m game_platform.firestore_store import /path/to/data.json
+   ```
+
+   It refuses a database that already has data. Then set `"firestore": {"enabled": true}`
+   in the config file and start the server.
+
+To go back to a data file, write the database out (refuses to overwrite a file):
+
+```bash
+python -m game_platform.firestore_store export /path/to/new-data.json
+```
+
+**Costs.** Startup reads every document once (a document per record and per move),
+and each change writes the changed documents. A class-sized deployment stays within
+Firestore's free tier (50,000 reads and 20,000 writes a day, 1 GiB stored); backups
+are billed for their storage.
+
+**Tests.** `tests/test_firestore_store.py` runs against the Firestore emulator and is
+skipped without it. Start the emulator (Java and Node.js needed) and point the tests at it:
+
+```bash
+npx firebase-tools emulators:start --only firestore --project demo-game-platform
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 python -m pytest game_platform/tests
+```
 
 ### Pages
 

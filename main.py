@@ -10,6 +10,7 @@ import uvicorn
 from game_platform.api import create_app
 from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
+from game_platform.saving_store import SavingStore
 from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
 from game_platform.senders import make_email_sender, make_sms_sender
 from game_platform.service import GamePlatform
@@ -85,15 +86,32 @@ def main() -> None:
         push_config = push_config.model_copy(update={"vapid_private_key": env_key})
 
     logging.basicConfig(level=config.log_level)
-    data_file = config.data_file.path.expanduser()
-    data_file.parent.mkdir(parents=True, exist_ok=True)
-    store = JsonFileStore(
-        data_file,
-        min_write_interval_seconds=config.data_file.save_interval_seconds,
-        backup_interval_seconds=config.data_file.backup_interval_seconds,
-        backup_keep=config.data_file.backup_keep,
-    )
-    logger.info("Using data file %s", data_file)
+    store: SavingStore
+    if config.firestore.enabled:
+        # Imported here so that servers using the data file don't load the client.
+        from game_platform.firestore_store import FirestoreStore
+
+        store = FirestoreStore.connect(
+            project_id=config.firestore.project_id,
+            database=config.firestore.database,
+            collection_prefix=config.firestore.collection_prefix,
+            min_write_interval_seconds=config.firestore.save_interval_seconds,
+        )
+        logger.info(
+            "Using Firestore database %s (collection prefix %r)",
+            config.firestore.database,
+            config.firestore.collection_prefix,
+        )
+    else:
+        data_file = config.data_file.path.expanduser()
+        data_file.parent.mkdir(parents=True, exist_ok=True)
+        store = JsonFileStore(
+            data_file,
+            min_write_interval_seconds=config.data_file.save_interval_seconds,
+            backup_interval_seconds=config.data_file.backup_interval_seconds,
+            backup_keep=config.data_file.backup_keep,
+        )
+        logger.info("Using data file %s", data_file)
     push_notifier: PushNotifier | None = None
     try:
         push_notifier = make_push_notifier(push_config, store=store)
