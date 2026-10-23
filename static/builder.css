@@ -55,12 +55,18 @@
 .play-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
 #play-mode{max-width:100%;background:#171c2a;border:1px solid #44506b;border-radius:6px;color:#eef0f5;padding:10px;}
 .toolbar-spacer{flex:1;}
-#test-frame{background:#171c2a;border:1px solid #343e55;border-radius:12px;overflow:hidden;min-height:520px;}
-#test-frame .game-frame{display:block;width:100%;min-height:520px;border:0;}
+#test-frame{background:#171c2a;border:1px solid #343e55;border-radius:12px;overflow:hidden;min-height:0;height:var(--game-height,60dvh);resize:none;}
+#test-frame .game-frame{display:block;width:100%;height:100%;min-height:0;border:0;}
 #test-status{margin-top:10px;color:#a5aec2;font-size:12px;}
 .game-history{margin-top:30px;border-top:1px solid #2a3247;padding-top:18px;}
 .game-history summary{color:#a5aec2;font-size:12px;cursor:pointer;margin-bottom:14px;}
 .history-controls{display:flex;gap:10px;align-items:center;margin-bottom:16px;}
+.game-management{margin-top:18px;padding-top:18px;border-top:1px solid #2a3247;}
+body.builder-preview-focus{overflow:hidden;}
+.builder-preview-focus::after{content:'';position:fixed;inset:0;background:#10141f;z-index:99;}
+.builder-preview-focus #test-frame{position:fixed;inset:56px 0 0;width:100%;max-width:none!important;height:calc(100dvh - 56px);margin:0;border:0;border-radius:0;z-index:100;}
+.builder-preview-focus #test-focus{position:fixed;top:8px;right:8px;z-index:101;}
+.builder-preview-focus #ai-panel,.builder-preview-focus #open-ai{display:none!important;}
 #versions{background:#171c2a;color:#eef0f5;border:1px solid #44506b;border-radius:6px;padding:10px;}
 #ai-panel{position:fixed;right:24px;bottom:24px;z-index:80;width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 24px);background:#171c2a;border:1px solid #647b2c;border-radius:12px;box-shadow:0 20px 70px #0009;color:#eef0f5;font-family:'Trebuchet MS','Segoe UI',sans-serif;display:flex;flex-direction:column;overflow:hidden;}
 .ai-panel-heading{display:flex;align-items:center;background:#c6f432;color:#10141f;flex:none;}
@@ -72,4 +78,4 @@
 #ai-panel .message{font-size:12px;line-height:1.6;}
 #open-ai{position:fixed;right:24px;bottom:24px;background:#c6f432;color:#10141f;border:1px solid #c6f432;border-radius:24px;padding:12px 22px;box-shadow:0 8px 28px #0006;z-index:70;}
 @media(max-width:1050px){.builder-shell{grid-template-columns:230px minmax(0,1fr);}.builder-main{padding:24px;}}
-@media(max-width:860px){.builder-shell{grid-template-columns:minmax(0,1fr);overflow:auto;}.builder-shell .sidebar{padding:18px;gap:12px;overflow:visible;border-right:0;border-bottom:1px solid #343e55;display:grid;grid-template-columns:1fr auto;}.builder-shell .app-brand{grid-column:1/-1;}#games{grid-column:1/-1;display:flex;gap:8px;overflow:auto;}#games .list-item{min-width:170px;}.library-label{display:none;}.sidebar-footer{grid-column:1/-1;}.builder-main{padding:22px 14px 36px;overflow:visible;}.starter-card{padding:24px;}.starter-card h1{font-size:28px;}#game-name{font-size:24px;}#test-frame,#test-frame .game-frame{min-height:440px;}#ai-panel{right:12px;bottom:12px;}#open-ai{right:12px;bottom:12px;}}
+@media(max-width:860px){.builder-shell{grid-template-columns:minmax(0,1fr);overflow:auto;}.builder-shell .sidebar{padding:18px;gap:12px;overflow:auto;max-height:30dvh;border-right:0;border-bottom:1px solid #343e55;display:grid;grid-template-columns:1fr auto;}.builder-shell .app-brand{grid-column:1/-1;}#games{grid-column:1/-1;display:flex;gap:8px;overflow:auto;}#games .list-item{min-width:170px;}.library-label{display:none;}.sidebar-footer{grid-column:1/-1;}.builder-main{padding:22px 14px 36px;overflow:visible;}.starter-card{padding:24px;}.starter-card h1{font-size:28px;}#game-name{font-size:24px;}#test-frame,#test-frame .game-frame{min-height:0;}#ai-panel{right:12px;bottom:12px;}#open-ai{right:12px;bottom:12px;}}

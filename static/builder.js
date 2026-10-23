@@ -198,6 +198,7 @@ function render() {
   $("workspace").hidden=!ready;$("welcome").hidden=ready;
   $("welcome-action").textContent=me()?"Create a game":"Sign in";
   const playable=Boolean(state.editor.code);
+  if ((!ready||!playable)&&document.body?.classList.contains("builder-preview-focus")) focusPreview(false);
   $("starter-view").hidden=playable;$("play-view").hidden=!playable;
   $("ai-panel").hidden=!ready || !playable || !state.aiOpen;
   const host=$(playable?"ai-panel-body":"starter-agent-home");
@@ -221,6 +222,11 @@ function agentLog(role,text) {
 }
 function testLog(text,isError=false) {
   if (isError) $("test-status").textContent=text;
+}
+function focusPreview(focused) {
+  document.body.classList.toggle("builder-preview-focus",focused);
+  $("test-focus").textContent=focused?"Exit preview":"Focus preview";
+  $("test-focus").setAttribute("aria-pressed",String(focused));
 }
 function renderPlayModes() {
   const choices=state.editor.allowed_player_counts.flatMap(count=>count===1
@@ -512,6 +518,8 @@ async function main() {
   $("pause-test").addEventListener("click",pauseTest);
   $("step-test").addEventListener("click",stepTest);
   $("redo-move").addEventListener("click",redoTestMove);
+  $("test-focus").addEventListener("click",()=>focusPreview(!document.body.classList.contains("builder-preview-focus")));
+  document.addEventListener("keydown",event=>{if(event.key==="Escape"&&document.body.classList.contains("builder-preview-focus")){focusPreview(false);$("test-focus").focus();}});
   $("test-size").addEventListener("change",()=> {$("test-frame").style.maxWidth=$("test-size").value;});
   $("undo-move").addEventListener("click",undoTestMove);$("load-version").addEventListener("click",restoreVersion);
   $("delete-game").addEventListener("click",deleteGame);$("agent-send").addEventListener("click",sendAgentMessage);

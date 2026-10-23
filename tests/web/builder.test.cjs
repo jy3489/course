@@ -28,6 +28,15 @@ function saved(body,id='new-id',revision=1){return {...body,id,revision,base_ver
 test('selecting the same game preserves current work',async()=>{
   const t=setup();await t.choose();t.run('state.editor.name="New name"');await t.run('select("game")');assert.equal(t.run('state.editor.name'),'New name');
 });
+
+test('focused preview preserves the running game and emulator state',async()=>{
+  const t=setup();await t.choose();
+  t.run('document.body={classList:{toggle(name,on){document.focused=on;}}}');
+  t.run('onTestMove({new_state:{n:1},next_turn_player_indices:[0]});focusPreview(true)');
+  assert.equal(t.run('document.focused'),true);assert.equal(t.node('test-focus').textContent,'Exit preview');
+  t.run('focusPreview(false)');assert.equal(t.run('document.focused'),false);
+  assert.equal(t.run('state.test.state.n'),1);assert.equal(t.run('state.test.moves.length'),1);
+});
 test('autosave writes a working copy without publishing a version',async()=>{
   const calls=[];const t=setup(async(method,url,{body})=>{calls.push([method,url,body]);return saved(body);});
   await t.run('select("new")');t.run('state.editor={...state.editor,name:"New game",code:"new code"};scheduleAutosave()');
