@@ -133,6 +133,8 @@ const Logic = {
       lines: 0,
       last_move: null,
       winners: null,
+      winner: null,
+      draw: false,
     };
   },
 
@@ -173,12 +175,16 @@ const Logic = {
     const spawn = Logic.rotations(current)[0];
     const over = !Logic.fits(board, spawn, 0, Logic.spawnCol(spawn));
     const best = Math.max(...scores);
+    const winners = over ? scores.map((s, i) => i).filter((i) => scores[i] === best) : null;
     return {
       state: {
         board, current, next: Logic.randomPiece(random), scores,
         lines: state.lines + cleared,
         last_move: { seat, piece: state.current, cleared },
-        winners: over ? scores.map((s, i) => i).filter((i) => scores[i] === best) : null,
+        winners,
+        // The portal reads the result from winner (one seat) or draw (a tie).
+        winner: winners?.length === 1 ? winners[0] : null,
+        draw: (winners?.length ?? 0) > 1,
       },
       nextTurn: over ? null : [(seat + 1) % numPlayers],
     };
