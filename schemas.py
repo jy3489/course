@@ -412,7 +412,9 @@ class GameUpdate(_Request):
         return self
 
 
-class GameOut(BaseModel):
+class GameSummaryOut(BaseModel):
+    """A game without its code: what a game list needs, at a fraction of the size."""
+
     id: str
     version: int
     owner_user_id: str
@@ -421,14 +423,13 @@ class GameOut(BaseModel):
     allowed_player_counts: list[int]
     allows_leave_mid_match: bool
     allows_join_mid_match: bool
-    code: str
     created_at: dt.datetime
     updated_at: dt.datetime
     deleted: bool
     published: bool
 
     @classmethod
-    def of(cls, game: Game) -> "GameOut":
+    def of(cls, game: Game) -> "GameSummaryOut":
         return cls(
             id=game.id,
             version=game.version,
@@ -438,12 +439,19 @@ class GameOut(BaseModel):
             allowed_player_counts=list(game.rules.allowed_player_counts),
             allows_leave_mid_match=game.rules.allows_leave_mid_match,
             allows_join_mid_match=game.rules.allows_join_mid_match,
-            code=game.code,
             created_at=game.created_at,
             updated_at=game.updated_at,
             deleted=game.deleted,
             published=game.published,
         )
+
+
+class GameOut(GameSummaryOut):
+    code: str
+
+    @classmethod
+    def of(cls, game: Game) -> "GameOut":
+        return cls(**GameSummaryOut.of(game).model_dump(), code=game.code)
 
 
 class GameDraftContent(_Request):

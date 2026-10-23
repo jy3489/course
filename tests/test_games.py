@@ -267,3 +267,13 @@ def test_games_can_be_searched_by_name_and_description(api: Api) -> None:
     assert search("hold'em") == ["Poker"]
     assert search("go") == []
     assert search("") == ["Poker", "Chess", "Speed Chess"]
+
+
+def test_the_game_list_can_leave_out_the_code(api: Api) -> None:
+    alice = api.new_user("alice")
+    game_id = api.new_game(owner=alice)
+    (full,) = api.ok("GET", "/games")
+    (summary,) = api.ok("GET", "/games", params={"include_code": "false"})
+    assert full["code"] == "<div>poker</div>"
+    assert summary == {key: value for key, value in full.items() if key != "code"}
+    assert summary["id"] == game_id

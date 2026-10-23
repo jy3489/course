@@ -37,6 +37,7 @@ from game_platform.schemas import (
     GameDraftPublish,
     GameDraftOut,
     GameOut,
+    GameSummaryOut,
     GameUpdate,
     GoogleLogin,
     HealthOut,
@@ -467,11 +468,15 @@ def list_games(
     platform: Platform,
     owner_user_id: str | None = None,
     q: str = "",
-) -> list[GameOut]:
+    include_code: bool = True,
+) -> list[GameOut] | list[GameSummaryOut]:
     """Published games, oldest first. `q` searches names and descriptions (every word
-    must match, ignoring case)."""
+    must match, ignoring case). `include_code=false` leaves out each game's code, which
+    is most of the response; load it per game from /games/{id}/versions/{version}."""
     games = platform.list_games(owner_user_id=owner_user_id, query=q)
-    return [GameOut.of(game) for game in games]
+    if include_code:
+        return [GameOut.of(game) for game in games]
+    return [GameSummaryOut.of(game) for game in games]
 
 
 @router.get("/builder/games")

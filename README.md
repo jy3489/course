@@ -257,7 +257,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `POST /users/{id}/merge` | yes | Merge this account into `into_user_id` and delete it (authenticate as this user) |
 | `GET /matches/open` |  | Matches anyone may join (waiting, or ongoing with mid-match joins) |
 | `POST /games` | yes | Create a game |
-| `GET /games?owner_user_id=&q=` |  | List published games that aren't deleted, optionally by owner. `q` searches names and descriptions (every word must match, ignoring case) |
+| `GET /games?owner_user_id=&q=&include_code=` |  | List published games that aren't deleted, optionally by owner. `q` searches names and descriptions (every word must match, ignoring case); `include_code=false` leaves out each game's code, which is most of the response |
 | `GET /games/{id}` |  | Get the latest version of a game |
 | `GET /games/{id}/versions/{version}` |  | Get a specific version of a game |
 | `PATCH /games/{id}` | yes | Update some fields of a game, creating a new version (creator only) |
