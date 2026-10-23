@@ -889,7 +889,7 @@ updates received while browsing. Newly started matches retain their initial stat
 zero. Older matches without that snapshot start at the first recorded move. Local practice records
 moves on this device; older local sessions can only replay newly recorded moves.
 Online history is cached after opening it for later offline browsing.
-Starting snapshots persist in data file format 8 (formats 1–7 still load).
+Starting snapshots persist in data file format 9 (formats 1–8 still load).
 
 The Builder supports Pause / Resume and Step (one accepted move, then pause),
 Undo / Redo, responsive/phone/tablet preview widths, and an expandable JSON state

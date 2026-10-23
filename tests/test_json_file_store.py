@@ -45,6 +45,29 @@ def test_all_data_survives_a_restart(tmp_path: Path) -> None:
     assert after == before
 
 
+def test_rematch_link_survives_a_restart(tmp_path: Path) -> None:
+    path = tmp_path / "data.json"
+    store = JsonFileStore(path)
+    api = Api(store=store)
+    alice, bob = api.new_user("alice"), api.new_user("bob")
+    bob_password = api.passwords_by_user_id[bob]
+    game_id = api.new_game(owner=alice)
+    match_id = api.new_match(owner=alice, game_id=game_id, joiners=[bob], start=True)
+    api.move(match_id, as_user=alice, next_turn=None)
+    rematch = api.ok("POST", f"/matches/{match_id}/rematch", as_user=alice)
+    store.close()
+
+    restarted = JsonFileStore(path)
+    api = Api(store=restarted)
+    api.passwords_by_user_id[bob] = bob_password
+    assert api.ok("GET", f"/matches/{match_id}")["rematch_match_id"] == rematch["id"]
+    assert (
+        api.ok("POST", f"/matches/{match_id}/rematch", as_user=bob)["id"]
+        == rematch["id"]
+    )
+    restarted.close()
+
+
 def test_push_subscriptions_survive_a_restart(tmp_path: Path) -> None:
     path = tmp_path / "data.json"
     store = JsonFileStore(path)
@@ -146,7 +169,7 @@ def test_a_version_1_file_is_migrated_to_turn_sets(tmp_path: Path) -> None:
 
     # Rewrite the file in the old layout: single-index turns, format version 1.
     file = json.loads(path.read_text())
-    assert file["format_version"] == 8
+    assert file["format_version"] == 9
     file["format_version"] = 1
     match = file["data"]["matches"][0]
     turn = match.pop("turn_of_player_indices")
@@ -170,9 +193,9 @@ def test_an_unreadable_file_is_rejected_rather_than_overwritten(tmp_path: Path) 
         JsonFileStore(path)
 
     path.write_text(
-        '{"format_version": 9, "data": {"users": [], "game_versions": [], '
+        '{"format_version": 10, "data": {"users": [], "game_versions": [], '
         '"deleted_game_ids": [], "matches": []}}'
     )
     with pytest.raises(ValueError) as error:
         JsonFileStore(path)
-    assert str(error.value) == f"{path} has format version 9, expected 8"
+    assert str(error.value) == f"{path} has format version 10, expected 9"

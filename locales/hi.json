@@ -29,6 +29,8 @@
   "error.match_not_found": "मैच नहीं मिला",
   "error.match_not_owner": "केवल मैच का स्वामी ही यह कर सकता है",
   "error.match_not_player": "आप इस मैच के खिलाड़ी नहीं हैं",
+  "error.rematch_not_finished": "मैच समाप्त होने के बाद ही रीमैच का अनुरोध किया जा सकता है",
+  "error.rematch_game_unavailable": "यह गेम अब रीमैच के लिए उपलब्ध नहीं है",
   "error.match_over": "मैच समाप्त हो गया है",
   "error.match_not_ongoing": "मैच चल नहीं रहा है",
   "error.match_already_started": "मैच पहले ही शुरू हो चुका है",

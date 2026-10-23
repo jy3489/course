@@ -29,6 +29,8 @@
   "error.match_not_found": "partida não encontrada",
   "error.match_not_owner": "somente o dono da partida pode fazer isso",
   "error.match_not_player": "você não é jogador desta partida",
+  "error.rematch_not_finished": "uma revanche só pode ser solicitada depois que a partida terminar",
+  "error.rematch_game_unavailable": "este jogo não está mais disponível para revanche",
   "error.match_over": "a partida terminou",
   "error.match_not_ongoing": "a partida não está em andamento",
   "error.match_already_started": "a partida já começou",

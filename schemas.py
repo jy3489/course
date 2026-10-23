@@ -561,6 +561,7 @@ class MatchOut(BaseModel):
     turn_of_player_indices: list[int] | None
     state: JsonValue
     move_count: int
+    rematch_match_id: str | None
     created_at: dt.datetime
     updated_at: dt.datetime
     private: bool = False
@@ -582,6 +583,7 @@ class MatchOut(BaseModel):
             else sorted(match.turn_of_player_indices),
             state=match.state,
             move_count=len(match.moves),
+            rematch_match_id=match.rematch_match_id,
             created_at=match.created_at,
             updated_at=match.updated_at,
             private=match.private,

@@ -116,7 +116,7 @@ def test_private_drafts_survive_restart_and_old_data_loads(tmp_path: Path):
     draft = create_draft(api, owner)
     password = api.passwords_by_user_id[owner]
     store.close()
-    assert json.loads(path.read_text())["format_version"] == 8
+    assert json.loads(path.read_text())["format_version"] == 9
     restarted = JsonFileStore(path)
     try:
         client = Api(store=restarted)

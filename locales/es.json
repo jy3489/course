@@ -29,6 +29,8 @@
   "error.match_not_found": "partida no encontrada",
   "error.match_not_owner": "solo el propietario de la partida puede hacer esto",
   "error.match_not_player": "no eres jugador de esta partida",
+  "error.rematch_not_finished": "solo se puede solicitar una revancha cuando termina la partida",
+  "error.rematch_game_unavailable": "este juego ya no está disponible para revancha",
   "error.match_over": "la partida ha terminado",
   "error.match_not_ongoing": "la partida no está en curso",
   "error.match_already_started": "la partida ya ha comenzado",

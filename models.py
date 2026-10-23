@@ -195,6 +195,8 @@ class Match:
     # its players and people with an invite link can see or join it. Defaults to
     # False so older data files load.
     private: bool = False
+    # The match created as a replay of this match, if any.
+    rematch_match_id: str | None = None
     # Set on matches created by matchmaking (a quick match with random opponents):
     # the number of players it waits for. The match starts by itself when that many
     # have joined. Defaults to None so older data files load.
