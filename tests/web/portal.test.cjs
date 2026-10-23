@@ -7,7 +7,7 @@ const path=require('node:path');
 function setup(request=async()=>{}, hash='', search='') {
   const nodes=new Map();
   const node=id=>{
-    if(!nodes.has(id)) nodes.set(id,{value:'',hidden:false,disabled:false,dataset:{},children:[],
+    if(!nodes.has(id)) nodes.set(id,{value:'',hidden:false,disabled:false,dataset:{},children:[],classList:{toggle(){}},
       replaceChildren(...children){this.children=children;},setAttribute(){},addEventListener(){},focus(){}});
     return nodes.get(id);
   };
