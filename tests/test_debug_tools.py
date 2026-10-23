@@ -67,6 +67,7 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         "/games/{game_id}",
         "/games/{game_id}/unpublish",
         "/games/{game_id}/versions/{version}",
+        "/health",
         "/i18n/locales",
         "/i18n/{locale}",
         "/invites/{token}",

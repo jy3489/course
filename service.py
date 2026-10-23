@@ -1784,6 +1784,12 @@ class GamePlatform:
 
     # Debugging
 
+    def storage_error(self) -> str | None:
+        """Why the data isn't being saved, or None when it is (or the store has no
+        file). Taking the lock also proves requests aren't stuck behind it."""
+        with self._lock:
+            return getattr(self._store, "last_write_error", None)
+
     def all_data(self) -> AllData:
         """A consistent snapshot of everything in the store, for debugging tools."""
         with self._lock:

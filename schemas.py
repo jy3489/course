@@ -857,3 +857,12 @@ class ReferralsOut(BaseModel):
     sign_ups: int
     referred_users: list[UserOut]
     invites: list[InviteOut]
+
+
+class HealthOut(BaseModel):
+    """For uptime checks and load balancers: 200 with "ok", or 503 with "degraded"."""
+
+    status: Literal["ok", "degraded"]
+    uptime_seconds: int
+    # "ok", or the kind of error that stops the data file from being saved.
+    storage: str

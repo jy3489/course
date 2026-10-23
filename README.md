@@ -248,6 +248,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
+| `GET /health` |  | 200 `{"status": "ok"}` when the server is up and saving data; 503 `"degraded"` when the data file can't be written. For uptime checks and load balancers |
 | `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?, invite_token?}`; returns its `password` |
 | `GET /users/{id}` |  | Get a user |
 | `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |

@@ -3,6 +3,7 @@
 import io
 import secrets
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -38,6 +39,7 @@ from game_platform.schemas import (
     GameOut,
     GameUpdate,
     GoogleLogin,
+    HealthOut,
     InviteCreate,
     InviteLinks,
     InviteOut,
@@ -126,6 +128,24 @@ def _get_caller_id_or_none(
 OptionalCallerId = Annotated[str | None, Depends(_get_caller_id_or_none)]
 
 router = APIRouter()
+
+# Health
+
+
+@router.get("/health", responses={HTTPStatus.SERVICE_UNAVAILABLE: {"model": HealthOut}})
+def health(platform: Platform, request: Request, response: Response) -> HealthOut:
+    """Whether the server is up and saving its data: 200 when healthy, 503 when the
+    data file can't be written (changes would be lost on restart). Public and cheap,
+    for uptime checks and load balancers."""
+    error = platform.storage_error()
+    if error is not None:
+        response.status_code = HTTPStatus.SERVICE_UNAVAILABLE
+    return HealthOut(
+        status="ok" if error is None else "degraded",
+        uptime_seconds=int(time.monotonic() - request.app.state.started_at),
+        storage=error or "ok",
+    )
+
 
 # Users
 
@@ -1111,6 +1131,7 @@ def create_app(
     app.state.platform = platform if platform is not None else GamePlatform()
     app.state.master_password = master_password
     app.state.public_base_url = public_base_url
+    app.state.started_at = time.monotonic()
     app.state.model_api_config = (
         model_api_config if model_api_config is not None else ModelApiConfig()
     )

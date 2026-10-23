@@ -78,6 +78,8 @@ class JsonFileStore:
         self._backup_keep = backup_keep
         self._last_backup = float("-inf")
         self._min_write_interval_seconds = min_write_interval_seconds
+        # Why the last write failed, or None after a successful one. For health checks.
+        self.last_write_error: str | None = None
         self._inner = (
             InMemoryStore.of_snapshot(read_snapshot(path))
             if path.exists()
@@ -114,9 +116,11 @@ class JsonFileStore:
                 snapshot = self._inner.snapshot()
             try:
                 write_snapshot(self._path, snapshot)
+                self.last_write_error = None
                 self._back_up_if_due()
-            except Exception:
+            except Exception as error:
                 logger.exception("Failed to write %s; will retry", self._path)
+                self.last_write_error = type(error).__name__
                 with self._lock:
                     self._set_dirty()
 
