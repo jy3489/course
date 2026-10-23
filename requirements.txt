@@ -10,3 +10,5 @@ pywebpush>=1.9,<3
 cryptography>=42
 # Draws invite links as QR codes (api.py). Pure Python, no dependencies.
 segno>=1.6,<2
+# Saves the data in Firestore when firestore.enabled is set (firestore_store.py).
+google-cloud-firestore>=2.34,<3

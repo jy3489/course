@@ -12,6 +12,13 @@
     "backup_interval_seconds": 3600.0,
     "backup_keep": 48
   },
+  "firestore": {
+    "enabled": false,
+    "project_id": "",
+    "database": "(default)",
+    "collection_prefix": "",
+    "save_interval_seconds": 1.0
+  },
   "debug_tools": true,
   "master_password": "",
   "log_level": "INFO",
