@@ -18,7 +18,7 @@
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=11" />
-    <link rel="stylesheet" href="/static/portal.css?v=19" />
+    <link rel="stylesheet" href="/static/portal.css?v=21" />
     <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
   </head>
   <body>
@@ -29,7 +29,8 @@
         <a href="/builder">Builder</a>
       </nav>
       <span class="spacer"></span>
-      <span id="account-menu"></span>
+      <span id="token-wallet" class="token-wallet" role="status" aria-live="polite" title="Your virtual tokens" hidden><span class="token-wallet-coin" aria-hidden="true">✦</span><span class="token-wallet-copy"><span class="token-wallet-label">MY WALLET</span><span class="token-wallet-number"><strong id="token-balance">0</strong> <span>tokens</span></span></span></span>
+       <span id="account-menu"></span>
     </header>
     <div class="app portal-shell">
       <aside class="sidebar portal-sidebar">
@@ -90,7 +91,13 @@
             <div class="play-options">
               <section class="play-option" aria-labelledby="online-play-title">
                 <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title">Online match</h3><p>Set up your opponents in the lobby.</p></div></div>
-                <div class="create-controls">
+                <div class="token-stake-panel" id="token-stake-panel">
+                   <div class="token-stake-heading"><span class="token-stake-icon" aria-hidden="true">✦</span><div><strong>Play for tokens</strong><span>Optional · Virtual currency only</span></div></div>
+                   <label class="stake-select" for="match-stake">Entry per player <select id="match-stake"><option value="0">Free · 0 tokens</option><option value="1">1 token</option><option value="5">5 tokens</option><option value="10">10 tokens</option><option value="20">20 tokens</option></select></label>
+                   <div id="stake-preview" class="stake-preview" role="status" aria-live="polite">Free game · No tokens at risk</div>
+                   <p class="stake-help" id="stake-help">Daily bonus: +10 tokens on your first eligible match start each day. Wagers require human players; tokens are collected when the match starts.</p>
+                 </div>
+                 <div class="create-controls">
                   <button id="create" type="button" class="primary">Create match ↗</button>
                 </div>
                 <p id="create-hint" class="play-option-note"></p>
@@ -123,6 +130,7 @@
               <span id="match-status" class="badge"></span>
             </h2>
             <div id="match-meta" class="muted"></div>
+             <div id="match-currency" class="match-currency" role="status" aria-live="polite" hidden></div>
           </div>
           <div id="match-result" class="match-result" role="status" hidden></div>
           <div id="seats" class="seats"></div>
@@ -141,6 +149,6 @@
     <script src="/static/portal-install.js?v=1"></script>
     <script src="/static/portal-match-layout.js?v=1"></script>
     <script src="/static/push-notifications.js?v=1"></script>
-    <script src="/static/portal.js?v=32"></script>
+    <script src="/static/portal.js?v=34"></script>
   </body>
 </html>

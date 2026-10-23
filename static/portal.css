@@ -173,3 +173,47 @@
 .match-more-panel { position:fixed; left:8px; top:8px; z-index:25; display:flex; flex-direction:column; gap:4px; width:230px; max-width:75vw; padding:8px; background:#1c2233; border:1px solid #44506b; border-radius:10px; box-shadow:0 10px 30px #0006; }
 .portal-shell .match-more-panel button { text-align:left; white-space:normal; border:0; background:transparent; }
 .portal-shell .match-more-panel button:hover { background:#26304a; }
+
+/* Virtual currency controls */
+.token-wallet { display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid #536b31;border-radius:999px;background:#26321c;color:#dbff9a;font-size:13px;white-space:nowrap }
+.stake-select { display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-weight:700;font-size:13px;margin:14px 0 6px;color:#c9cfdc }
+.stake-select select { min-height:44px;padding:8px 12px;max-width:100% }
+.stake-help { font-size:12px;line-height:1.5;color:#a5aec2;margin:0 0 16px }
+.match-currency { margin:12px 0;padding:12px 14px;border-radius:8px;border:1px solid #536b31;background:#222d1b;color:#d9f7a2;font-size:13px;line-height:1.5 }
+@media(max-width:640px){ .token-wallet{font-size:11px;padding:6px 8px}.stake-select{align-items:stretch;flex-direction:column;gap:6px} }
+
+/* TOKEN_UI_POLISH_V1 – accessible, compact virtual-token components */
+.topbar .token-wallet[hidden] { display:none!important }
+.topbar .token-wallet {display:inline-flex;gap:10px;align-items:center;background:linear-gradient(135deg,#273623,#1b2b26);color:#ecffd1;border:1px solid #597c3f;border-radius:999px;padding:7px 14px 7px 8px;box-shadow:0 4px 18px #070d0a45;white-space:nowrap;min-height:40px;box-sizing:border-box}
+.token-wallet-coin,.token-stake-icon,.token-summary-icon{display:inline-grid;place-items:center;flex:none;color:#d5ff69;background:#3b5d23;border:1px solid #749f39;border-radius:50%;font-size:17px;width:32px;height:32px;line-height:1}
+.token-wallet-copy{display:flex;flex-direction:column;gap:1px;line-height:1.15}
+.token-wallet-label{font:700 9px/1.2 system-ui,sans-serif;letter-spacing:1px;color:#accb96}
+.token-wallet-number{font:500 12px/1.3 system-ui,sans-serif;color:#d9f5cc}
+.token-wallet-number strong{font:800 19px/1 system-ui,sans-serif;color:#f1ffd6;letter-spacing:-.4px}
+.token-stake-panel{border:1px solid #3f5b4e;background:linear-gradient(135deg,#202e2c,#19272d);border-radius:14px;padding:18px;margin:16px 0;max-width:100%;box-shadow:0 6px 20px #050a1138}
+.token-stake-heading{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.token-stake-icon{background:#2d4a3d;border-color:#4f8771;color:#9bffd3}
+.token-stake-heading>div{display:flex;flex-direction:column;gap:4px}
+.token-stake-heading strong{color:#effdf1;font-size:16px;letter-spacing:-.25px}
+.token-stake-heading>div>span{color:#a8c1bb;font-size:12px}
+.token-stake-panel .stake-select{margin:0 0 12px;justify-content:space-between;gap:12px;font-size:13px}
+.token-stake-panel .stake-select select{background:#121f26;border:1px solid #527267;border-radius:9px;padding:10px 35px 10px 12px;color:#edfff5;min-width:160px}
+.token-stake-panel .stake-select select:focus-visible{outline:2px solid #a2ffd6;outline-offset:2px}
+.stake-preview{padding:12px 14px;background:#101e23;border:1px solid #3b665a;color:#b8f5d7;border-radius:9px;font-size:13px;font-weight:700;line-height:1.5}
+.token-stake-panel .stake-help{margin:12px 0 0;color:#9eafa9;line-height:1.6;font-size:12px}
+.token-stake-panel.is-solo{opacity:.78}
+.match-currency.token-summary{padding:18px;border-radius:13px;background:linear-gradient(135deg,#1c2b35,#17232b);border:1px solid #42596a;color:#ecf3fa;box-shadow:0 4px 20px #060a1538}
+.token-summary-title{display:flex;align-items:center;gap:10px;font-size:15px;margin-bottom:16px}
+.token-summary-icon{width:28px;height:28px;color:#a6eaff;background:#1a3d4d;border-color:#387589;font-size:14px}
+.token-summary-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.token-summary-values>div{background:#111e29;border:1px solid #30455b;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.token-summary-values span{font-size:11px;color:#a9b9cc}
+.token-summary-values strong{font-size:19px;font-weight:800;color:#d8e9ff;overflow-wrap:anywhere}
+.token-summary.is-paid .token-summary-values strong{color:#d3ff88}
+.token-summary-note{margin:12px 0 0;font-size:12px;color:#afc3d5;line-height:1.6}
+.token-summary-payout{display:flex;gap:7px 12px;align-items:center;flex-wrap:wrap;margin-top:14px;padding:14px;background:#213b2a;border:1px solid #668d54;border-radius:10px}
+.token-summary-payout>span{font-size:12px;color:#bed7b0;flex:1 1 100px}
+.token-summary-payout>strong{font-size:19px;color:#e3ffbb}
+.token-summary-payout>small{width:100%;text-align:right;font-size:11px;color:#cae6b8}
+.paid-lobby-hint{border:1px solid #426d6d;background:#1b353a;color:#b8edee;border-radius:9px;padding:12px 14px;line-height:1.5;margin:0;font-size:13px}
+@media(max-width:640px){.topbar .token-wallet{padding:5px 9px 5px 5px;gap:5px;min-height:35px}.token-wallet-coin{width:26px;height:26px;font-size:14px}.token-wallet-label{font-size:8px}.token-wallet-number strong{font-size:16px}.token-wallet-number{font-size:10px}.token-stake-panel{padding:14px}.token-summary-values{gap:8px}.token-summary-values strong{font-size:16px}}
