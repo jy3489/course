@@ -399,7 +399,7 @@ function matchOutcome(match, userId) {
       outcome = seat
         ? {label:seat.player_index === result.winner ? "You won" : "You lost", kind:seat.player_index === result.winner ? "win" : "loss"}
         : {label:`${playerName(match.players.find(player => player.player_index === result.winner))} won`, kind:"neutral"};
-    } else if (result.winner === null && (result.draw === true || result.done === true)) {
+    } else if (result.winner === -1 || (result.winner === null && (result.draw === true || result.done === true))) {
       outcome = {label:"Draw", kind:"draw"};
     }
   }
