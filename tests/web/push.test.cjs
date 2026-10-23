@@ -54,6 +54,7 @@ function setup({
   };
   const fetches = [];
   const registration = {
+    active: { state: "activated" },
     pushManager: {
       _sub: null,
       subscribeCalls: [],
@@ -103,8 +104,8 @@ function setup({
     navigator: {
       onLine: true,
       serviceWorker: {
-        ready: Promise.resolve(registration),
-        register: async () => ({}),
+        register: async () => registration,
+        getRegistration: async () => registration,
       },
     },
     localStorage: {},
@@ -138,12 +139,10 @@ function setup({
     showPageError() {},
     el: (tag, attrs = {}, ...children) => ({ ...attrs, children }),
   });
-  vm.runInContext(
-    fs
-      .readFileSync(path.join(__dirname, "../../static/portal.js"), "utf8")
-      .replace(/main\(\);\s*$/, ""),
-    ctx,
-  );
+  const load = (file) =>
+    fs.readFileSync(path.join(__dirname, "../../static", file), "utf8");
+  vm.runInContext(load("push-notifications.js"), ctx);
+  vm.runInContext(load("portal.js").replace(/main\(\);\s*$/, ""), ctx);
   return {
     node,
     registration,

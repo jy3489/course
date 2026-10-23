@@ -138,6 +138,13 @@ pre {
   flex: 1;
 }
 
+/* Secondary toggle in the topbar (notifications), sized like the nav links. */
+.topbar .notify-toggle {
+  font-size: inherit;
+  padding: var(--space-xs) var(--space-sm);
+  white-space: nowrap;
+}
+
 /* Controls */
 
 input,

@@ -527,10 +527,12 @@ async function main() {
   $("starter-search").addEventListener("input",renderStarters);
   $("agent-stop").addEventListener("click",stopAgentWaiting);
   $("agent-input").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey))sendAgentMessage();});
-  document.addEventListener("auth-changed",()=>{Auth.renderMenu($("account-menu"));onUserChanged();});
+  document.addEventListener("auth-changed",()=>{Auth.renderMenu($("account-menu"));PushNotifications.setup($("notify-toggle"),apiRequest);onUserChanged();});
   window.addEventListener("beforeunload",event=>{rememberWork();if(isDirty()||state.savePromise||state.agentSending){event.preventDefault();event.returnValue="";}});
   document.addEventListener("visibilitychange",()=>{if(document.hidden&&isDirty())flushAutosave();});
   Auth.renderMenu($("account-menu"));initFloatingPanel();
+  $("notify-toggle").addEventListener("click",()=>PushNotifications.toggle($("notify-toggle"),apiRequest));
+  PushNotifications.setup($("notify-toggle"),apiRequest);
   try {await loadGames();await resumeWorkspace();}catch(error){showPageError("Couldn't load games: "+error.message);}
 }
 main();
