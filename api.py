@@ -53,6 +53,7 @@ from game_platform.schemas import (
     PushConfigOut,
     PushSubscribe,
     PushSubscriptionOut,
+    ReferralsOut,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -136,6 +137,7 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
         display_name=body.display_name,
         locale=body.locale,
         invited_by_user_id=body.invited_by_user_id,
+        invite_token=body.invite_token,
     )
     return UserWithPasswordOut.of_user(user)
 
@@ -164,6 +166,21 @@ def unsave_game(platform: Platform, caller_id: CallerId, game_id: str) -> list[G
         GameOut.of(g)
         for g in platform.unsave_game(caller_id=caller_id, game_id=game_id)
     ]
+
+
+@router.get("/users/me/referrals")
+def referrals(platform: Platform, request: Request, caller_id: CallerId) -> ReferralsOut:
+    """The caller's invite links and the people who came through them."""
+    invites, referred = platform.referrals(caller_id=caller_id)
+    base_url = _public_base_url(request)
+    return ReferralsOut(
+        invites_created=len(invites),
+        views=sum(invite.views for invite in invites),
+        acceptances=sum(len(invite.acceptances) for invite in invites),
+        sign_ups=len(referred),
+        referred_users=[UserOut.of(user) for user in referred],
+        invites=[InviteOut.of_invite(i, base_url=base_url) for i in invites],
+    )
 
 
 @router.get("/users/{user_id}")
@@ -598,7 +615,7 @@ def create_invite(
 ) -> InviteOut:
     """Creates a link (and QR code) that lets anyone who has it see the match and
     take a seat, including in a private match. Any player in the match may create
-    one, and who takes a seat with it is recorded."""
+    one; who uses it is recorded for the creator's referral stats."""
     body = body if body is not None else InviteCreate()
     invite = platform.create_invite(
         caller_id=caller_id,
@@ -625,7 +642,7 @@ def list_invites(
 @router.get("/invites/{token}")
 def view_invite(platform: Platform, request: Request, token: str) -> InviteViewOut:
     """What an invite link opens: the match and who invited you. Public: the token is
-    the secret."""
+    the secret. Each call counts as a view in the creator's referral stats."""
     view = platform.view_invite(token)
     reason = code = None
     if view.problem is not None:
@@ -663,7 +680,8 @@ def invite_qr_code(platform: Platform, request: Request, token: str) -> Response
 
 @router.post("/invites/{token}/accept")
 def accept_invite(platform: Platform, caller_id: CallerId, token: str) -> MatchOut:
-    """Takes a seat in the invite's match, even a private one."""
+    """Takes a seat in the invite's match. New users can sign up with POST /users
+    {invite_token} first, which credits the inviter with the referral."""
     return MatchOut.of(platform.accept_invite(caller_id=caller_id, token=token))
 
 
@@ -672,7 +690,7 @@ def revoke_invite(
     platform: Platform, request: Request, caller_id: CallerId, token: str
 ) -> InviteOut:
     """Stops the link from seating anyone else (its creator or the match's owner).
-    The record of who took a seat with it is kept."""
+    The referral record is kept."""
     invite = platform.revoke_invite(caller_id=caller_id, token=token)
     return InviteOut.of_invite(invite, base_url=_public_base_url(request))
 

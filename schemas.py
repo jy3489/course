@@ -104,6 +104,10 @@ class UserCreate(_Request):
     # The user whose invite link brought this person here; recorded only when this
     # creates a new account. Unknown ids are ignored.
     invited_by_user_id: str | None = None
+    # The match invite (POST /matches/{id}/invites) the person arrived through, if
+    # any; its creator is recorded as the inviter when [invited_by_user_id] isn't
+    # given. Unknown or unusable tokens are ignored.
+    invite_token: str | None = None
 
 
 class UserUpdate(_Request):
@@ -757,10 +761,16 @@ class InviteCreate(_Request):
 class InviteAcceptanceOut(BaseModel):
     user_id: str
     accepted_at: dt.datetime
+    # True when this user created their account through the invite link.
+    signed_up: bool
 
     @classmethod
     def of(cls, acceptance: InviteAcceptance) -> "InviteAcceptanceOut":
-        return cls(user_id=acceptance.user_id, accepted_at=acceptance.accepted_at)
+        return cls(
+            user_id=acceptance.user_id,
+            accepted_at=acceptance.accepted_at,
+            signed_up=acceptance.signed_up,
+        )
 
 
 class InviteLinks(BaseModel):
@@ -780,7 +790,7 @@ class InviteLinks(BaseModel):
 
 
 class InviteOut(InviteLinks):
-    """An invite as its creator sees it, with who took a seat through it."""
+    """An invite as its creator sees it, with its referral stats."""
 
     token: str
     match_id: str
@@ -789,6 +799,8 @@ class InviteOut(InviteLinks):
     expires_at: dt.datetime | None
     max_uses: int | None
     revoked: bool
+    # How many times the link was opened, and who took a seat with it.
+    views: int
     acceptances: list[InviteAcceptanceOut]
 
     @classmethod
@@ -802,12 +814,14 @@ class InviteOut(InviteLinks):
             expires_at=invite.expires_at,
             max_uses=invite.max_uses,
             revoked=invite.revoked,
+            views=invite.views,
             acceptances=[InviteAcceptanceOut.of(a) for a in invite.acceptances],
         )
 
 
 class InviteViewOut(BaseModel):
-    """What anyone holding an invite link sees: enough to decide whether to join."""
+    """What anyone holding an invite link sees: enough to decide whether to join,
+    without the creator's referral stats."""
 
     token: str
     match: MatchOut
@@ -820,3 +834,15 @@ class InviteViewOut(BaseModel):
     usable: bool
     unusable_reason: str | None = None
     unusable_code: str | None = None
+
+
+class ReferralsOut(BaseModel):
+    """The caller's invite links and who came through them."""
+
+    invites_created: int
+    # Totals over every invite: link opens, seats taken, and accounts created.
+    views: int
+    acceptances: int
+    sign_ups: int
+    referred_users: list[UserOut]
+    invites: list[InviteOut]

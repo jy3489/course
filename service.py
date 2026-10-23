@@ -254,12 +254,28 @@ class GamePlatform:
         linked_accounts: tuple[LinkedAccount, ...] = (),
         locale: str = "",
         invited_by_user_id: str | None = None,
+        invite_token: str | None = None,
     ) -> User:
         """[invited_by_user_id] is the user whose invite link brought this one here.
         An unknown id is ignored rather than rejected, so a stale or mistyped invite
         link never stops anyone from signing up; a merged-away id is recorded as the
-        account it was merged into."""
+        account it was merged into. [invite_token] is the match invite the user
+        arrived through, if any: when [invited_by_user_id] names nobody, the invite's
+        creator is recorded as the inviter. Unknown or unusable tokens are ignored
+        for the same reason."""
         with self._lock:
+            inviter_id = self._existing_user_id(invited_by_user_id)
+            via_token = None
+            invite = self._store.get_invite(invite_token) if invite_token else None
+            if invite is not None:
+                try:
+                    self._check_invite_usable(invite)
+                    via_token = invite.token
+                    inviter_id = inviter_id or self._existing_user_id(
+                        invite.created_by_user_id
+                    )
+                except PlatformError:
+                    pass
             now = self._clock()
             user = User(
                 id=self._new_id(),
@@ -269,7 +285,8 @@ class GamePlatform:
                 locale=locale,
                 password=self._new_password(),
                 linked_accounts=linked_accounts,
-                invited_by_user_id=self._existing_user_id(invited_by_user_id),
+                invited_by_user_id=inviter_id,
+                invited_via_invite_token=via_token,
                 created_at=now,
                 updated_at=now,
             )
@@ -691,6 +708,8 @@ class GamePlatform:
             replaced_user_ids=replaced_ids,
             saved_game_ids=_dedupe((*into.saved_game_ids, *source.saved_game_ids)),
             invited_by_user_id=invited_by,
+            invited_via_invite_token=into.invited_via_invite_token
+            or source.invited_via_invite_token,
             updated_at=self._clock(),
         )
         self._store.put_user(into)
@@ -1325,9 +1344,12 @@ class GamePlatform:
 
     def view_invite(self, token: str) -> InviteView:
         """What an invite link shows: its match (even a private one, since the token
-        is the secret), who sent it, and why it can't be used, if it can't. Public."""
+        is the secret), who sent it, and why it can't be used, if it can't. Public,
+        and counted as a view in the creator's referral stats."""
         with self._lock:
             invite = self._get_invite(token)
+            invite = replace(invite, views=invite.views + 1)
+            self._store.put_invite(invite)
             match = self._get_match(invite.match_id)
             game = self._store.get_game_version(match.game_id, match.game_version)
             try:
@@ -1346,7 +1368,7 @@ class GamePlatform:
             )
 
     def check_invite_exists(self, token: str) -> None:
-        """Raises NotFoundError unless [token] names an invite."""
+        """Raises NotFoundError unless [token] names an invite. Doesn't count a view."""
         with self._lock:
             self._get_invite(token)
 
@@ -1360,7 +1382,12 @@ class GamePlatform:
                 return match
             self._check_invite_usable(invite)
             joined = self._join(match, caller_id=caller_id)
-            acceptance = InviteAcceptance(user_id=caller_id, accepted_at=self._clock())
+            user = self._store.get_user(caller_id)
+            acceptance = InviteAcceptance(
+                user_id=caller_id,
+                accepted_at=self._clock(),
+                signed_up=user is not None and user.invited_via_invite_token == token,
+            )
             self._store.put_invite(
                 replace(invite, acceptances=(*invite.acceptances, acceptance))
             )
@@ -1388,6 +1415,19 @@ class GamePlatform:
             return self._store.list_invites(
                 created_by_user_id=caller_id, match_id=match_id
             )
+
+    def referrals(self, *, caller_id: str) -> tuple[list[Invite], list[User]]:
+        """The caller's match invites, and the users the caller invited: through a
+        match invite or a personal invite link (GET /admin/invites has the tree)."""
+        with self._lock:
+            invites = self._store.list_invites(created_by_user_id=caller_id)
+            referred = [
+                user
+                for user in self._store.list_users()
+                if user.replaced_by_user_id is None
+                and self._inviter_of(user) == caller_id
+            ]
+            return invites, referred
 
     def _get_invite(self, token: str) -> Invite:
         invite = self._store.get_invite(token)

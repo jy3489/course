@@ -248,7 +248,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?}`; returns its `password` |
+| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?, invite_token?}`; returns its `password` |
 | `GET /users/{id}` |  | Get a user |
 | `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |
 | `GET /i18n/locales` |  | The supported languages (see [Languages](#languages)) |
@@ -275,11 +275,12 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `PUT /users/me/saved-games/{game_id}` | yes | Save a game (idempotent); returns the library |
 | `DELETE /users/me/saved-games/{game_id}` | yes | Unsave a game (idempotent); returns the library |
 | `POST /matches/{id}/invites` | yes | Create an invite link + QR code `{expires_in_seconds?, max_uses?}` (players only) |
-| `GET /users/me/invites?match_id=` | yes | The caller's match invites, with who accepted |
+| `GET /users/me/invites?match_id=` | yes | The caller's match invites, with views and who accepted |
 | `GET /invites/{token}` |  | What an invite opens: the match, game and inviter, and whether it's still usable (counts a view) |
 | `GET /invites/{token}/qr.svg` |  | The invite link as an SVG QR code |
 | `POST /invites/{token}/accept` | yes | Take a seat through the invite (works for private matches) |
 | `POST /invites/{token}/revoke` | yes | Stop the link working (its creator or the match's owner) |
+| `GET /users/me/referrals` | yes | The caller's referral stats: invites, views, acceptances, sign-ups and referred users |
 | `GET /push/config` |  | Whether web push is set up, and the VAPID public key to subscribe with |
 | `POST /push/subscriptions` | yes | Register (201) or refresh (200) the caller's browser subscription `{endpoint, keys, expiration_time?}`, keyed by endpoint |
 | `GET /push/subscriptions` | yes | List the caller's subscriptions |
@@ -331,6 +332,16 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
   people when it's revoked, expired, used up, or the match is over;
   `GET /invites/{token}` then reports `usable: false` with a localized
   `unusable_reason` and a stable `unusable_code`. Deleting a match deletes its invites.
+- **Referrals**: every match invite records how often it was opened (`views`) and who
+  took a seat with it (`acceptances`). A newcomer who signs up with
+  `POST /users {invite_token}` gets the invite's creator as their `invited_by_user_id`,
+  the same field personal invite links set (see
+  [Invite links](#invite-links-referrals)), so they count in `/invites` and
+  `GET /admin/invites` too. An explicit `invited_by_user_id` wins over the token, and
+  an unknown or dead token is ignored rather than blocking sign-up. Their acceptance is
+  flagged `signed_up`. `GET /users/me/referrals` sums up a user's own invites and
+  everyone they invited either way. Merging accounts carries invites and acceptances
+  over to the surviving account.
 
 ### Languages
 
@@ -479,7 +490,7 @@ any idle connection a browser keeps.
 
 The data file holds everything: users (including their passwords), every
 version of every game, which games are deleted, all matches with their moves, and
-web push subscriptions, invites (with who took a seat through them), and each user's saved
+web push subscriptions, invites (with their referral records), and each user's saved
 games and referrer. Its layout is
 `{"format_version": 1, "data": {"users": [...], "game_versions": [...], "deleted_game_ids": [...], "matches": [...]}}`.
 `format_version` is for incompatible layout changes after launch.
@@ -490,7 +501,8 @@ games and referrer. Its layout is
   rather than overwrite it.
 - While running, requests are served from memory. After a change, a background thread
   rewrites the whole file, at most once per `data_file.save_interval_seconds`, so a burst
-  of changes costs one write. Reads never write.
+  of changes costs one write. Reads never write, except `GET /invites/{token}`, which
+  counts a view for the inviter's referral stats.
 - Each write goes to `<path>.tmp`, which is then renamed over the file, so the file is
   never left half-written. A failed write is logged and retried.
 - A clean shutdown (Ctrl+C or SIGTERM) writes any pending changes. A crash or `kill -9`
