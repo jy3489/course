@@ -9,6 +9,7 @@ clock, so the output is the same on every run.
 
 import argparse
 import datetime as dt
+import itertools
 import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -57,8 +58,14 @@ def build(operations: Iterable[Mapping[str, Any]]) -> Snapshot:
     store = InMemoryStore()
     ids = _Queue("id")
     passwords = _Queue("password")
+    # Referral codes count up from 10001 so the generated file never changes.
+    codes = (str(n) for n in itertools.count(10_001))
     platform = GamePlatform(
-        store=store, clock=_Clock(), new_id=ids, new_password=passwords
+        store=store,
+        clock=_Clock(),
+        new_id=ids,
+        new_password=passwords,
+        new_referral_code=lambda: next(codes),
     )
     for number, operation in enumerate(operations, start=1):
         try:

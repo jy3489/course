@@ -106,6 +106,17 @@ def _new_verification_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
+# Referral codes: 5-digit numbers with no leading zero, so always 5 characters.
+REFERRAL_CODE_MIN: Final = 10_000
+REFERRAL_CODE_MAX: Final = 99_999
+# What an invite's "ref" looks like when it's a code rather than a user id.
+_REFERRAL_CODE_RE: Final = re.compile(r"\d{5}")
+
+
+def _new_referral_code() -> str:
+    return str(REFERRAL_CODE_MIN + secrets.randbelow(REFERRAL_CODE_MAX - REFERRAL_CODE_MIN + 1))
+
+
 # Login codes sent by text/email live this long, survive this many wrong guesses, and
 # can be re-requested this often per identifier (sliding window of one hour).
 VERIFICATION_TTL_SECONDS: Final = 600
@@ -223,6 +234,7 @@ class GamePlatform:
         new_password: Callable[[], str] = _new_password,
         new_verification_code: Callable[[], str] = _new_verification_code,
         new_invite_token: Callable[[], str] = _new_invite_token,
+        new_referral_code: Callable[[], str] = _new_referral_code,
         push_notifier: PushNotifier | None = None,
         max_push_subscriptions_per_user: int = 10,
     ) -> None:
@@ -232,6 +244,7 @@ class GamePlatform:
         self._new_password = new_password
         self._new_verification_code = new_verification_code
         self._new_invite_token = new_invite_token
+        self._new_referral_code = new_referral_code
         self._push_notifier = (
             push_notifier if push_notifier is not None else LogPushNotifier()
         )
@@ -242,6 +255,10 @@ class GamePlatform:
         # requests on a thread pool, so serialize them. Reentrant, because verifying a
         # code and merging accounts compose smaller locked operations.
         self._lock = threading.RLock()
+        # Referral code -> the user id it was given to (possibly merged away since,
+        # which resolves to the survivor like any old id).
+        self._user_ids_by_code: dict[str, str] = {}
+        self._give_missing_referral_codes()
 
     # Users
 
@@ -256,15 +273,16 @@ class GamePlatform:
         invited_by_user_id: str | None = None,
         invite_token: str | None = None,
     ) -> User:
-        """[invited_by_user_id] is the user whose invite link brought this one here.
-        An unknown id is ignored rather than rejected, so a stale or mistyped invite
+        """[invited_by_user_id] is the user whose invite link brought this one here:
+        their 5-digit referral code, or their user id (older links). Each new user
+        gets a referral code of their own. An unknown code or id is ignored rather than rejected, so a stale or mistyped invite
         link never stops anyone from signing up; a merged-away id is recorded as the
         account it was merged into. [invite_token] is the match invite the user
         arrived through, if any: when [invited_by_user_id] names nobody, the invite's
         creator is recorded as the inviter. Unknown or unusable tokens are ignored
         for the same reason."""
         with self._lock:
-            inviter_id = self._existing_user_id(invited_by_user_id)
+            inviter_id = self._referrer_id(invited_by_user_id)
             via_token = None
             invite = self._store.get_invite(invite_token) if invite_token else None
             if invite is not None:
@@ -277,8 +295,10 @@ class GamePlatform:
                 except PlatformError:
                     pass
             now = self._clock()
+            user_id = self._new_id()
             user = User(
-                id=self._new_id(),
+                id=user_id,
+                referral_code=self._take_referral_code(user_id),
                 display_name=display_name,
                 email=email,
                 picture_url=picture_url,
@@ -391,6 +411,43 @@ class GamePlatform:
             if final is not None:
                 return final
         return survivor
+
+    def _give_missing_referral_codes(self) -> None:
+        """At startup: indexes the codes accounts have, and gives one to every account
+        from before referral codes."""
+        with self._lock:
+            users = self._store.list_users()
+            for user in users:
+                if user.referral_code:
+                    self._user_ids_by_code[user.referral_code] = user.id
+            for user in users:
+                if not user.referral_code:
+                    self._store.put_user(
+                        replace(user, referral_code=self._take_referral_code(user.id))
+                    )
+
+    def _take_referral_code(self, user_id: str) -> str:
+        """A random code no account has yet, now reserved for [user_id]. The caller
+        holds the lock."""
+        # TODO: free the codes of long-inactive accounts once there's a policy for it;
+        # until then a code is never reused (except a deleted account's, see
+        # admin_delete_user).
+        if len(self._user_ids_by_code) > REFERRAL_CODE_MAX - REFERRAL_CODE_MIN:
+            raise RuntimeError(
+                f"all {REFERRAL_CODE_MAX - REFERRAL_CODE_MIN + 1} referral codes are taken"
+            )
+        while (code := self._new_referral_code()) in self._user_ids_by_code:
+            pass  # a collision: pick another random number
+        self._user_ids_by_code[code] = user_id
+        return code
+
+    def _referrer_id(self, ref: str | None) -> str | None:
+        """The surviving account an invite link's "ref" names: a 5-digit referral code
+        or (older links) a user id. None when it names nobody. The caller holds the
+        lock."""
+        if ref and _REFERRAL_CODE_RE.fullmatch(ref):
+            ref = self._user_ids_by_code.get(ref)
+        return self._existing_user_id(ref)
 
     def _existing_user_id(self, user_id: str | None) -> str | None:
         """[user_id] resolved to its surviving account, or None when there is no such
@@ -2100,6 +2157,7 @@ class GamePlatform:
                     "picture_url": user.picture_url,
                     "invited_by_user_id": parent[user.id],
                     "invited_by_name": names.get(parent[user.id] or "", ""),
+                    "referral_code": user.referral_code,
                     "direct_invites": len(children[user.id]),
                     "total_invites": total[user.id],
                     "depth": depth[user.id],
@@ -2143,6 +2201,9 @@ class GamePlatform:
                         )
                     )
             self._store.delete_user(user_id)
+            # The account is gone, so its code is free again (as after a restart).
+            if deleted.referral_code:
+                self._user_ids_by_code.pop(deleted.referral_code, None)
 
     def admin_delete_game(self, game_id: str) -> None:
         with self._lock:

@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated, Final
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -208,8 +209,10 @@ def referrals(platform: Platform, request: Request, caller_id: CallerId) -> Refe
 
 
 @router.get("/users/{user_id}")
-def get_user(platform: Platform, user_id: str) -> UserOut:
-    return UserOut.of(platform.get_user(user_id))
+def get_user(platform: Platform, user_id: str, caller_id: OptionalCallerId) -> UserOut:
+    """Includes [referral_code] only when the caller is this user."""
+    user = platform.get_user(user_id)
+    return UserOut.of(user, own=caller_id is not None and caller_id == user.id)
 
 
 @router.patch("/users/{user_id}")
@@ -222,7 +225,7 @@ def update_user(
         display_name=body.display_name,
         locale=body.locale,
     )
-    return UserOut.of(user)
+    return UserOut.of(user, own=True)
 
 
 @router.post("/users/{user_id}/merge")
@@ -237,7 +240,7 @@ def merge_users(
     user = platform.merge_users(
         caller_id=caller_id, from_user_id=user_id, into_user_id=body.into_user_id
     )
-    return UserOut.of(user)
+    return UserOut.of(user, own=True)
 
 
 # Third-party login
@@ -929,6 +932,15 @@ def builder() -> FileResponse:
 @debug_router.get("/portal")
 def portal() -> FileResponse:
     return FileResponse(_STATIC_DIR / "portal.html")
+
+
+@debug_router.get("/r/{code}")
+def short_invite_link(code: str) -> RedirectResponse:
+    """Short invite links: /r/<referral code> opens the portal crediting that user.
+    The code goes in the query, not the hash, so the browser keeps the link's own
+    hash (e.g. /r/48213#match=<id> arrives as /portal?ref=48213#match=<id>). Unknown
+    codes still redirect; the server then ignores the ref when an account is made."""
+    return RedirectResponse(f"/portal?{urlencode({'ref': code})}", status_code=HTTPStatus.FOUND)
 
 
 @debug_router.get("/browse", dependencies=[MasterPassword])

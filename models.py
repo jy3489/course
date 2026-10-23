@@ -69,6 +69,11 @@ class User:
     # the invite can tell sign-ups from existing users. Defaults to None so older
     # data files load.
     invited_via_invite_token: str | None = None
+    # A short number for invite links (/r/<code>): 5 digits, 10000 to 99999, unique
+    # across accounts. Given when the account is created (accounts from before codes
+    # get one at startup) and kept through merges, where it keeps crediting the
+    # surviving account. Defaults to None so older data files load.
+    referral_code: str | None = None
     # Games the user saved to their library, most recently saved last. Defaults to
     # empty so older data files load.
     saved_game_ids: tuple[str, ...] = ()

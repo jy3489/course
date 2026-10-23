@@ -22,16 +22,18 @@ def test_create_and_get_a_guest_user(api: Api) -> None:
         "linked_accounts": [],
         "token_balance": 0,
         "last_token_grant_day": None,
+        "referral_code": user["referral_code"],
         "created_at": "2026-01-01T00:01:00Z",
         "updated_at": "2026-01-01T00:01:00Z",
     }
     assert len(user["password"]) >= 20
+    assert user["referral_code"].isdigit() and 10000 <= int(user["referral_code"]) <= 99999
     # The password is only ever returned on creation (linked logins only to the
-    # owner, through /auth/*).
+    # owner, through /auth/*), and the referral code only to the user themself.
     user_without_password = {
         key: user[key] for key in user if key not in ("password", "linked_accounts")
     }
-    assert api.ok("GET", f"/users/{user['id']}") == user_without_password
+    assert api.ok("GET", f"/users/{user['id']}") == {**user_without_password, "referral_code": None}
 
 
 def test_every_user_gets_a_different_password(api: Api) -> None:
@@ -83,7 +85,7 @@ def test_endpoints_that_need_identity_check_the_user_and_password(api: Api) -> N
 
 def test_users_can_change_their_own_display_name(api: Api) -> None:
     alice, bob = api.new_user("alice"), api.new_user("bob")
-    before = api.ok("GET", f"/users/{alice}")
+    before = api.ok("GET", f"/users/{alice}", as_user=alice)
     after = api.ok(
         "PATCH", f"/users/{alice}", as_user=alice, json={"display_name": "Alice"}
     )
@@ -94,7 +96,7 @@ def test_users_can_change_their_own_display_name(api: Api) -> None:
         "display_name": ("alice", "Alice"),
         "updated_at": ("2026-01-01T00:01:00Z", "2026-01-01T00:03:00Z"),
     }
-    assert api.ok("GET", f"/users/{alice}") == after
+    assert api.ok("GET", f"/users/{alice}", as_user=alice) == after
 
     def rename(user_id: str, *, as_user: str | None) -> tuple[int, object]:
         response = api.request(

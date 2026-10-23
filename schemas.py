@@ -101,8 +101,9 @@ class UserCreate(_Request):
     # The user's preferred language (see GET /i18n/locales); responses to their requests
     # are in it unless a request says otherwise.
     locale: LocaleCode = ""
-    # The user whose invite link brought this person here; recorded only when this
-    # creates a new account. Unknown ids are ignored.
+    # The user whose invite link brought this person here: their 5-digit referral code
+    # or their user id (older links). Recorded only when this creates a new account.
+    # Unknown codes and ids are ignored.
     invited_by_user_id: str | None = None
     # The match invite (POST /matches/{id}/invites) the person arrived through, if
     # any; its creator is recorded as the inviter when [invited_by_user_id] isn't
@@ -145,11 +146,15 @@ class UserOut(BaseModel):
     updated_at: dt.datetime
     token_balance: int = 0
     last_token_grant_day: str | None = None
+    # The user's own short invite code (links look like /r/<code>). Only in responses
+    # about the caller's own account; None for other users.
+    referral_code: str | None = None
 
     @classmethod
-    def of(cls, user: User) -> "UserOut":
+    def of(cls, user: User, *, own: bool = False) -> "UserOut":
         return cls(
             id=user.id,
+            referral_code=user.referral_code if own else None,
             display_name=user.display_name,
             picture_url=user.picture_url,
             locale=user.locale,
@@ -172,7 +177,7 @@ class UserWithPasswordOut(UserOut):
     @classmethod
     def of_user(cls, user: User) -> "UserWithPasswordOut":
         return cls(
-            **UserOut.of(user).model_dump(),
+            **UserOut.of(user, own=True).model_dump(),
             password=user.password,
             linked_accounts=[LinkedAccountOut.of(a) for a in user.linked_accounts],
         )
@@ -206,10 +211,13 @@ class AuthResponse(BaseModel):
     password: str
     linked_accounts: list[LinkedAccountOut] = []
     merged_from_user_id: str | None = None
+    # The user's short invite code, for invite links (/r/<code>).
+    referral_code: str | None = None
 
     @classmethod
     def of(cls, user: User, merged_from_user_id: str | None = None) -> "AuthResponse":
         return cls(
+            referral_code=user.referral_code,
             user_id=user.id,
             display_name=user.display_name,
             email=user.email,
@@ -223,8 +231,8 @@ class AuthResponse(BaseModel):
 class GoogleLogin(_Request):
     # The ID token from the website's Sign in with Google button.
     id_token: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-    # The user whose invite link brought this person here; recorded only when this
-    # creates a new account. Unknown ids are ignored.
+    # The user whose invite link brought this person here: a 5-digit referral code or
+    # a user id. Recorded only when this creates a new account; unknown ones are ignored.
     invited_by_user_id: str | None = None
 
 
@@ -253,8 +261,8 @@ class VerifyCode(_Request):
     code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     # The new account's display name, used only on first login with this credential.
     display_name: Name | None = None
-    # The user whose invite link brought this person here; recorded only when this
-    # creates a new account. Unknown ids are ignored.
+    # The user whose invite link brought this person here: a 5-digit referral code or
+    # a user id. Recorded only when this creates a new account; unknown ones are ignored.
     invited_by_user_id: str | None = None
 
 
