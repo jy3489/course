@@ -387,6 +387,7 @@ async function refreshLocked() {
       } catch (error) {
         if (error.status !== 404) throw error;
         showMessage("This match no longer exists.", "error");
+        state.replay = null;
         state.match = null;
       }
     }
@@ -720,6 +721,7 @@ function selectMatch(id) {
   const saved = offline.read();
   saved.selectedId = id;
   offline.write(saved);
+  state.replay = null;
   state.match = null;
   state.armed = null;
   state.lastSent = null;
@@ -1000,6 +1002,7 @@ function renderMatch() {
 function render() {
   renderLists();
   renderMatch();
+  renderHistory();
 }
 
 // The game iframe
@@ -1015,6 +1018,33 @@ async function gameCode(match) {
     state.gameCache.set(key, game);
   }
   return game.code;
+}
+
+async function browseHistory(direction) {
+  const match = state.match;
+  if (!match || !match.move_count) return;
+  if (direction === "live") state.replay = null;
+  else try {
+    const data = await portalRequest("GET", `/matches/${match.id}/history`, {user: me()});
+    const moves = data.moves;
+    const minimum = data.initial_turn_player_indices === null ? 1 : 0;
+    if (state.match?.id !== match.id) return;
+    const current = state.replay?.id === match.id ? state.replay.index : moves.length;
+    const index = Math.max(minimum, Math.min(moves.length, current + direction));
+    const move = index === 0 ? {new_state: data.initial_state, next_turn_player_indices: data.initial_turn_player_indices} : moves[index - 1];
+    if (!move) return;
+    state.replay = {id: match.id, index, minimum, move};
+  } catch (error) { showMessage(`History unavailable: ${error.message}`, "error"); return; }
+  renderHistory();await syncGame();
+}
+function renderHistory() {
+  const match = state.match, replay = state.replay?.id === match?.id ? state.replay : null;
+  const count = match?.move_count || 0;
+  $("match-history").hidden = count < 1;
+  $("history-position").textContent = replay ? `Viewing move ${replay.index} of ${count} · read only` : `Live · ${count} moves`;
+  $("history-back").disabled = (replay?.index ?? count) <= (replay?.minimum ?? 0);
+  $("history-forward").disabled = !replay || replay.index >= count;
+  $("history-live").disabled = !replay;
 }
 
 async function syncGame() {
@@ -1038,19 +1068,21 @@ async function syncGame() {
       : user
         ? seatOf(match, user.id)
         : null;
+  const replay = state.replay?.id === match.id ? state.replay : null;
+  const view = replay ? {...match, state: replay.move.new_state, turn_of_player_indices: replay.move.next_turn_player_indices, move_count: replay.index, status: replay.move.next_turn_player_indices === null ? "over" : "ongoing", end_reason: replay.move.next_turn_player_indices === null ? "finished" : null} : match;
   const message = stateChangedMessage({
-    state: match.state,
+    state: view.state,
     players: match.players.map((player) => ({
       player_index: player.player_index,
       kind: player.kind,
       name: playerName(player),
     })),
-    turn: match.turn_of_player_indices,
-    status: match.status,
-    endReason: match.end_reason,
-    moveCount: match.move_count,
+    turn: view.turn_of_player_indices,
+    status: view.status,
+    endReason: view.end_reason,
+    moveCount: view.move_count,
     mySeat: mySeat ? mySeat.player_index : null,
-    actingFor: user && !match.conflict ? actingFor(match, user.id) : null,
+    actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
   });
   const json = JSON.stringify(message);
   if (json !== state.lastSent) {
@@ -1060,7 +1092,7 @@ async function syncGame() {
 }
 
 async function onMakeMove(move) {
-  if (state.moveInFlight) return;
+  if (state.moveInFlight || state.replay?.id === state.match?.id) return;
   state.moveInFlight = true;
   try {
     await portalLock(async () => {
@@ -1297,4 +1329,7 @@ async function main() {
   setupNotifications();
 }
 
+$("history-back").addEventListener("click", () => browseHistory(-1));
+$("history-forward").addEventListener("click", () => browseHistory(1));
+$("history-live").addEventListener("click", () => browseHistory("live"));
 main();

@@ -168,3 +168,13 @@ test("409 rejection retries are bounded and preserve queued move", async () => {
   assert.equal(o.read().queues.match.length, 1);
   assert.ok(o.read().conflicts.match);
 });
+
+test('local practice history survives storage reload and is readable offline', async () => {
+  const {o,storage}=setup();
+  const d=o.read();d.local['local-replay']={...base,id:'local-replay'};o.write(d);
+  const match=await o.get('/matches/local-replay');o.enqueue(match,body);
+  const restored=new Offline(storage,()=>{throw new Error('must stay offline');},()=>({id:'alice',password:'test'}),()=>false);
+  const moves=await restored.get('/matches/local-replay/moves');
+  assert.equal(moves.length,1);assert.deepEqual(moves[0].new_state,{score:1});
+  assert.deepEqual(moves[0].next_turn_player_indices,[1]);
+});

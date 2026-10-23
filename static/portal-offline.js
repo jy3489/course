@@ -67,9 +67,12 @@ class PortalOffline {
   async get(path, options = {}) {
     const localId = path.startsWith("/matches/") ? path.slice(9) : null;
     if (localId?.startsWith("local-")) {
-      const match = this.read().local[localId];
+      const snapshot = localId.endsWith("/history");
+      const history = localId.endsWith("/moves") || snapshot;
+      const match = this.read().local[snapshot ? localId.slice(0, -8) : history ? localId.slice(0, -6) : localId];
       if (!match) throw new Error("Local practice is no longer saved.");
-      return match;
+      if (snapshot) return {initial_state: null, initial_turn_player_indices: match.historyStart === 0 ? [0] : null, moves: match.moves || []};
+      return history ? (match.moves || []) : match;
     }
     let value;
     const identity = this.key();
@@ -144,7 +147,9 @@ class PortalOffline {
         throw new Error(
           "Local practice changed in another tab. Refresh before moving.",
         );
-      data.local[id] = this.apply(data.local[id], body);
+      const previous = data.local[id];
+      data.local[id] = this.apply(previous, body);
+      data.local[id].moves = [...(previous.moves || []), {new_state: body.new_state, next_turn_player_indices: body.next_turn_player_indices}];
       this.write(data);
       return data.local[id];
     }
@@ -300,6 +305,7 @@ class PortalOffline {
       end_reason: null,
       created_at: new Date().toISOString(),
       localMode: mode,
+      historyStart: 0,
     };
     const d = this.read();
     d.local[id] = match;
