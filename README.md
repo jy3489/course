@@ -1049,3 +1049,10 @@ command. Configure these repository secrets (Settings > Secrets and variables > 
 | `GCP_VM_USER` | SSH user |
 | `GCP_VM_SSH_KEY` | Private key of a deploy key whose public half is in the VM's `~/.ssh/authorized_keys` |
 | `GCP_VM_DEPLOY_COMMAND` | Command run on the VM, e.g. `cd ~/game_platform && git pull --ff-only && ~/venv/bin/pip install -r requirements.txt && sudo systemctl restart game-platform` (the real path and service name depend on how the server is set up) |
+
+**Status (Oct 23, 2026): configured.** All four secrets are set in this repo, with a
+dedicated deploy key on the VM (user `yoavgamingcoursezibin`). The deploy command checks
+out the pushed `main` on the VM (`git fetch` + `git reset --hard origin/main` under
+`/opt/game-platform/game_platform`), installs `requirements.txt` into the server venv, and
+restarts `game-platform.service`. So every push to `main` that passes the unit and UI tests
+now deploys to https://buildplay.fun automatically — no manual VM step needed.
