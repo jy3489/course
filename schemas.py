@@ -494,6 +494,14 @@ class MatchCreate(_Request):
     private: bool = False
 
 
+class QuickMatchRequest(_Request):
+    model_config = _example({"game_id": "", "num_players": 2})
+
+    game_id: str
+    # How many humans to wait for; defaults to the game's smallest count above one.
+    num_players: PlayerCount | None = None
+
+
 class MatchUpdate(_Request):
     model_config = _example({"num_computer_opponents": 1})
 
@@ -548,6 +556,8 @@ class MatchOut(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     private: bool = False
+    # Set on quick matches: how many players it waits for before starting itself.
+    matchmaking_player_count: int | None = None
 
     @classmethod
     def of(cls, match: Match) -> "MatchOut":
@@ -567,6 +577,7 @@ class MatchOut(BaseModel):
             created_at=match.created_at,
             updated_at=match.updated_at,
             private=match.private,
+            matchmaking_player_count=match.matchmaking_player_count,
         )
 
 

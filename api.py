@@ -53,6 +53,7 @@ from game_platform.schemas import (
     PushConfigOut,
     PushSubscribe,
     PushSubscriptionOut,
+    QuickMatchRequest,
     ReferralsOut,
     UserCreate,
     UserOut,
@@ -506,6 +507,22 @@ def create_match(
         private=body.private,
     )
     return MatchOut.of(match)
+
+
+@router.post("/matchmaking/quick-match")
+def quick_match(
+    platform: Platform, caller_id: CallerId, body: QuickMatchRequest
+) -> MatchOut:
+    """Plays against random opponents: joins the oldest quick match of the game that
+    is waiting for players, or starts a new one for others to join. The match starts
+    by itself once it has all its players; poll it (or wait for the push notification)
+    until its status is "ongoing". Calling again while waiting returns the same match;
+    the owner cancels by deleting it, anyone else by leaving."""
+    return MatchOut.of(
+        platform.quick_match(
+            caller_id=caller_id, game_id=body.game_id, num_players=body.num_players
+        )
+    )
 
 
 @router.get("/matches")

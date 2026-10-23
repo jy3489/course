@@ -274,6 +274,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `GET /users/me/saved-games` | yes | The caller's saved games, most recently saved first |
 | `PUT /users/me/saved-games/{game_id}` | yes | Save a game (idempotent); returns the library |
 | `DELETE /users/me/saved-games/{game_id}` | yes | Unsave a game (idempotent); returns the library |
+| `POST /matchmaking/quick-match` | yes | Play random opponents `{game_id, num_players?}` (see [Matchmaking](#matchmaking-private-matches-and-invites)) |
 | `POST /matches/{id}/invites` | yes | Create an invite link + QR code `{expires_in_seconds?, max_uses?}` (players only) |
 | `GET /users/me/invites?match_id=` | yes | The caller's match invites, with views and who accepted |
 | `GET /invites/{token}` |  | What an invite opens: the match, game and inviter, and whether it's still usable (counts a view) |
@@ -319,10 +320,18 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
 
-### Private matches and invites
+### Matchmaking, private matches and invites
 
+- **Quick match** (`POST /matchmaking/quick-match`) finds random opponents: it seats
+  you in the oldest public quick match of that game (same game version) waiting for
+  players, or creates one for others to find. `num_players` defaults to the game's
+  smallest player count above one; each count is its own queue. When the last player
+  joins, the match starts by itself, exactly like the portal's Start button (seat 0
+  moves first and the game creates its initial state), and seat 0 gets a "your turn"
+  push. Asking again while waiting returns the same match. To cancel, the owner
+  deletes the match and anyone else leaves it.
 - **Private matches** (`private: true` on `POST /matches`) never appear in
-  `GET /matches/open`, are a 404 to anyone not in
+  `GET /matches/open` or matchmaking, are a 404 to anyone not in
   them, and `POST /matches/{id}/join` refuses outsiders (403). Invites are the way in.
 - **Invites** are links of the form `<public_base_url>/portal#invite=<token>`, also
   served as a QR code at `/invites/{token}/qr.svg`. The 16-character token is the

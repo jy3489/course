@@ -997,6 +997,7 @@ class GamePlatform:
         caller_id: str,
         num_computer_opponents: int = 0,
         private: bool = False,
+        matchmaking_player_count: int | None = None,
     ) -> Match:
         """Stores a new waiting match of [game] owned (and first seated) by [caller_id].
         The caller holds the lock and has checked the game."""
@@ -1019,6 +1020,7 @@ class GamePlatform:
             created_at=now,
             updated_at=now,
             private=private,
+            matchmaking_player_count=matchmaking_player_count,
         )
         self._store.put_match(match)
         return match
@@ -1083,8 +1085,8 @@ class GamePlatform:
             return self._join(match, caller_id=caller_id)
 
     def _join(self, match: Match, *, caller_id: str) -> Match:
-        """Seats [caller_id] in [match], whatever its privacy. The caller holds the
-        lock."""
+        """Seats [caller_id] in [match], whatever its privacy; quick matches start
+        once they have all their players. The caller holds the lock."""
         if match.seat_of(caller_id) is not None:
             raise ConflictError("you are already a player in this match")
         if not self._get_game(match.game_id).published:
@@ -1111,6 +1113,32 @@ class GamePlatform:
             actor_name=joiner.display_name if joiner is not None else "",
             tag_suffix="join",
         )
+        target = saved.matchmaking_player_count
+        if (
+            target is not None
+            and saved.status == "waiting_for_players"
+            and len(saved.seats) >= target
+        ):
+            # Like the portal's Start button: seat 0 moves first, and the game
+            # creates its own initial state.
+            saved = self._save(
+                replace(
+                    saved,
+                    status="ongoing",
+                    state=None,
+                    turn_of_player_indices=frozenset({0}),
+                )
+            )
+            self._notify_match_event(
+                "notify.turn",
+                match=saved,
+                recipient_ids=[
+                    seat.user_id
+                    for seat in saved.seats[:1]
+                    if seat.user_id is not None and seat.user_id != caller_id
+                ],
+                tag_suffix="turn",
+            )
         return saved
 
     def start_match(
@@ -1309,6 +1337,54 @@ class GamePlatform:
                     match,
                     hidden_for_user_ids=match.hidden_for_user_ids | {caller_id},
                 )
+            )
+
+    # Matchmaking: random opponents
+
+    def quick_match(
+        self, *, caller_id: str, game_id: str, num_players: int | None = None
+    ) -> Match:
+        """Finds random opponents. Seats the caller in the oldest public quick match
+        of the game that is waiting for players, or creates one for others to find.
+        A quick match waits for [num_players] humans (default: the game's smallest
+        count above one) and starts by itself when the last one joins. Asking again
+        while already waiting returns the same match."""
+        with self._lock:
+            game = self._get_live_game(game_id)
+            if not game.published:
+                raise NotFoundError("game not found")
+            multiplayer = sorted(c for c in game.rules.allowed_player_counts if c >= 2)
+            if not multiplayer:
+                raise ConflictError("this game is single-player only")
+            target = num_players if num_players is not None else multiplayer[0]
+            if target not in multiplayer:
+                raise InvalidRequestError(
+                    f"this game can't be played by {target} players; "
+                    f"choose one of {multiplayer}"
+                )
+            waiting = [
+                match
+                for match in self._store.list_all_matches()
+                if match.game_id == game.id
+                and match.matchmaking_player_count == target
+                and match.status == "waiting_for_players"
+                and not match.private
+            ]
+            already_waiting = next(
+                (match for match in waiting if match.seat_of(caller_id) is not None),
+                None,
+            )
+            if already_waiting is not None:
+                return already_waiting
+            # Same version only, so every player in a quick match agrees on rules.
+            oldest = next(
+                (match for match in waiting if match.game_version == game.version),
+                None,
+            )
+            if oldest is not None:
+                return self._join(oldest, caller_id=caller_id)
+            return self._new_match(
+                game, caller_id=caller_id, matchmaking_player_count=target
             )
 
     # Invites: links (and QR codes) to a match, which also track referrals

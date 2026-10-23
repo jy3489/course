@@ -11,6 +11,7 @@ from game_platform.schemas import (
     MatchStart,
     MatchUpdate,
     MoveCreate,
+    QuickMatchRequest,
     UserCreate,
     UserUpdate,
 )
@@ -80,6 +81,7 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         "/matches/{match_id}/leave",
         "/matches/{match_id}/moves",
         "/matches/{match_id}/start",
+        "/matchmaking/quick-match",
         "/push/config",
         "/push/subscriptions",
         "/push/subscriptions/{subscription_id}",
@@ -105,6 +107,7 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         MatchUpdate,
         MatchStart,
         MoveCreate,
+        QuickMatchRequest,
         InviteCreate,
     ],
 )
