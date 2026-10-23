@@ -484,6 +484,8 @@ class MatchCreate(_Request):
 
     game_id: str
     num_computer_opponents: Annotated[int, Field(ge=0)] = 0
+    # Private matches aren't listed as open and can only be joined with an invite.
+    private: bool = False
 
 
 class MatchUpdate(_Request):
@@ -539,6 +541,7 @@ class MatchOut(BaseModel):
     move_count: int
     created_at: dt.datetime
     updated_at: dt.datetime
+    private: bool = False
 
     @classmethod
     def of(cls, match: Match) -> "MatchOut":
@@ -557,6 +560,7 @@ class MatchOut(BaseModel):
             move_count=len(match.moves),
             created_at=match.created_at,
             updated_at=match.updated_at,
+            private=match.private,
         )
 
 

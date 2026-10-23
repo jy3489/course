@@ -261,7 +261,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `GET /games/{id}/versions/{version}` |  | Get a specific version of a game |
 | `PATCH /games/{id}` | yes | Update some fields of a game, creating a new version (creator only) |
 | `DELETE /games/{id}` | yes | Delete a game (creator only) |
-| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents}`; the caller is player 0 |
+| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents, private?}`; the caller is player 0 |
 | `GET /matches?status=&game_id=` | yes | List the caller's matches (owned or seated, minus hidden ones) |
 | `GET /matches/{id}` |  | Get a match; anyone can view it, so it can be shared by URL |
 | `PATCH /matches/{id}` | yes | Set `num_computer_opponents` before the match starts (owner only) |
@@ -311,6 +311,12 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
   also ends if its last human leaves.
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
+
+### Private matches
+
+- **Private matches** (`private: true` on `POST /matches`) never appear in
+  `GET /matches/open`, are a 404 to anyone not in
+  them, and `POST /matches/{id}/join` refuses outsiders (403).
 
 ### Languages
 

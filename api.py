@@ -480,6 +480,7 @@ def create_match(
         caller_id=caller_id,
         game_id=body.game_id,
         num_computer_opponents=body.num_computer_opponents,
+        private=body.private,
     )
     return MatchOut.of(match)
 

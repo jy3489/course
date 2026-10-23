@@ -187,6 +187,10 @@ class Match:
     hidden_for_user_ids: frozenset[str]
     created_at: dt.datetime
     updated_at: dt.datetime
+    # A private match is left out of open-match listings, and only
+    # its players and people with an invite link can see or join it. Defaults to
+    # False so older data files load.
+    private: bool = False
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)

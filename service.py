@@ -691,7 +691,8 @@ class GamePlatform:
             return [
                 match
                 for match in self._store.list_all_matches()
-                if (game := self._store.get_game(match.game_id)) is not None
+                if not match.private
+                and (game := self._store.get_game(match.game_id)) is not None
                 and game.published and not game.deleted
                 and (match.status == "waiting_for_players" or (
                     match.status == "ongoing"
@@ -916,34 +917,57 @@ class GamePlatform:
     # Matches
 
     def create_match(
-        self, *, caller_id: str, game_id: str, num_computer_opponents: int
+        self,
+        *,
+        caller_id: str,
+        game_id: str,
+        num_computer_opponents: int,
+        private: bool = False,
     ) -> Match:
         with self._lock:
             game = self._get_live_game(game_id)
             if not game.published:
                 raise NotFoundError("game not found")
             self._check_fits(game.rules, num_players=1 + num_computer_opponents)
-            now = self._clock()
-            match = Match(
-                id=self._new_id(),
-                game_id=game.id,
-                owner_user_id=caller_id,
-                game_version=game.version,
-                status="waiting_for_players",
-                seats=_waiting_seats(
-                    human_user_ids=[caller_id],
-                    num_computer_opponents=num_computer_opponents,
-                ),
-                state=None,
-                turn_of_player_indices=None,
-                end_reason=None,
-                moves=(),
-                hidden_for_user_ids=frozenset(),
-                created_at=now,
-                updated_at=now,
+            return self._new_match(
+                game,
+                caller_id=caller_id,
+                num_computer_opponents=num_computer_opponents,
+                private=private,
             )
-            self._store.put_match(match)
-            return match
+
+    def _new_match(
+        self,
+        game: Game,
+        *,
+        caller_id: str,
+        num_computer_opponents: int = 0,
+        private: bool = False,
+    ) -> Match:
+        """Stores a new waiting match of [game] owned (and first seated) by [caller_id].
+        The caller holds the lock and has checked the game."""
+        now = self._clock()
+        match = Match(
+            id=self._new_id(),
+            game_id=game.id,
+            owner_user_id=caller_id,
+            game_version=game.version,
+            status="waiting_for_players",
+            seats=_waiting_seats(
+                human_user_ids=[caller_id],
+                num_computer_opponents=num_computer_opponents,
+            ),
+            state=None,
+            turn_of_player_indices=None,
+            end_reason=None,
+            moves=(),
+            hidden_for_user_ids=frozenset(),
+            created_at=now,
+            updated_at=now,
+            private=private,
+        )
+        self._store.put_match(match)
+        return match
 
     def get_match(self, match_id: str, *, caller_id: str | None = None) -> Match:
         with self._lock:
@@ -952,6 +976,10 @@ class GamePlatform:
             if not game.published and caller_id != game.owner_user_id and (
                 caller_id is None or not match.involves(caller_id)
             ):
+                raise NotFoundError("match not found")
+            # Private matches are invisible to outsiders, who see them through an
+            # invite (GET /invites/{token}) instead.
+            if match.private and (caller_id is None or not match.involves(caller_id)):
                 raise NotFoundError("match not found")
             return match
 
@@ -994,33 +1022,42 @@ class GamePlatform:
     def join_match(self, *, caller_id: str, match_id: str) -> Match:
         with self._lock:
             match = self._get_match(match_id)
-            if match.seat_of(caller_id) is not None:
-                raise ConflictError("you are already a player in this match")
-            if not self._get_game(match.game_id).published:
-                raise ConflictError("this game is no longer published")
-            if match.status == "over":
-                raise ConflictError("the match is over")
-            if match.status == "ongoing":
-                seats = self._take_seat_mid_match(match, user_id=caller_id)
-            else:
-                if len(match.seats) >= self._rules_of(match).max_players:
-                    raise ConflictError("the match is full")
-                seats = _waiting_seats(
-                    human_user_ids=[*match.human_user_ids, caller_id],
-                    num_computer_opponents=match.num_computer_opponents,
+            if match.private and match.seat_of(caller_id) is None:
+                raise ForbiddenError(
+                    "this match is private; join it with an invite link"
                 )
-            saved = self._save(replace(match, seats=seats))
-            joiner = self._store.get_user(caller_id)
-            self._notify_match_event(
-                "notify.player_joined",
-                match=saved,
-                recipient_ids=[
-                    user_id for user_id in saved.human_user_ids if user_id != caller_id
-                ],
-                actor_name=joiner.display_name if joiner is not None else "",
-                tag_suffix="join",
+            return self._join(match, caller_id=caller_id)
+
+    def _join(self, match: Match, *, caller_id: str) -> Match:
+        """Seats [caller_id] in [match], whatever its privacy. The caller holds the
+        lock."""
+        if match.seat_of(caller_id) is not None:
+            raise ConflictError("you are already a player in this match")
+        if not self._get_game(match.game_id).published:
+            raise ConflictError("this game is no longer published")
+        if match.status == "over":
+            raise ConflictError("the match is over")
+        if match.status == "ongoing":
+            seats = self._take_seat_mid_match(match, user_id=caller_id)
+        else:
+            if len(match.seats) >= self._rules_of(match).max_players:
+                raise ConflictError("the match is full")
+            seats = _waiting_seats(
+                human_user_ids=[*match.human_user_ids, caller_id],
+                num_computer_opponents=match.num_computer_opponents,
             )
-            return saved
+        saved = self._save(replace(match, seats=seats))
+        joiner = self._store.get_user(caller_id)
+        self._notify_match_event(
+            "notify.player_joined",
+            match=saved,
+            recipient_ids=[
+                user_id for user_id in saved.human_user_ids if user_id != caller_id
+            ],
+            actor_name=joiner.display_name if joiner is not None else "",
+            tag_suffix="join",
+        )
+        return saved
 
     def start_match(
         self,
