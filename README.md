@@ -21,6 +21,7 @@ be swapped for a database. The server binary uses `JsonFileStore`
 | `store.py`   | `Store` protocol and `InMemoryStore`                            |
 | `saving_store.py` | `SavingStore`: an `InMemoryStore` saved in the background (base of the stores below) |
 | `json_file_store.py` | `JsonFileStore`: `InMemoryStore` saved to a JSON file   |
+| `firestore_store.py` | `FirestoreStore`: `InMemoryStore` saved to Firestore, and the `import` command |
 | `config.py`  | Server config, read from a JSON file                            |
 | `config.example.json` | Example config with every field at its default         |
 | `requirements.txt` | pip packages needed to run the server                      |
