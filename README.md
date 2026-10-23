@@ -248,7 +248,8 @@ without). On iOS, push works only when the portal is installed to the home scree
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `POST /users` |  | Create a guest user `{display_name, locale?}`; returns its `password` |
+| `GET /health` |  | 200 `{"status": "ok"}` when the server is up and saving data; 503 `"degraded"` when the data file can't be written. For uptime checks and load balancers |
+| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?, invite_token?}`; returns its `password` |
 | `GET /users/{id}` |  | Get a user |
 | `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |
 | `GET /i18n/locales` |  | The supported languages (see [Languages](#languages)) |
@@ -256,12 +257,12 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `POST /users/{id}/merge` | yes | Merge this account into `into_user_id` and delete it (authenticate as this user) |
 | `GET /matches/open` |  | Matches anyone may join (waiting, or ongoing with mid-match joins) |
 | `POST /games` | yes | Create a game |
-| `GET /games?owner_user_id=` |  | List games that aren't deleted, optionally by owner |
+| `GET /games?owner_user_id=&q=&include_code=` |  | List published games that aren't deleted, optionally by owner. `q` searches names and descriptions (every word must match, ignoring case); `include_code=false` leaves out each game's code, which is most of the response |
 | `GET /games/{id}` |  | Get the latest version of a game |
 | `GET /games/{id}/versions/{version}` |  | Get a specific version of a game |
 | `PATCH /games/{id}` | yes | Update some fields of a game, creating a new version (creator only) |
 | `DELETE /games/{id}` | yes | Delete a game (creator only) |
-| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents}`; the caller is player 0 |
+| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents, private?}`; the caller is player 0 |
 | `GET /matches?status=&game_id=` | yes | List the caller's matches (owned or seated, minus hidden ones) |
 | `GET /matches/{id}` |  | Get a match; anyone can view it, so it can be shared by URL |
 | `PATCH /matches/{id}` | yes | Set `num_computer_opponents` before the match starts (owner only) |
@@ -271,6 +272,17 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `POST /matches/{id}/moves` | yes | Make a move `{new_state, next_turn_player_indices, expected_move_count?}` |
 | `GET /matches/{id}/moves` |  | Full move history |
 | `DELETE /matches/{id}` | yes | Owner: delete the match. Other players: hide an ended match from their list |
+| `GET /users/me/saved-games` | yes | The caller's saved games, most recently saved first |
+| `PUT /users/me/saved-games/{game_id}` | yes | Save a game (idempotent); returns the library |
+| `DELETE /users/me/saved-games/{game_id}` | yes | Unsave a game (idempotent); returns the library |
+| `POST /matchmaking/quick-match` | yes | Play random opponents `{game_id, num_players?}` (see [Matchmaking](#matchmaking-private-matches-and-invites)) |
+| `POST /matches/{id}/invites` | yes | Create an invite link + QR code `{expires_in_seconds?, max_uses?}` (players only) |
+| `GET /users/me/invites?match_id=` | yes | The caller's match invites, with views and who accepted |
+| `GET /invites/{token}` |  | What an invite opens: the match, game and inviter, and whether it's still usable (counts a view) |
+| `GET /invites/{token}/qr.svg` |  | The invite link as an SVG QR code |
+| `POST /invites/{token}/accept` | yes | Take a seat through the invite (works for private matches) |
+| `POST /invites/{token}/revoke` | yes | Stop the link working (its creator or the match's owner) |
+| `GET /users/me/referrals` | yes | The caller's referral stats: invites, views, acceptances, sign-ups and referred users |
 | `GET /push/config` |  | Whether web push is set up, and the VAPID public key to subscribe with |
 | `POST /push/subscriptions` | yes | Register (201) or refresh (200) the caller's browser subscription `{endpoint, keys, expiration_time?}`, keyed by endpoint |
 | `GET /push/subscriptions` | yes | List the caller's subscriptions |
@@ -308,6 +320,38 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
   also ends if its last human leaves.
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
+
+### Matchmaking, private matches and invites
+
+- **Quick match** (`POST /matchmaking/quick-match`) finds random opponents: it seats
+  you in the oldest public quick match of that game (same game version) waiting for
+  players, or creates one for others to find. `num_players` defaults to the game's
+  smallest player count above one; each count is its own queue. When the last player
+  joins, the match starts by itself, exactly like the portal's Start button (seat 0
+  moves first and the game creates its initial state), and seat 0 gets a "your turn"
+  push. Asking again while waiting returns the same match. To cancel, the owner
+  deletes the match and anyone else leaves it.
+- **Private matches** (`private: true` on `POST /matches`) never appear in
+  `GET /matches/open` or matchmaking, are a 404 to anyone not in
+  them, and `POST /matches/{id}/join` refuses outsiders (403). Invites are the way in.
+- **Invites** are links of the form `<public_base_url>/portal#invite=<token>`, also
+  served as a QR code at `/invites/{token}/qr.svg`. The 16-character token is the
+  secret (96 random bits), so anyone holding the link can see the match and take a
+  seat. Any player in the match can create one, optionally expiring
+  (`expires_in_seconds`, 60s to 30 days) or limited (`max_uses`). A link stops seating
+  people when it's revoked, expired, used up, or the match is over;
+  `GET /invites/{token}` then reports `usable: false` with a localized
+  `unusable_reason` and a stable `unusable_code`. Deleting a match deletes its invites.
+- **Referrals**: every match invite records how often it was opened (`views`) and who
+  took a seat with it (`acceptances`). A newcomer who signs up with
+  `POST /users {invite_token}` gets the invite's creator as their `invited_by_user_id`,
+  the same field personal invite links set (see
+  [Invite links](#invite-links-referrals)), so they count in `/invites` and
+  `GET /admin/invites` too. An explicit `invited_by_user_id` wins over the token, and
+  an unknown or dead token is ignored rather than blocking sign-up. Their acceptance is
+  flagged `signed_up`. `GET /users/me/referrals` sums up a user's own invites and
+  everyone they invited either way. Merging accounts carries invites and acceptances
+  over to the surviving account.
 
 ### Languages
 
@@ -408,6 +452,7 @@ stop the server at startup with an error naming the field.
 | `server.port`                     | `8000`                                   | Port to listen on |
 | `server.keep_alive_timeout_seconds` | `3600`                                 | How long an idle connection is kept open; see below |
 | `server.cors_allow_origins`       | `["*"]`                                  | Origins whose pages may call the API from a browser. Use `[]` when a reverse proxy (Caddy, nginx) already adds CORS headers: if both do, responses carry two `Access-Control-Allow-Origin` headers and browsers reject them |
+| `server.public_base_url`          | `""`                                     | The site's public address (e.g. `"https://buildplay.fun"`) that invite links and QR codes point to. Empty uses the address each request came to, which behind a load balancer (e.g. Google Cloud) or reverse proxy may be `http://` or an internal host, so set it in production |
 | `data_file.path`                  | `"~/.local/share/game-platform/data.json"` | Where all data is saved. `~` is expanded, and a relative path is relative to the config file's directory |
 | `data_file.save_interval_seconds` | `1.0`                                    | After a change, the data file is rewritten at most once per this many seconds. `0` writes after every change |
 | `data_file.backup_interval_seconds` | `3600.0`                               | Copy the data file to `<path>.backups/data-<UTC time>.json` at most this often (checked when the file is written). `0` turns backups off |
@@ -455,7 +500,8 @@ any idle connection a browser keeps.
 
 The data file holds everything: users (including their passwords), every
 version of every game, which games are deleted, all matches with their moves, and
-web push subscriptions. Its layout is
+web push subscriptions, invites (with their referral records), and each user's saved
+games and referrer. Its layout is
 `{"format_version": 1, "data": {"users": [...], "game_versions": [...], "deleted_game_ids": [...], "matches": [...]}}`.
 `format_version` is for incompatible layout changes after launch.
 
@@ -465,7 +511,8 @@ web push subscriptions. Its layout is
   rather than overwrite it.
 - While running, requests are served from memory. After a change, a background thread
   rewrites the whole file, at most once per `data_file.save_interval_seconds`, so a burst
-  of changes costs one write. Reads never write.
+  of changes costs one write. Reads never write, except `GET /invites/{token}`, which
+  counts a view for the inviter's referral stats.
 - Each write goes to `<path>.tmp`, which is then renamed over the file, so the file is
   never left half-written. A failed write is logged and retried.
 - A clean shutdown (Ctrl+C or SIGTERM) writes any pending changes. A crash or `kill -9`
@@ -700,6 +747,9 @@ python -m pytest game_platform/tests
 
 The tests start the app in-process (no server or network needed) and use temporary
 directories for data files, so they don't touch your data.
+
+GitHub Actions runs these tests on every push and pull request
+(`.github/workflows/tests.yml`, Python 3.14). The web checks below aren't part of it yet.
 
 ### Web builder regression checks
 
