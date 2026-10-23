@@ -7,6 +7,14 @@
 
 "use strict";
 
+// Pages that don't load i18n.js get English: the fallback text passed to I18n.t.
+if (typeof I18n === "undefined") {
+  globalThis.I18n = {
+    t: (key, params = {}, fallback = key) =>
+      fallback.replace(/\{(\w+)\}/g, (match, name) => (name in params ? params[name] : match)),
+  };
+}
+
 const Auth = (() => {
   const ACCOUNTS_KEY = "game-platform.accounts.v1";
   const CURRENT_KEY = "game-platform.current-account.v1";
@@ -221,9 +229,9 @@ const Auth = (() => {
 
     const box = el("div", { class: "auth-dialog", role: "dialog", "aria-modal": "true" });
     const title = el("h2", {
-      textContent: mode === "link" ? `Link a login to ${account.display_name}` : "Log in",
+      textContent: mode === "link" ? I18n.t("ui.auth.link_title", { name: account.display_name }, `Link a login to ${account.display_name}`) : I18n.t("ui.auth.log_in", {}, "Log in"),
     });
-    const close = el("button", { type: "button", class: "auth-close", textContent: "×", "aria-label": "Close" });
+    const close = el("button", { type: "button", class: "auth-close", textContent: "×", "aria-label": I18n.t("ui.action.close", {}, "Close") });
     close.onclick = closeDialog;
     dialog.root.onclick = (event) => {
       if (event.target === dialog.root) closeDialog();
@@ -231,7 +239,7 @@ const Auth = (() => {
     box.append(close, title, dialog.message);
     if (mode === "link") {
       box.append(
-        el("p", { class: "muted", textContent: "If this login belongs to another of your accounts, that account is merged into this one." })
+        el("p", { class: "muted", textContent: I18n.t("ui.auth.merge_note", {}, "If this login belongs to another of your accounts, that account is merged into this one.") })
       );
     }
     const methods = el("div", { class: "auth-methods" });
@@ -268,14 +276,14 @@ const Auth = (() => {
           .catch((error) => dialogFailed(dialog, error));
       }
       if (config.phone_login_enabled) {
-        methods.append(codeMethod(dialog, "phone", "Phone number", "+15551234567", "/auth/phone", "phone_number", "Text me a code"));
+        methods.append(codeMethod(dialog, "phone", I18n.t("ui.auth.phone", {}, "Phone number"), "+15551234567", "/auth/phone", "phone_number", I18n.t("ui.auth.text_me_code", {}, "Text me a code")));
       }
       if (config.email_login_enabled) {
-        methods.append(codeMethod(dialog, "email", "Email", "player@example.com", "/auth/email", "email", "Email me a code"));
+        methods.append(codeMethod(dialog, "email", I18n.t("ui.auth.email", {}, "Email"), "player@example.com", "/auth/email", "email", I18n.t("ui.auth.email_me_code", {}, "Email me a code")));
       }
       methods.append(guestMethod(dialog));
       if (!methods.children.length) {
-        dialog.message.textContent = "No login methods are configured on this server yet.";
+        dialog.message.textContent = I18n.t("ui.auth.no_methods", {}, "No login methods are configured on this server yet.");
         dialog.message.className = "message error";
       }
     });
@@ -296,14 +304,14 @@ const Auth = (() => {
     upsert(response);
     closeDialog();
     if (response.merged_from_user_id) {
-      toast(`Merged your other account into ${response.display_name}.`);
+      toast(I18n.t("ui.auth.merged_toast", { name: response.display_name }, `Merged your other account into ${response.display_name}.`));
     }
   }
 
   /** A phone/email code form. Posts to [base]/start then [base]/verify. */
   function codeMethod(dialog, kind, label, placeholder, base, field, sendLabel) {
     const input = el("input", { type: kind === "phone" ? "tel" : "email", placeholder, "aria-label": label });
-    const codeInput = el("input", { inputmode: "numeric", placeholder: "123456", "aria-label": "Code", hidden: true, style: "width: 120px" });
+    const codeInput = el("input", { inputmode: "numeric", placeholder: "123456", "aria-label": I18n.t("ui.auth.code", {}, "Code"), hidden: true, style: "width: 120px" });
     const message = el("div", { class: "message" });
     let verificationId = null;
 
@@ -317,8 +325,8 @@ const Auth = (() => {
         verificationId = started.verification_id;
         codeInput.hidden = false;
         verifyButton.hidden = false;
-        sendButton.textContent = "Send again";
-        message.textContent = `Code sent — it expires in ${Math.round(started.expires_in_seconds / 60)} minutes.`;
+        sendButton.textContent = I18n.t("ui.auth.send_again", {}, "Send again");
+        message.textContent = I18n.t("ui.auth.code_sent", { minutes: Math.round(started.expires_in_seconds / 60) }, `Code sent — it expires in ${Math.round(started.expires_in_seconds / 60)} minutes.`);
         message.className = "message ok";
         codeInput.focus();
       } catch (error) {
@@ -326,7 +334,7 @@ const Auth = (() => {
       }
     };
     const sendButton = el("button", { type: "button", textContent: sendLabel, onclick: send });
-    const verifyButton = el("button", { type: "button", class: "primary", textContent: "Verify", hidden: true });
+    const verifyButton = el("button", { type: "button", class: "primary", textContent: I18n.t("ui.auth.verify", {}, "Verify"), hidden: true });
     verifyButton.onclick = async () => {
       message.textContent = "";
       message.className = "message";
@@ -349,10 +357,10 @@ const Auth = (() => {
   }
 
   function guestMethod(dialog) {
-    const input = el("input", { placeholder: "Guest name", "aria-label": "Guest name" });
-    const button = el("button", { type: "button", textContent: "Continue as guest" });
+    const input = el("input", { placeholder: I18n.t("ui.auth.guest_name", {}, "Guest name"), "aria-label": I18n.t("ui.auth.guest_name", {}, "Guest name") });
+    const button = el("button", { type: "button", textContent: I18n.t("ui.auth.continue_as_guest", {}, "Continue as guest") });
     button.onclick = async () => {
-      const name = input.value.trim() || `Guest ${accounts().length + 1}`;
+      const name = input.value.trim() || I18n.t("ui.auth.guest_default_name", { number: accounts().length + 1 }, `Guest ${accounts().length + 1}`);
       try {
         const user = await apiRequest("POST", "/users", {
           body: newAccountBody({ display_name: name }),
@@ -369,7 +377,7 @@ const Auth = (() => {
       }
     };
     return el("div", { class: "auth-method" },
-      el("label", { class: "inline" }, "Guest ", input),
+      el("label", { class: "inline" }, `${I18n.t("ui.auth.guest", {}, "Guest")} `, input),
       button
     );
   }
@@ -392,7 +400,7 @@ const Auth = (() => {
       "aria-haspopup": "true",
     },
       avatarImg(account?.picture_url),
-      account ? account.display_name : "Log in"
+      account ? account.display_name : I18n.t("ui.auth.log_in", {}, "Log in")
     );
     const panel = el("div", { class: "auth-menu-panel", hidden: true });
     button.onclick = (event) => {
@@ -408,7 +416,7 @@ const Auth = (() => {
       if (account.linked.length) {
         panel.append(
           el("div", { class: "auth-menu-section" },
-            el("div", { class: "muted", textContent: "Linked logins" }),
+            el("div", { class: "muted", textContent: I18n.t("ui.auth.linked_logins", {}, "Linked logins") }),
             ...account.linked.map((link) =>
               el("div", { class: "auth-linked", textContent: methodLabel(link.kind, link.identifier) })
             )
@@ -416,22 +424,22 @@ const Auth = (() => {
         );
       }
       panel.append(
-        el("button", { type: "button", textContent: "Link a login method", onclick: () => { panel.hidden = true; openDialog("link"); } }),
+        el("button", { type: "button", textContent: I18n.t("ui.auth.link_method", {}, "Link a login method"), onclick: () => { panel.hidden = true; openDialog("link"); } }),
         el("button", {
           type: "button",
-          textContent: "Copy my invite link",
+          textContent: I18n.t("ui.auth.copy_invite", {}, "Copy my invite link"),
           title: "Everyone who signs up through this link counts as invited by you",
           onclick: () => {
             panel.hidden = true;
             navigator.clipboard
               .writeText(inviteLink(account))
-              .then(() => toast("Copied your invite link"));
+              .then(() => toast(I18n.t("ui.auth.invite_copied", {}, "Copied your invite link")));
           },
         })
       );
     }
     if (all.length > 1 || (all.length === 1 && !account)) {
-      panel.append(el("div", { class: "auth-menu-heading", textContent: "Switch account" }));
+      panel.append(el("div", { class: "auth-menu-heading", textContent: I18n.t("ui.auth.switch_account", {}, "Switch account") }));
       for (const other of all) {
         if (account && other.id === account.id) continue;
         panel.append(
@@ -444,12 +452,12 @@ const Auth = (() => {
       }
     }
     panel.append(
-      el("button", { type: "button", textContent: account ? "Add another account" : "Log in", onclick: () => { panel.hidden = true; openDialog("login"); } })
+      el("button", { type: "button", textContent: account ? I18n.t("ui.auth.add_account", {}, "Add another account") : I18n.t("ui.auth.log_in", {}, "Log in"), onclick: () => { panel.hidden = true; openDialog("login"); } })
     );
     if (account) {
       panel.append(
-        el("button", { type: "button", textContent: `Log out ${account.display_name}`, onclick: () => remove(account.id) }),
-        el("button", { type: "button", textContent: "Log out of all accounts", onclick: removeAll })
+        el("button", { type: "button", textContent: I18n.t("ui.auth.log_out_name", { name: account.display_name }, `Log out ${account.display_name}`), onclick: () => remove(account.id) }),
+        el("button", { type: "button", textContent: I18n.t("ui.auth.log_out_all", {}, "Log out of all accounts"), onclick: removeAll })
       );
     }
     container.append(button, panel);

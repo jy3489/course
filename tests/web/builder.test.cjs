@@ -15,7 +15,7 @@ function setup(request=async()=>{},catalog=async()=>[]) {
     document:{getElementById:node,addEventListener(){}},window:{addEventListener(){},innerWidth:1280,innerHeight:720},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:(fn,ms)=>{if(ms===1500)Promise.resolve().then(fn);return ++timer;},clearTimeout(){},setInterval:()=>++timer,clearInterval(){},
-    Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}resizeViewport(){this.resizes=(this.resizes||0)+1;}},
+    Auth:{current:()=>user},I18n:{t:(key,params,fallback)=>fallback??key},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}resizeViewport(){this.resizes=(this.resizes||0)+1;}},
     apiRequest:(method,url,options)=>url==='/games'?catalog():request(method,url,options),showPageError(){},stateChangedMessage:x=>x,
     el:(tag,attrs={},...children)=>({...attrs,children})});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);

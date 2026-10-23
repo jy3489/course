@@ -17,34 +17,34 @@
     <meta name="apple-mobile-web-app-title" content="Playroom" />
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
-    <link rel="stylesheet" href="/static/common.css?v=11" />
+    <link rel="stylesheet" href="/static/common.css?v=12" />
     <link rel="stylesheet" href="/static/portal.css?v=21" />
     <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
   </head>
   <body>
     <header class="topbar">
-      <h1>Game platform</h1>
+      <h1 data-i18n="ui.app_name">Game platform</h1>
       <nav aria-label="Game platform">
-        <a href="/portal" aria-current="page">Portal</a>
-        <a href="/builder">Builder</a>
+        <a href="/portal" aria-current="page" data-i18n="ui.nav.portal">Portal</a>
+        <a href="/builder" data-i18n="ui.nav.builder">Builder</a>
       </nav>
       <span class="spacer"></span>
-      <span id="token-wallet" class="token-wallet" role="status" aria-live="polite" title="Your virtual tokens" hidden><span class="token-wallet-coin" aria-hidden="true">✦</span><span class="token-wallet-copy"><span class="token-wallet-label">MY WALLET</span><span class="token-wallet-number"><strong id="token-balance">0</strong> <span>tokens</span></span></span></span>
+      <span id="token-wallet" class="token-wallet" role="status" aria-live="polite" title="Your virtual tokens" data-i18n-title="ui.portal.wallet_title" hidden><span class="token-wallet-coin" aria-hidden="true">✦</span><span class="token-wallet-copy"><span class="token-wallet-label" data-i18n="ui.portal.wallet_label">MY WALLET</span><span class="token-wallet-number"><strong id="token-balance">0</strong> <span data-i18n="ui.portal.wallet_tokens">tokens</span></span></span></span>
        <span id="account-menu"></span>
     </header>
     <div class="app portal-shell">
       <aside class="sidebar portal-sidebar">
-        <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✳</span><span class="app-brand-name">Game Portal</span></div>
-        <button id="show-creator" type="button" class="primary">+ New match</button>
-        <div id="portal-login-note" class="muted" hidden>Log in to see your matches.</div>
+        <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✳</span><span class="app-brand-name" data-i18n="ui.portal.brand">Game Portal</span></div>
+        <button id="show-creator" type="button" class="primary" data-i18n="ui.portal.new_match_button">+ New match</button>
+        <div id="portal-login-note" class="muted" data-i18n="ui.portal.login_note" hidden>Log in to see your matches.</div>
         <div id="my-matches">
-          <details id="group-turn" name="my-match-groups" class="match-group" open hidden><summary title="Matches where it is your turn to play">Your turn <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
-          <details id="group-ongoing" name="my-match-groups" class="match-group"><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
-          <details id="group-waiting" name="my-match-groups" class="match-group"><summary>Waiting for players <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
-          <details id="group-over" name="my-match-groups" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
+          <details id="group-turn" name="my-match-groups" class="match-group" open hidden><summary title="Matches where it is your turn to play"><span data-i18n="ui.match.your_turn">Your turn</span> <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
+          <details id="group-ongoing" name="my-match-groups" class="match-group"><summary><span data-i18n="ui.section.ongoing">Ongoing</span> <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
+          <details id="group-waiting" name="my-match-groups" class="match-group"><summary><span data-i18n="ui.section.waiting_for_players">Waiting for players</span> <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
+          <details id="group-over" name="my-match-groups" class="match-group"><summary><span data-i18n="ui.section.finished">Finished</span> <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
         </div>
-        <details id="group-open" class="match-group open-group"><summary>Open matches you can join <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
-        <div class="sidebar-footer"><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button">Retry sync</button><button id="notify-toggle" type="button" aria-pressed="false" hidden>Enable notifications</button></div></div>
+        <details id="group-open" class="match-group open-group"><summary><span data-i18n="ui.section.open_matches">Open matches you can join</span> <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
+        <div class="sidebar-footer"><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button" data-i18n="ui.state.retry_sync">Retry sync</button><button id="notify-toggle" type="button" aria-pressed="false" hidden>Enable notifications</button></div></div>
         <div class="install-controls">
           <button id="install-portal" type="button" hidden>Install Playroom</button>
           <details id="install-help"><summary>Add to Home Screen</summary><p>On iPhone or iPad, open this page in Safari, tap Share, then Add to Home Screen. On Android or desktop, use Install Playroom or your browser’s install menu.</p><p>Open games and matches online first. Wait for “Portal saved for offline” before disconnecting. Offline moves sync when you reconnect.</p><p id="install-message" role="status"></p></details>
@@ -52,37 +52,37 @@
       </aside>
       <main class="work portal-main">
         <details id="match-creator" class="match-creator" open>
-          <summary><span class="creator-title">Find your next game</span><span class="creator-toggle" aria-hidden="true">+</span></summary>
+          <summary><span class="creator-title" data-i18n="ui.games.find_next">Find your next game</span><span class="creator-toggle" aria-hidden="true">+</span></summary>
           <div class="creator-content">
             <div id="game-catalog">
-              <p class="creator-description">A quick round or a new rivalry. Pick a game and make it yours.</p>
-              <label class="game-label" for="game-search">Choose your game</label>
+              <p class="creator-description" data-i18n="ui.portal.creator_description">A quick round or a new rivalry. Pick a game and make it yours.</p>
+              <label class="game-label" for="game-search" data-i18n="ui.portal.choose_your_game">Choose your game</label>
               <div id="game-chooser" class="game-chooser">
                 <input id="new-game" type="hidden" />
-                <div class="game-search-controls"><input id="game-search" type="search" role="combobox" aria-label="Search games" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Search by name or description…" /><button id="browse-games" type="button">Browse all games</button></div>
+                <div class="game-search-controls"><input id="game-search" type="search" role="combobox" aria-label="Search games" data-i18n-aria-label="ui.action.search" aria-autocomplete="list" aria-controls="game-results" aria-expanded="false" autocomplete="off" placeholder="Search by name or description…" data-i18n-placeholder="ui.portal.search_placeholder" /><button id="browse-games" type="button" data-i18n="ui.games.browse_all">Browse all games</button></div>
                 <div id="game-search-popup" class="game-search-popup" hidden><div id="game-results" role="listbox" aria-label="Matching games"></div><div id="game-results-note" class="search-note" role="status"></div></div>
               </div>
               <section class="game-library" aria-label="Browse games">
                 <div class="library-toolbar">
                   <div class="library-filters" role="group" aria-label="Filter games">
-                    <button type="button" data-game-filter="all" aria-pressed="true">All games</button>
-                    <button type="button" data-game-filter="solo" aria-pressed="false">Solo</button>
-                    <button type="button" data-game-filter="multiplayer" aria-pressed="false">Multiplayer</button>
+                    <button type="button" data-game-filter="all" aria-pressed="true" data-i18n="ui.portal.filter_all">All games</button>
+                    <button type="button" data-game-filter="solo" aria-pressed="false" data-i18n="ui.mode.solo">Solo</button>
+                    <button type="button" data-game-filter="multiplayer" aria-pressed="false" data-i18n="ui.mode.multiplayer">Multiplayer</button>
                   </div>
                   <div class="library-views" role="group" aria-label="Game layout">
-                    <button type="button" data-game-view="grid" aria-pressed="true">Grid</button>
-                    <button type="button" data-game-view="list" aria-pressed="false">List</button>
+                    <button type="button" data-game-view="grid" aria-pressed="true" data-i18n="ui.games.grid">Grid</button>
+                    <button type="button" data-game-view="list" aria-pressed="false" data-i18n="ui.games.list">List</button>
                   </div>
                 </div>
                 <p id="library-count" class="library-count" role="status"></p>
                 <div id="game-library" class="game-library-grid"></div>
-                <div id="library-empty" class="library-empty" hidden><h3>No games found</h3><p>Try another name, description, or player filter.</p><button id="reset-games" type="button">Show all games</button></div>
+                <div id="library-empty" class="library-empty" hidden><h3 data-i18n="ui.games.no_games">No games found</h3><p data-i18n="ui.portal.empty_hint">Try another name, description, or player filter.</p><button id="reset-games" type="button" data-i18n="ui.portal.show_all">Show all games</button></div>
               </section>
             </div>
           </div>
         </details>
         <section id="game-detail-page" class="game-detail-page" hidden>
-          <a class="back-to-games" href="/static/portal.html">← All games</a>
+          <a class="back-to-games" href="/static/portal.html" data-i18n="ui.portal.back_to_games">← All games</a>
           <div id="game-detail-content">
             <div id="selected-game-card" class="selected-game-card">
               <div class="game-symbol" aria-hidden="true">✳</div>
@@ -90,7 +90,7 @@
             </div>
             <div class="play-options">
               <section class="play-option" aria-labelledby="online-play-title">
-                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title">Online match</h3><p>Set up your opponents in the lobby.</p></div></div>
+                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title" data-i18n="ui.mode.online">Online match</h3><p data-i18n="ui.portal.online_hint">Set up your opponents in the lobby.</p></div></div>
                 <div class="token-stake-panel" id="token-stake-panel">
                    <div class="token-stake-heading"><span class="token-stake-icon" aria-hidden="true">✦</span><div><strong>Play for tokens</strong><span>Optional · Virtual currency only</span></div></div>
                    <label class="stake-select" for="match-stake">Entry per player <select id="match-stake"><option value="0">Free · 0 tokens</option><option value="1">1 token</option><option value="5">5 tokens</option><option value="10">10 tokens</option><option value="20">20 tokens</option></select></label>
@@ -103,21 +103,21 @@
                 <p id="create-hint" class="play-option-note"></p>
               </section>
               <section class="play-option practice-option" aria-labelledby="local-play-title">
-                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">⌂</span><div><h3 id="local-play-title">Local practice</h3><p>A quick game, saved on this device.</p></div></div>
+                <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">⌂</span><div><h3 id="local-play-title" data-i18n="ui.mode.local_practice">Local practice</h3><p data-i18n="ui.portal.practice_hint">A quick game, saved on this device.</p></div></div>
                 <div class="practice-controls">
-                  <label for="practice-mode">Play style<select id="practice-mode"><option value="computer">Against computer</option><option value="pass">Pass and play</option></select></label>
-                  <button id="practice" type="button">Play on this device ↗</button>
+                  <label for="practice-mode"><span data-i18n="ui.portal.play_style">Play style</span><select id="practice-mode"><option value="computer" data-i18n="ui.mode.against_computer">Against computer</option><option value="pass" data-i18n="ui.mode.pass_and_play">Pass and play</option></select></label>
+                  <button id="practice" type="button" data-i18n="ui.portal.play_on_device">Play on this device ↗</button>
                 </div>
-                <p class="play-option-note">For offline play, open the game online first.</p>
+                <p class="play-option-note" data-i18n="ui.portal.practice_offline_note">For offline play, open the game online first.</p>
               </section>
             </div>
             <div id="create-message" class="message" role="status"></div>
           </div>
         </section>
-        <div id="placeholder" class="muted">Your match will open here. You can also select a match from the sidebar.</div>
+        <div id="placeholder" class="muted" data-i18n="ui.portal.placeholder">Your match will open here. You can also select a match from the sidebar.</div>
         <section id="match" class="match-stage" aria-label="Play match" hidden>
           <div class="match-toolbar">
-            <button id="match-back" type="button" aria-label="Back to games and matches">← Back</button>
+            <button id="match-back" type="button" aria-label="Back to games and matches" data-i18n="ui.portal.back">← Back</button>
             <h2 id="match-toolbar-title"></h2>
             <button id="match-focus-toggle" type="button" aria-pressed="false">Focus</button>
             <button id="match-controls-toggle" type="button" aria-expanded="false" aria-controls="match-tools">Controls</button>
@@ -137,18 +137,19 @@
           <div id="actions" class="inline-row"></div>
           <div id="match-message" class="message" role="status"></div>
           <div id="waiting" class="waiting-note" hidden></div>
-          <div id="match-history" class="inline-row" hidden><button id="history-back" type="button">← Previous move</button><span id="history-position" role="status"></span><button id="history-forward" type="button">Next move →</button><button id="history-live" type="button">Return to live</button></div>
+          <div id="match-history" class="inline-row" hidden><button id="history-back" type="button" data-i18n="ui.portal.history_prev">← Previous move</button><span id="history-position" role="status"></span><button id="history-forward" type="button" data-i18n="ui.portal.history_next">Next move →</button><button id="history-live" type="button" data-i18n="ui.portal.history_live">Return to live</button></div>
           </div>
           <div id="game-box" class="frame-box" hidden></div>
         </section>
       </main>
     </div>
     <script src="/static/common.js?v=12"></script>
-    <script src="/static/auth.js?v=2"></script>
+    <script src="/static/i18n.js?v=2"></script>
+    <script src="/static/auth.js?v=3"></script>
     <script src="/static/portal-offline.js?v=3"></script>
     <script src="/static/portal-install.js?v=1"></script>
-    <script src="/static/portal-match-layout.js?v=1"></script>
+    <script src="/static/portal-match-layout.js?v=2"></script>
     <script src="/static/push-notifications.js?v=1"></script>
-    <script src="/static/portal.js?v=35"></script>
+    <script src="/static/portal.js?v=38"></script>
   </body>
 </html>

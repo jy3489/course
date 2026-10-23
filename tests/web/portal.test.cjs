@@ -17,7 +17,7 @@ function setup(request=async()=>{}, hash='', search='') {
     navigator:{onLine:true},localStorage:{},PortalOffline:class {api(...args){return request(...args);}read(){return {};}write(){}} ,
     document:{getElementById:node,body:{classList:{toggle(){}}}},window:{addEventListener(){}},
     location:{hash,search,assign(url){navigations.push(url);}},history:{replaceState(){}},
-    Auth:{current:()=>({id:'owner'})},GameFrame:class{load(){}unload(){}send(){}},
+    Auth:{current:()=>({id:'owner'})},I18n:{t:(key,params,fallback)=>fallback??key,locale:()=>'en',revision:()=>0},GameFrame:class{load(){}unload(){}send(){}},
     apiRequest:request,formatTime:()=>'',shortId:x=>x,showPageError:text=>pageErrors.push(text),el:(tag,attrs={},...children)=>({...attrs,children})});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/portal.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);

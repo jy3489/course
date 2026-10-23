@@ -232,7 +232,7 @@ function playerName(player) {
     return `Player ${player.player_index + 1}`;
   return player.user_id
     ? nameOf(player.user_id)
-    : `Computer ${player.player_index + 1}`;
+    : I18n.t("ui.match.computer_name", { number: player.player_index + 1 }, `Computer ${player.player_index + 1}`);
 }
 
 function gameOf(gameId, version) {
@@ -411,10 +411,10 @@ function matchItem(match) {
   const game = gameOf(match.game_id, match.game_version);
   const user = me();
   const yourTurn = user && isYourTurn(match, user.id);
-  const badges = [el("span", { class: `badge ${match.status}`, textContent: match.status.replaceAll("_", " ") })];
+  const badges = [el("span", { class: `badge ${match.status}`, textContent: I18n.t(`status.${match.status}`, {}, match.status.replaceAll("_", " ")) })];
   const outcome = matchOutcome(match, user?.id);
   if (outcome) badges.push(el("span", {class:`badge result-${outcome.kind}`, textContent:outcome.label}));
-  if (yourTurn) badges.unshift(el("span", { class: "badge turn", textContent: "your turn" }));
+  if (yourTurn) badges.unshift(el("span", { class: "badge turn", textContent: I18n.t("ui.match.your_turn", {}, "your turn") }));
   return el(
     "button",
     {
@@ -426,7 +426,7 @@ function matchItem(match) {
     el("div", { class: "title" }, game ? game.name : "?", ...badges),
     el("div", {
       class: "sub",
-      textContent: `${match.players.map(playerName).join(", ")} · ${match.move_count} moves`,
+      textContent: `${match.players.map(playerName).join(", ")} · ${I18n.t("ui.match.moves_count", { count: match.move_count }, `${match.move_count} moves`)}`,
     }),
   );
 }
@@ -539,8 +539,10 @@ async function joinRandomMatch() {
 }
 
 function gameCountLabel(game) {
+  const counts = game.allowed_player_counts.join(", ");
   return game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1
-    ? "1 player · solo" : `${game.allowed_player_counts.join(", ")} players`;
+    ? I18n.t("ui.games.solo_label", {}, "1 player · solo")
+    : I18n.t("ui.games.players_label", { counts }, `${counts} players`);
 }
 
 function libraryGames() {
@@ -559,27 +561,30 @@ function libraryGames() {
 function renderLibrary() {
   const games = libraryGames();
   const selected = $("new-game").value;
-  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter, state.randomJoining]);
+  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter, state.randomJoining, I18n.revision()]);
   if (state.libraryKey === key) return;
   state.libraryKey = key;
-  $("library-count").textContent = `${games.length} ${games.length === 1 ? "game" : "games"} to explore`;
+  $("library-count").textContent = I18n.t("ui.games.count", { count: games.length }, `${games.length} ${games.length === 1 ? "game" : "games"} to explore`);
   $("library-empty").hidden = games.length > 0;
   $("game-library").className = `game-library-grid ${state.libraryView === "list" ? "is-list" : ""}`;
   $("game-library").replaceChildren(...games.map(game => {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
-    const initials = game.name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     const random = isRandomGame(game);
+    // The "Random" card is built into the page; every other game's text is its builder's.
+    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : game.name;
+    const description = random ? I18n.t("ui.games.random_description", {}, game.description) : game.description;
+    const initials = name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
-      "aria-label":random ? `${game.name}. ${game.description}` : `Open ${game.name}, ${gameCountLabel(game)}`,
+      "aria-label":random ? `${name}. ${description}` : I18n.t("ui.games.open_aria", { name, players: gameCountLabel(game) }, `Open ${name}, ${gameCountLabel(game)}`),
       disabled:random && state.randomJoining,
       onclick:() => random ? joinRandomMatch() : openGamePage(game.id)},
       el("span", {class:"library-art", style:`--art-hue:${hue}`, "aria-hidden":"true"},
         el("span", {class:"library-monogram", textContent:initials}),
         el("span", {class:"library-art-label", textContent:"GAME PLATFORM"})),
       el("span", {class:"library-copy"}, el("span", {class:"library-mode", textContent:gameCountLabel(game)}),
-        el("span", {class:"library-title", textContent:game.name}),
-        el("span", {class:"library-description", textContent:game.description || "Choose this game to start a new match."}),
-        el("span", {class:"library-select", textContent:random ? (state.randomJoining ? "Finding a match…" : "Join a random match ↗") : "Open game ↗"})));
+        el("span", {class:"library-title", textContent:name}),
+        el("span", {class:"library-description", textContent:description || I18n.t("ui.games.default_description", {}, "Choose this game to start a new match.")}),
+        el("span", {class:"library-select", textContent:random ? (state.randomJoining ? I18n.t("ui.games.finding_match", {}, "Finding a match…") : I18n.t("ui.games.random_join", {}, "Join a random match ↗")) : I18n.t("ui.games.open_game", {}, "Open game ↗")})));
   }));
 }
 
@@ -685,9 +690,9 @@ function updateMatchSetup() {
   $("practice").disabled = !me() || !game;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   updateStakePreview();
-  $("create").textContent = solo ? "Play solo ↗" : "Create match ↗";
+  $("create").textContent = solo ? I18n.t("ui.portal.play_solo", {}, "Play solo ↗") : I18n.t("ui.portal.create_match", {}, "Create match ↗");
   $("selected-game-card").hidden = !game;
-  $("selected-game-name").textContent = game?.name || "Choose a game";
+  $("selected-game-name").textContent = game?.name || I18n.t("ui.games.choose", {}, "Choose a game");
   $("selected-game-description").textContent = game?.description || "";
   $("selected-game-mode").textContent = solo ? "1 player · solo" : game ? `${game.allowed_player_counts.join(", ")} players` : "";
   $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "Create a match, then invite friends or add computers in the lobby." : state.games.length ? "Choose a game from the search results to continue." : "Publish a game in the builder to make it available here.";
@@ -1216,6 +1221,17 @@ async function main() {
   });
   Auth.renderMenu($("account-menu"));
   $("notify-toggle").addEventListener("click", toggleNotifications);
+  document.addEventListener("i18n-changed", () => {
+    // Texts the script built (badges, buttons, lists) are redrawn in the new language.
+    try {
+      Auth.renderMenu($("account-menu"));
+      render();
+      renderLibrary();
+      updateMatchSetup();
+    } catch (error) {
+      console.warn("Couldn't redraw after a language change:", error);
+    }
+  });
   document.addEventListener("auth-changed", () => {
     Auth.renderMenu($("account-menu"));
     state.armed = null;

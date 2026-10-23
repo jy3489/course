@@ -363,8 +363,9 @@ is answered in the first of: the `lang` query parameter, the language saved on t
 named by `X-User-Id` (set with `locale` on `POST /users` or `PATCH /users/{id}`), the
 `Accept-Language` header, and English. Error messages are translated; `GET /i18n/{locale}`
 returns the catalog of UI labels and status labels (cacheable, with an `ETag`). The
-catalogs live in `locales/*.json`. See [docs/i18n.md](docs/i18n.md) for how frontends use
-them and how to add a language or a text.
+catalogs live in `locales/*.json`. The portal and builder have a language picker in the top
+bar (`static/i18n.js`) that remembers the choice in the browser and on the account. See
+[docs/i18n.md](docs/i18n.md) for how frontends use them and how to add a language or a text.
 
 ### Errors
 

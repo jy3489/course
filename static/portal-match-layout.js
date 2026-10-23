@@ -23,10 +23,10 @@ window.PortalMatchLayout = (() => {
     $("match-tools").hidden = !active || (!waiting && !controlsOpen);
     $("match-controls-toggle").hidden = waiting;
     $("match-controls-toggle").setAttribute("aria-expanded", String(waiting || controlsOpen));
-    $("match-controls-toggle").textContent = controlsOpen ? "Hide controls" : "Controls";
+    $("match-controls-toggle").textContent = controlsOpen ? I18n.t("ui.portal.hide_controls", {}, "Hide controls") : I18n.t("ui.portal.controls", {}, "Controls");
     $("match-focus-toggle").hidden = waiting;
     $("match-focus-toggle").setAttribute("aria-pressed", String(focused));
-    $("match-focus-toggle").textContent = focused ? "Exit focus" : "Focus";
+    $("match-focus-toggle").textContent = focused ? I18n.t("ui.portal.exit_focus", {}, "Exit focus") : I18n.t("ui.portal.focus", {}, "Focus");
     $("match-toolbar-title").textContent = active ? $("match-title").textContent : "";
     const error = $("match-message").classList.contains("error") ? $("match-message").textContent : "";
     const notices = [];
@@ -67,6 +67,7 @@ window.PortalMatchLayout = (() => {
       manualFocus = !(manualFocus ?? landscape.matches);
       render();
     });
+    document.addEventListener("i18n-changed", render);
     document.addEventListener("keydown", event => {
       if (event.key !== "Escape" || !match) return;
       if (controlsOpen && match.status !== "waiting_for_players") {

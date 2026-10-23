@@ -820,3 +820,19 @@ body .builder-shell #games .list-item { min-width:0; }
 body .builder-shell .library-label { display:block; }
 
 body.match-page > .topbar .sidebar-toggle { display:none; }
+
+/* Language picker (static/i18n.js): a select with the globe in front, in the top bar. */
+.language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+
+.language-picker select {
+  max-width: 10em;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

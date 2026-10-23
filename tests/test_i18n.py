@@ -226,7 +226,7 @@ def test_a_catalog_is_cacheable_with_an_etag(api: Api) -> None:
     first = api.client.get("/i18n/de")
     etag = first.headers["etag"]
     assert etag == f'"{first.json()["version"]}"'
-    assert "max-age" in first.headers["cache-control"]
+    assert first.headers["cache-control"] == "no-cache"
     again = api.client.get("/i18n/de", headers={"If-None-Match": etag})
     assert (again.status_code, again.content) == (304, b"")
     # Another language, or another selection, is another version.
@@ -357,3 +357,46 @@ def test_the_statistics_count_users_by_language(api: Api) -> None:
     api.ok("POST", "/users", json={"display_name": "b", "locale": "es"})
     api.ok("POST", "/users", json={"display_name": "c"})
     assert api.ok("GET", "/admin/stats")["users"]["by_locale"] == {"es": 2, "unset": 1}
+
+
+# The web pages (static/i18n.js)
+
+STATIC_DIR = PACKAGE_DIR / "static"
+
+
+def test_every_key_the_web_pages_use_is_in_the_catalog() -> None:
+    """data-i18n attributes in the HTML and I18n.t("key") calls in the scripts."""
+    english = _catalog("en")
+    used: dict[str, set[str]] = {}
+    for page in sorted(STATIC_DIR.glob("*.html")):
+        for key in re.findall(r'data-i18n(?:-[a-z-]+)?="([^"]+)"', page.read_text(encoding="utf-8")):
+            used.setdefault(key, set()).add(page.name)
+    for script in sorted(STATIC_DIR.glob("*.js")):
+        for key in re.findall(r'I18n\.t\(\s*"([^"]+)"', script.read_text(encoding="utf-8")):
+            used.setdefault(key, set()).add(script.name)
+    assert len(used) > 100  # the scan found the keys
+    missing = {key: sorted(files) for key, files in used.items() if key not in english}
+    assert missing == {}
+
+
+def test_a_pages_built_in_english_matches_the_english_catalog() -> None:
+    """The HTML is written in English so a page works before (and without) its catalog;
+    English readers see exactly the catalog's texts either way."""
+    english = _catalog("en")
+    mismatches = []
+    for page in sorted(STATIC_DIR.glob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        for key, shown in re.findall(r'data-i18n="([^"]+)"[^>]*>([^<]*)<', text):
+            shown = re.sub(r"\s+", " ", shown).strip()
+            if english.get(key) != shown:
+                mismatches.append(f"{page.name}: {key} is {shown!r}, catalog says {english.get(key)!r}")
+    assert mismatches == []
+
+
+def test_pages_with_translated_text_load_the_language_script() -> None:
+    for page in sorted(STATIC_DIR.glob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        if "data-i18n" in text:
+            assert "/static/i18n.js" in text, f"{page.name} has data-i18n but no i18n.js"
+            # i18n.js must come before the scripts that call I18n.t
+            assert text.index("/static/i18n.js") < text.index("/static/auth.js"), page.name

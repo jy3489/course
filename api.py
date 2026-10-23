@@ -782,12 +782,14 @@ def get_catalog(
     messages), `status.*`, `end_reason.*` and `seat.*` (labels for API values) and `ui.*`
     (common portal and builder labels). `prefix` keeps only keys starting with it, e.g.
     `ui.`. Keys missing from a language are filled in from English unless `fallback` is
-    false. Cacheable: the ETag changes exactly when a text does."""
+    false. Cacheable: send the ETag back as If-None-Match to get a 304 while nothing changed."""
     code = i18n.normalize_locale(locale)
     if code is None:
         raise NotFoundError(f"language not supported: {locale}")
     version = i18n.catalog_version(code, fallback=fallback, prefix=prefix)
-    headers = {"ETag": f'"{version}"', "Cache-Control": "public, max-age=300"}
+    # no-cache: browsers keep a copy but ask (a cheap 304) before each use, so a new
+    # translation shows right after a deploy.
+    headers = {"ETag": f'"{version}"', "Cache-Control": "no-cache"}
     if request.headers.get("if-none-match") == headers["ETag"]:
         return Response(status_code=HTTPStatus.NOT_MODIFIED, headers=headers)
     body = CatalogOut(

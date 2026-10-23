@@ -172,7 +172,7 @@ function renderStatus() {
   const game=selectedGame();
   const changed=!game || game.published===false || JSON.stringify(content(game))!==JSON.stringify(state.editor);
   $("publish").disabled=!state.editor.code || !state.editor.name.trim() || !changed || state.publishing || state.agentSending || state.restoring;
-  $("publish").textContent=state.publishing ? "Publishing…":"Publish";
+  $("publish").textContent=state.publishing ? I18n.t("ui.builder.publishing",{},"Publishing…"):I18n.t("ui.action.publish",{},"Publish");
   $("save-status").textContent=state.saveError || state.saveWarning || (state.savePromise ? "Saving…":isDirty()?"Saving…":state.selectedId && state.editor.code?"Autosaved":"");
   $("save-status").className="save-status"+((state.saveError||state.saveWarning)?" error":"");
   $("retry-save").hidden=!state.saveError;
@@ -182,9 +182,9 @@ function renderStatus() {
   $("load-version").disabled=state.publishing || state.restoring || state.agentSending;
   $("delete-game").disabled=state.publishing || state.restoring || state.agentSending || Boolean(state.savePromise);
   $("agent-send").disabled=state.agentSending || state.publishing || state.restoring;
-  $("agent-send").textContent=state.agentSending?"Working…":state.editor.code?"Update game":"Create game";
+  $("agent-send").textContent=state.agentSending?I18n.t("ui.builder.working",{},"Working…"):state.editor.code?I18n.t("ui.builder.update_game",{},"Update game"):I18n.t("ui.builder.create_game",{},"Create game");
   $("open-ai").hidden=!state.editor.code || state.aiOpen;
-  $("open-ai").textContent=state.agentSending?"AI is working…":"Ask AI";
+  $("open-ai").textContent=state.agentSending?I18n.t("ui.builder.ai_working",{},"AI is working…"):I18n.t("ui.builder.ask_ai",{},"Ask AI");
   $("agent-stop").hidden=!state.agentSending;
   renderStarters();
   $("game-summary").textContent=state.editor.description;
@@ -196,7 +196,7 @@ function render() {
   renderLibrary();
   const ready=Boolean(me() && state.selectedId);
   $("workspace").hidden=!ready;$("welcome").hidden=ready;
-  $("welcome-action").textContent=me()?"Create a game":"Sign in";
+  $("welcome-action").textContent=me()?I18n.t("ui.builder.create_title",{},"Create a game"):I18n.t("ui.auth.sign_in",{},"Sign in");
   const playable=Boolean(state.editor.code);
   if ((!ready||!playable)&&document.body?.classList.contains("builder-preview-focus")) focusPreview(false);
   $("starter-view").hidden=playable;$("play-view").hidden=!playable;
@@ -225,7 +225,7 @@ function testLog(text,isError=false) {
 }
 function focusPreview(focused) {
   document.body.classList.toggle("builder-preview-focus",focused);
-  $("test-focus").textContent=focused?"Exit preview":"Focus preview";
+  $("test-focus").textContent=focused?I18n.t("ui.builder.exit_preview",{},"Exit preview"):I18n.t("ui.builder.focus_preview",{},"Focus preview");
   $("test-focus").setAttribute("aria-pressed",String(focused));
   frame.resizeViewport();
 }
@@ -263,7 +263,7 @@ function sendTestState() {
     actingFor: test.status === "ongoing" && !test.paused ? firstTurn : null,
   });
   test.awaiting = test.status === "ongoing" && !test.paused;
-  $("pause-test").textContent = test.paused ? "Resume" : "Pause";
+  $("pause-test").textContent = test.paused ? I18n.t("ui.builder.resume", {}, "Resume") : I18n.t("ui.builder.pause", {}, "Pause");
   $("step-test").disabled = !test.paused || test.status === "over";
   $("undo-move").disabled = !test.moves.length;
   $("redo-move").disabled = !test.redo?.length;
@@ -528,6 +528,13 @@ async function main() {
   $("starter-search").addEventListener("input",renderStarters);
   $("agent-stop").addEventListener("click",stopAgentWaiting);
   $("agent-input").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey))sendAgentMessage();});
+  document.addEventListener("i18n-changed",()=>{
+    // Texts the script built are redrawn in the new language.
+    Auth.renderMenu($("account-menu"));
+    render();
+    focusPreview(document.body.classList.contains("builder-preview-focus"));
+    if (typeof test!=="undefined" && test) $("pause-test").textContent=test.paused?I18n.t("ui.builder.resume",{},"Resume"):I18n.t("ui.builder.pause",{},"Pause");
+  });
   document.addEventListener("auth-changed",()=>{Auth.renderMenu($("account-menu"));PushNotifications.setup($("notify-toggle"),apiRequest);onUserChanged();});
   window.addEventListener("beforeunload",event=>{rememberWork();if(isDirty()||state.savePromise||state.agentSending){event.preventDefault();event.returnValue="";}});
   document.addEventListener("visibilitychange",()=>{if(document.hidden&&isDirty())flushAutosave();});
