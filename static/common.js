@@ -312,3 +312,53 @@ function statusClass(status) {
   if (status >= 400 && status < 500) return "warn";
   return "error";
 }
+
+/** A shared mobile drawer; desktop keeps the normal sidebar. */
+function setUpSidebarDrawer() {
+  const sidebar=document.querySelector('.builder-shell > .sidebar, .portal-shell > .sidebar');
+  if (!sidebar) return;
+  const media=window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1366px)');
+  const main=document.querySelector('.work'), openers=[];
+  let opened=false, returnFocus=null;
+  sidebar.id ||= 'app-sidebar';
+  const close=el('button',{type:'button',class:'sidebar-close','aria-label':'Close sidebar',textContent:'← Close sidebar',onclick:()=>setOpen(false)});
+  sidebar.prepend(close);
+  const backdrop=el('button',{type:'button',class:'sidebar-backdrop',tabIndex:-1,'aria-label':'Close sidebar',onclick:()=>setOpen(false)});
+  document.body.append(backdrop);
+  function setOpen(value,opener) {
+    opened=media.matches && value;
+    if (opened) returnFocus=opener || document.activeElement;
+    document.body.classList.toggle('sidebar-open',opened);
+    sidebar.inert=media.matches && !opened;
+    sidebar.setAttribute('aria-hidden',String(media.matches && !opened));
+    sidebar.setAttribute('role',media.matches?'dialog':'complementary');
+    sidebar.setAttribute('aria-label',document.querySelector('.builder-shell')?'Your games':'Your matches');
+    sidebar.setAttribute('aria-modal',String(opened));
+    main.inert=opened;
+    for (const button of openers) button.setAttribute('aria-expanded',String(opened));
+    if (opened) close.focus();
+    else if (returnFocus) { returnFocus.focus({preventScroll:true}); returnFocus=null; }
+  }
+  for (const toolbar of [document.querySelector('.topbar'),document.querySelector('.match-toolbar')].filter(Boolean)) {
+    const button=el('button',{type:'button',class:'sidebar-toggle',textContent:'☰','aria-label':'Open sidebar','aria-controls':sidebar.id,'aria-expanded':'false'});
+    button.addEventListener('click',()=>setOpen(!opened,button));
+    toolbar.prepend(button);openers.push(button);
+  }
+  sidebar.addEventListener('click',event=>{
+    if (event.target.closest('.list-item, #new-game, #show-creator')) setOpen(false);
+  });
+  document.addEventListener('keydown',event=>{
+    if (!opened) return;
+    if (event.key==='Escape') {event.preventDefault();setOpen(false);}
+    if (event.key==='Tab') {
+      const controls=[...sidebar.querySelectorAll('button:not([disabled]),a[href],summary,input:not([disabled]),select,textarea,[tabindex="0"]')].filter(node=>node.getClientRects().length);
+      const first=controls[0],last=controls.at(-1);
+      if (event.shiftKey && document.activeElement===first) {event.preventDefault();last?.focus();}
+      else if (!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
+    }
+  });
+  media.addEventListener('change',()=>setOpen(false));
+  setOpen(false);
+}
+if (document.readyState==='complete'||document.readyState==='interactive') setUpSidebarDrawer();
+else document.addEventListener?.('DOMContentLoaded',setUpSidebarDrawer,{once:true});

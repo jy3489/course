@@ -17,8 +17,8 @@
     <meta name="apple-mobile-web-app-title" content="Playroom" />
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
-    <link rel="stylesheet" href="/static/common.css?v=7" />
-    <link rel="stylesheet" href="/static/portal.css?v=16" />
+    <link rel="stylesheet" href="/static/common.css?v=8" />
+    <link rel="stylesheet" href="/static/portal.css?v=19" />
     <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
   </head>
   <body>
@@ -37,10 +37,10 @@
         <button id="show-creator" type="button" class="primary">+ New match</button>
         <div id="portal-login-note" class="muted" hidden>Log in to see your matches.</div>
         <div id="my-matches">
-          <details id="group-turn" class="match-group" open hidden><summary title="Matches where it is your turn to play">Your turn <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
-          <details id="group-ongoing" class="match-group"><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
-          <details id="group-waiting" class="match-group"><summary>Waiting for players <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
-          <details id="group-over" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
+          <details id="group-turn" name="my-match-groups" class="match-group" open hidden><summary title="Matches where it is your turn to play">Your turn <span id="count-turn" class="group-count">0</span></summary><div id="list-turn"></div></details>
+          <details id="group-ongoing" name="my-match-groups" class="match-group"><summary>Ongoing <span id="count-ongoing" class="group-count">0</span></summary><div id="list-ongoing"></div></details>
+          <details id="group-waiting" name="my-match-groups" class="match-group"><summary>Waiting for players <span id="count-waiting" class="group-count">0</span></summary><div id="list-waiting"></div></details>
+          <details id="group-over" name="my-match-groups" class="match-group"><summary>Finished <span id="count-over" class="group-count">0</span></summary><div id="list-over"></div></details>
         </div>
         <details id="group-open" class="match-group open-group"><summary>Open matches you can join <span id="count-open" class="group-count">0</span></summary><div id="open-matches"></div></details>
         <div class="sidebar-footer"><div class="offline-controls" role="status"><span id="offline-status">Preparing offline storage…</span><button id="retry-sync" type="button">Retry sync</button><button id="notify-toggle" type="button" aria-pressed="false" hidden>Enable notifications</button></div></div>
@@ -135,7 +135,7 @@
         </section>
       </main>
     </div>
-    <script src="/static/common.js?v=5"></script>
+    <script src="/static/common.js?v=6"></script>
     <script src="/static/auth.js?v=2"></script>
     <script src="/static/portal-offline.js?v=3"></script>
     <script src="/static/portal-install.js?v=1"></script>
