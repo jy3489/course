@@ -116,6 +116,7 @@ def main() -> None:
             sms_sender=make_sms_sender(config.auth.sms),
             email_sender=make_email_sender(config.auth.email),
             cors_allow_origins=config.server.cors_allow_origins,
+            public_base_url=config.server.public_base_url,
         )
         uvicorn.run(
             app,

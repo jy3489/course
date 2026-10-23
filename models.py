@@ -65,6 +65,13 @@ class User:
     # another one; GamePlatform.invite_stats resolves it to the survivor.
     # Defaults to None so older data files still load.
     invited_by_user_id: str | None = None
+    # The match invite (Invite.token) the account was created through, if any, so
+    # the invite can tell sign-ups from existing users. Defaults to None so older
+    # data files load.
+    invited_via_invite_token: str | None = None
+    # Games the user saved to their library, most recently saved last. Defaults to
+    # empty so older data files load.
+    saved_game_ids: tuple[str, ...] = ()
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -184,6 +191,14 @@ class Match:
     hidden_for_user_ids: frozenset[str]
     created_at: dt.datetime
     updated_at: dt.datetime
+    # A private match is left out of open-match listings and matchmaking, and only
+    # its players and people with an invite link can see or join it. Defaults to
+    # False so older data files load.
+    private: bool = False
+    # Set on matches created by matchmaking (a quick match with random opponents):
+    # the number of players it waits for. The match starts by itself when that many
+    # have joined. Defaults to None so older data files load.
+    matchmaking_player_count: int | None = None
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)
@@ -198,6 +213,37 @@ class Match:
 
     def involves(self, user_id: str) -> bool:
         return user_id == self.owner_user_id or self.seat_of(user_id) is not None
+
+
+@dataclass(frozen=True, kw_only=True)
+class InviteAcceptance:
+    """Someone who opened an invite link and took a seat (or signed up) with it."""
+
+    user_id: str
+    accepted_at: dt.datetime
+    # True when the account was created through this invite (a referral sign-up).
+    signed_up: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class Invite:
+    """A shareable link (or QR code) to one match. The token is the secret: whoever
+    has it can see the match and take a seat, even in a private match."""
+
+    token: str
+    match_id: str
+    created_by_user_id: str
+    created_at: dt.datetime
+    # None means no expiry.
+    expires_at: dt.datetime | None = None
+    # None means unlimited.
+    max_uses: int | None = None
+    revoked: bool = False
+    # Who used the invite, oldest first; the referral record.
+    acceptances: tuple[InviteAcceptance, ...] = ()
+    # How many times the link was opened (GET /invites/{token}), whether or not
+    # anyone joined; the top of the referral funnel.
+    views: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

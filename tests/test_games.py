@@ -243,3 +243,37 @@ def test_matches_keep_working_after_their_game_is_deleted(api: Api) -> None:
     assert api.move(match_id, as_user=alice, next_turn=None).status_code == 201
     # Clients can still load the code of the match's game version.
     assert api.ok("GET", f"/games/{game_id}/versions/1")["code"] == "<div>poker</div>"
+
+
+def test_games_can_be_searched_by_name_and_description(api: Api) -> None:
+    alice = api.new_user("alice")
+    for name, description in [
+        ("Poker", "Texas hold'em"),
+        ("Chess", "Classic strategy"),
+        ("Speed Chess", "Five-minute strategy"),
+    ]:
+        api.ok(
+            "POST",
+            "/games",
+            as_user=alice,
+            json={**POKER, "name": name, "description": description},
+        )
+
+    def search(q: str) -> list[str]:
+        return [g["name"] for g in api.ok("GET", "/games", params={"q": q})]
+
+    assert search("chess") == ["Chess", "Speed Chess"]
+    assert search("STRATEGY five") == ["Speed Chess"]
+    assert search("hold'em") == ["Poker"]
+    assert search("go") == []
+    assert search("") == ["Poker", "Chess", "Speed Chess"]
+
+
+def test_the_game_list_can_leave_out_the_code(api: Api) -> None:
+    alice = api.new_user("alice")
+    game_id = api.new_game(owner=alice)
+    (full,) = api.ok("GET", "/games")
+    (summary,) = api.ok("GET", "/games", params={"include_code": "false"})
+    assert full["code"] == "<div>poker</div>"
+    assert summary == {key: value for key, value in full.items() if key != "code"}
+    assert summary["id"] == game_id

@@ -23,6 +23,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    Invite,
     Match,
     User,
     WebPushSubscription,
@@ -32,13 +33,14 @@ from game_platform.store import InMemoryStore, Snapshot
 logger = logging.getLogger(__name__)
 
 # Bump when the file layout changes incompatibly.
-FORMAT_VERSION: Final = 6
+FORMAT_VERSION: Final = 7
 # Version 1 stored each turn as a single player index; version 2 stores a set of
 # them. Version 3 adds private drafts; version 4 adds publication state; version
-# 5 adds recorded agent conversations; version 6 adds web push subscriptions.
+# 5 adds recorded agent conversations; version 6 adds web push subscriptions;
+# version 7 adds invites, private matches, saved games and referrals.
 # Older servers must reject new formats rather than lose drafts, re-expose
-# unpublished games or drop conversations or subscriptions.
-# Versions 1, 2, 3, 4 and 5 still load with all existing data unchanged.
+# unpublished games or private matches, or drop conversations, subscriptions or
+# invites. Versions 1 to 6 still load with all existing data unchanged.
 _V1_FORMAT_VERSION: Final = 1
 
 
@@ -76,6 +78,8 @@ class JsonFileStore:
         self._backup_keep = backup_keep
         self._last_backup = float("-inf")
         self._min_write_interval_seconds = min_write_interval_seconds
+        # Why the last write failed, or None after a successful one. For health checks.
+        self.last_write_error: str | None = None
         self._inner = (
             InMemoryStore.of_snapshot(read_snapshot(path))
             if path.exists()
@@ -112,9 +116,11 @@ class JsonFileStore:
                 snapshot = self._inner.snapshot()
             try:
                 write_snapshot(self._path, snapshot)
+                self.last_write_error = None
                 self._back_up_if_due()
-            except Exception:
+            except Exception as error:
                 logger.exception("Failed to write %s; will retry", self._path)
+                self.last_write_error = type(error).__name__
                 with self._lock:
                     self._set_dirty()
 
@@ -299,6 +305,28 @@ class JsonFileStore:
             self._inner.delete_push_subscription_by_endpoint(endpoint)
             self._set_dirty()
 
+    def put_invite(self, invite: Invite) -> None:
+        with self._lock:
+            self._inner.put_invite(invite)
+            self._set_dirty()
+
+    def get_invite(self, token: str) -> Invite | None:
+        with self._lock:
+            return self._inner.get_invite(token)
+
+    def list_invites(
+        self, *, created_by_user_id: str | None = None, match_id: str | None = None
+    ) -> list[Invite]:
+        with self._lock:
+            return self._inner.list_invites(
+                created_by_user_id=created_by_user_id, match_id=match_id
+            )
+
+    def delete_invite(self, token: str) -> None:
+        with self._lock:
+            self._inner.delete_invite(token)
+            self._set_dirty()
+
 
 def read_snapshot(path: Path) -> Snapshot:
     contents = path.read_bytes()
@@ -309,7 +337,7 @@ def read_snapshot(path: Path) -> Snapshot:
             contents = _migrate_v1_to_v2(contents)
         except (KeyError, TypeError):
             pass  # fall through; validation below reports the real problem
-    elif format_version not in (2, 3, 4, 5, FORMAT_VERSION):
+    elif format_version not in (2, 3, 4, 5, 6, FORMAT_VERSION):
         raise ValueError(
             f"{path} has format version {format_version}, expected {FORMAT_VERSION}"
         )

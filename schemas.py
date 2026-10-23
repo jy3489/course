@@ -24,6 +24,8 @@ from game_platform.models import (
     EndReason,
     Game,
     GameDraft,
+    Invite,
+    InviteAcceptance,
     LinkedAccount,
     Match,
     MatchStatus,
@@ -102,6 +104,10 @@ class UserCreate(_Request):
     # The user whose invite link brought this person here; recorded only when this
     # creates a new account. Unknown ids are ignored.
     invited_by_user_id: str | None = None
+    # The match invite (POST /matches/{id}/invites) the person arrived through, if
+    # any; its creator is recorded as the inviter when [invited_by_user_id] isn't
+    # given. Unknown or unusable tokens are ignored.
+    invite_token: str | None = None
 
 
 class UserUpdate(_Request):
@@ -406,7 +412,9 @@ class GameUpdate(_Request):
         return self
 
 
-class GameOut(BaseModel):
+class GameSummaryOut(BaseModel):
+    """A game without its code: what a game list needs, at a fraction of the size."""
+
     id: str
     version: int
     owner_user_id: str
@@ -415,14 +423,13 @@ class GameOut(BaseModel):
     allowed_player_counts: list[int]
     allows_leave_mid_match: bool
     allows_join_mid_match: bool
-    code: str
     created_at: dt.datetime
     updated_at: dt.datetime
     deleted: bool
     published: bool
 
     @classmethod
-    def of(cls, game: Game) -> "GameOut":
+    def of(cls, game: Game) -> "GameSummaryOut":
         return cls(
             id=game.id,
             version=game.version,
@@ -432,12 +439,19 @@ class GameOut(BaseModel):
             allowed_player_counts=list(game.rules.allowed_player_counts),
             allows_leave_mid_match=game.rules.allows_leave_mid_match,
             allows_join_mid_match=game.rules.allows_join_mid_match,
-            code=game.code,
             created_at=game.created_at,
             updated_at=game.updated_at,
             deleted=game.deleted,
             published=game.published,
         )
+
+
+class GameOut(GameSummaryOut):
+    code: str
+
+    @classmethod
+    def of(cls, game: Game) -> "GameOut":
+        return cls(**GameSummaryOut.of(game).model_dump(), code=game.code)
 
 
 class GameDraftContent(_Request):
@@ -484,6 +498,16 @@ class MatchCreate(_Request):
 
     game_id: str
     num_computer_opponents: Annotated[int, Field(ge=0)] = 0
+    # Private matches aren't listed as open and can only be joined with an invite.
+    private: bool = False
+
+
+class QuickMatchRequest(_Request):
+    model_config = _example({"game_id": "", "num_players": 2})
+
+    game_id: str
+    # How many humans to wait for; defaults to the game's smallest count above one.
+    num_players: PlayerCount | None = None
 
 
 class MatchUpdate(_Request):
@@ -539,6 +563,9 @@ class MatchOut(BaseModel):
     move_count: int
     created_at: dt.datetime
     updated_at: dt.datetime
+    private: bool = False
+    # Set on quick matches: how many players it waits for before starting itself.
+    matchmaking_player_count: int | None = None
 
     @classmethod
     def of(cls, match: Match) -> "MatchOut":
@@ -557,6 +584,8 @@ class MatchOut(BaseModel):
             move_count=len(match.moves),
             created_at=match.created_at,
             updated_at=match.updated_at,
+            private=match.private,
+            matchmaking_player_count=match.matchmaking_player_count,
         )
 
 
@@ -730,3 +759,118 @@ class CatalogOut(BaseModel):
     # Changes exactly when a text does; also the ETag, so clients can cache the catalog.
     version: str
     messages: dict[str, str]
+
+
+# Invites and referrals
+
+_MAX_INVITE_LIFETIME_SECONDS: Final = 30 * 24 * 3600
+
+
+class InviteCreate(_Request):
+    model_config = _example({"expires_in_seconds": 86400, "max_uses": 1})
+
+    # Omit for a link that never expires (it still stops working when the match ends).
+    expires_in_seconds: Annotated[
+        int, Field(ge=60, le=_MAX_INVITE_LIFETIME_SECONDS)
+    ] | None = None
+    # Omit for unlimited uses.
+    max_uses: Annotated[int, Field(ge=1, le=MAX_PLAYERS)] | None = None
+
+
+class InviteAcceptanceOut(BaseModel):
+    user_id: str
+    accepted_at: dt.datetime
+    # True when this user created their account through the invite link.
+    signed_up: bool
+
+    @classmethod
+    def of(cls, acceptance: InviteAcceptance) -> "InviteAcceptanceOut":
+        return cls(
+            user_id=acceptance.user_id,
+            accepted_at=acceptance.accepted_at,
+            signed_up=acceptance.signed_up,
+        )
+
+
+class InviteLinks(BaseModel):
+    """Where an invite leads: [url] opens the portal at the invite; [qr_code_url] is an
+    SVG QR code of [url], for showing on a screen or printing."""
+
+    url: str
+    qr_code_url: str
+
+    @classmethod
+    def of(cls, token: str, base_url: str) -> "InviteLinks":
+        base_url = base_url.rstrip("/")
+        return cls(
+            url=f"{base_url}/portal#invite={token}",
+            qr_code_url=f"{base_url}/invites/{token}/qr.svg",
+        )
+
+
+class InviteOut(InviteLinks):
+    """An invite as its creator sees it, with its referral stats."""
+
+    token: str
+    match_id: str
+    created_by_user_id: str
+    created_at: dt.datetime
+    expires_at: dt.datetime | None
+    max_uses: int | None
+    revoked: bool
+    # How many times the link was opened, and who took a seat with it.
+    views: int
+    acceptances: list[InviteAcceptanceOut]
+
+    @classmethod
+    def of_invite(cls, invite: Invite, *, base_url: str) -> "InviteOut":
+        return cls(
+            **InviteLinks.of(invite.token, base_url).model_dump(),
+            token=invite.token,
+            match_id=invite.match_id,
+            created_by_user_id=invite.created_by_user_id,
+            created_at=invite.created_at,
+            expires_at=invite.expires_at,
+            max_uses=invite.max_uses,
+            revoked=invite.revoked,
+            views=invite.views,
+            acceptances=[InviteAcceptanceOut.of(a) for a in invite.acceptances],
+        )
+
+
+class InviteViewOut(BaseModel):
+    """What anyone holding an invite link sees: enough to decide whether to join,
+    without the creator's referral stats."""
+
+    token: str
+    match: MatchOut
+    game_name: str
+    created_by_user_id: str
+    created_by_display_name: str
+    expires_at: dt.datetime | None
+    # False when the link can't seat anyone new; [unusable_reason] says why (in the
+    # request's language) and [unusable_code] names the reason in every language.
+    usable: bool
+    unusable_reason: str | None = None
+    unusable_code: str | None = None
+
+
+class ReferralsOut(BaseModel):
+    """The caller's invite links and who came through them."""
+
+    invites_created: int
+    # Totals over every invite: link opens, seats taken, and accounts created.
+    views: int
+    acceptances: int
+    sign_ups: int
+    referred_users: list[UserOut]
+    invites: list[InviteOut]
+
+
+class HealthOut(BaseModel):
+    """For uptime checks and load balancers: 200 with "ok", or 503 with "degraded"."""
+
+    status: Literal["ok", "degraded"]
+    uptime_seconds: int
+    # "ok", or the kind of error that stops the data file from being saved.
+    storage: str

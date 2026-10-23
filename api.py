@@ -1,7 +1,9 @@
 """FastAPI routes for the game platform."""
 
+import io
 import secrets
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -12,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+import segno
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
@@ -34,8 +37,14 @@ from game_platform.schemas import (
     GameDraftPublish,
     GameDraftOut,
     GameOut,
+    GameSummaryOut,
     GameUpdate,
     GoogleLogin,
+    HealthOut,
+    InviteCreate,
+    InviteLinks,
+    InviteOut,
+    InviteViewOut,
     MatchCreate,
     MatchOut,
     MatchStart,
@@ -47,6 +56,8 @@ from game_platform.schemas import (
     PushConfigOut,
     PushSubscribe,
     PushSubscriptionOut,
+    QuickMatchRequest,
+    ReferralsOut,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -119,6 +130,24 @@ OptionalCallerId = Annotated[str | None, Depends(_get_caller_id_or_none)]
 
 router = APIRouter()
 
+# Health
+
+
+@router.get("/health", responses={HTTPStatus.SERVICE_UNAVAILABLE: {"model": HealthOut}})
+def health(platform: Platform, request: Request, response: Response) -> HealthOut:
+    """Whether the server is up and saving its data: 200 when healthy, 503 when the
+    data file can't be written (changes would be lost on restart). Public and cheap,
+    for uptime checks and load balancers."""
+    error = platform.storage_error()
+    if error is not None:
+        response.status_code = HTTPStatus.SERVICE_UNAVAILABLE
+    return HealthOut(
+        status="ok" if error is None else "degraded",
+        uptime_seconds=int(time.monotonic() - request.app.state.started_at),
+        storage=error or "ok",
+    )
+
+
 # Users
 
 
@@ -130,8 +159,50 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
         display_name=body.display_name,
         locale=body.locale,
         invited_by_user_id=body.invited_by_user_id,
+        invite_token=body.invite_token,
     )
     return UserWithPasswordOut.of_user(user)
+
+
+# The caller's own data. Declared before /users/{user_id} so "me" isn't taken for an id.
+
+
+@router.get("/users/me/saved-games")
+def list_saved_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
+    """The caller's library of saved games, most recently saved first."""
+    return [GameOut.of(g) for g in platform.list_saved_games(caller_id=caller_id)]
+
+
+@router.put("/users/me/saved-games/{game_id}")
+def save_game(platform: Platform, caller_id: CallerId, game_id: str) -> list[GameOut]:
+    """Adds a game to the caller's library (idempotent); returns the library."""
+    return [
+        GameOut.of(g) for g in platform.save_game(caller_id=caller_id, game_id=game_id)
+    ]
+
+
+@router.delete("/users/me/saved-games/{game_id}")
+def unsave_game(platform: Platform, caller_id: CallerId, game_id: str) -> list[GameOut]:
+    """Removes a game from the caller's library (idempotent); returns the library."""
+    return [
+        GameOut.of(g)
+        for g in platform.unsave_game(caller_id=caller_id, game_id=game_id)
+    ]
+
+
+@router.get("/users/me/referrals")
+def referrals(platform: Platform, request: Request, caller_id: CallerId) -> ReferralsOut:
+    """The caller's invite links and the people who came through them."""
+    invites, referred = platform.referrals(caller_id=caller_id)
+    base_url = _public_base_url(request)
+    return ReferralsOut(
+        invites_created=len(invites),
+        views=sum(invite.views for invite in invites),
+        acceptances=sum(len(invite.acceptances) for invite in invites),
+        sign_ups=len(referred),
+        referred_users=[UserOut.of(user) for user in referred],
+        invites=[InviteOut.of_invite(i, base_url=base_url) for i in invites],
+    )
 
 
 @router.get("/users/{user_id}")
@@ -393,10 +464,19 @@ def create_game(platform: Platform, caller_id: CallerId, body: GameCreate) -> Ga
 
 
 @router.get("/games")
-def list_games(platform: Platform, owner_user_id: str | None = None) -> list[GameOut]:
-    return [
-        GameOut.of(game) for game in platform.list_games(owner_user_id=owner_user_id)
-    ]
+def list_games(
+    platform: Platform,
+    owner_user_id: str | None = None,
+    q: str = "",
+    include_code: bool = True,
+) -> list[GameOut] | list[GameSummaryOut]:
+    """Published games, oldest first. `q` searches names and descriptions (every word
+    must match, ignoring case). `include_code=false` leaves out each game's code, which
+    is most of the response; load it per game from /games/{id}/versions/{version}."""
+    games = platform.list_games(owner_user_id=owner_user_id, query=q)
+    if include_code:
+        return [GameOut.of(game) for game in games]
+    return [GameSummaryOut.of(game) for game in games]
 
 
 @router.get("/builder/games")
@@ -454,8 +534,25 @@ def create_match(
         caller_id=caller_id,
         game_id=body.game_id,
         num_computer_opponents=body.num_computer_opponents,
+        private=body.private,
     )
     return MatchOut.of(match)
+
+
+@router.post("/matchmaking/quick-match")
+def quick_match(
+    platform: Platform, caller_id: CallerId, body: QuickMatchRequest
+) -> MatchOut:
+    """Plays against random opponents: joins the oldest quick match of the game that
+    is waiting for players, or starts a new one for others to join. The match starts
+    by itself once it has all its players; poll it (or wait for the push notification)
+    until its status is "ongoing". Calling again while waiting returns the same match;
+    the owner cancels by deleting it, anyone else by leaving."""
+    return MatchOut.of(
+        platform.quick_match(
+            caller_id=caller_id, game_id=body.game_id, num_players=body.num_players
+        )
+    )
 
 
 @router.get("/matches")
@@ -544,6 +641,105 @@ def make_move(
 @router.get("/matches/{match_id}/moves")
 def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> list[MoveOut]:
     return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
+
+
+# Invites: shareable links and QR codes to a match, which also track referrals.
+
+
+def _public_base_url(request: Request) -> str:
+    """Where invite links point: the configured public address, else this request's."""
+    configured: str = request.app.state.public_base_url
+    return configured or str(request.base_url)
+
+
+@router.post("/matches/{match_id}/invites", status_code=HTTPStatus.CREATED)
+def create_invite(
+    platform: Platform,
+    request: Request,
+    caller_id: CallerId,
+    match_id: str,
+    body: InviteCreate | None = None,
+) -> InviteOut:
+    """Creates a link (and QR code) that lets anyone who has it see the match and
+    take a seat, including in a private match. Any player in the match may create
+    one; who uses it is recorded for the creator's referral stats."""
+    body = body if body is not None else InviteCreate()
+    invite = platform.create_invite(
+        caller_id=caller_id,
+        match_id=match_id,
+        expires_in_seconds=body.expires_in_seconds,
+        max_uses=body.max_uses,
+    )
+    return InviteOut.of_invite(invite, base_url=_public_base_url(request))
+
+
+@router.get("/users/me/invites")
+def list_invites(
+    platform: Platform, request: Request, caller_id: CallerId, match_id: str | None = None
+) -> list[InviteOut]:
+    """The match invites the caller created, optionally for one match. (/invites is
+    the backoffice's referral dashboard page.)"""
+    base_url = _public_base_url(request)
+    return [
+        InviteOut.of_invite(invite, base_url=base_url)
+        for invite in platform.list_invites(caller_id=caller_id, match_id=match_id)
+    ]
+
+
+@router.get("/invites/{token}")
+def view_invite(platform: Platform, request: Request, token: str) -> InviteViewOut:
+    """What an invite link opens: the match and who invited you. Public: the token is
+    the secret. Each call counts as a view in the creator's referral stats."""
+    view = platform.view_invite(token)
+    reason = code = None
+    if view.problem is not None:
+        reason, code, _ = i18n.localize_error(view.problem, request.state.locale)
+    return InviteViewOut(
+        token=view.invite.token,
+        match=MatchOut.of(view.match),
+        game_name=view.game_name,
+        created_by_user_id=view.inviter.id,
+        created_by_display_name=view.inviter.display_name,
+        expires_at=view.invite.expires_at,
+        usable=view.problem is None,
+        unusable_reason=reason,
+        unusable_code=code,
+    )
+
+
+@router.get(
+    "/invites/{token}/qr.svg",
+    response_class=Response,
+    responses={HTTPStatus.OK: {"content": {"image/svg+xml": {}}}},
+)
+def invite_qr_code(platform: Platform, request: Request, token: str) -> Response:
+    """The invite link as an SVG QR code, e.g. for an <img> tag or for printing."""
+    platform.check_invite_exists(token)
+    url = InviteLinks.of(token, _public_base_url(request)).url
+    svg = io.BytesIO()
+    segno.make(url, error="m").save(svg, kind="svg", scale=8, border=4, xmldecl=False)
+    return Response(
+        svg.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.post("/invites/{token}/accept")
+def accept_invite(platform: Platform, caller_id: CallerId, token: str) -> MatchOut:
+    """Takes a seat in the invite's match. New users can sign up with POST /users
+    {invite_token} first, which credits the inviter with the referral."""
+    return MatchOut.of(platform.accept_invite(caller_id=caller_id, token=token))
+
+
+@router.post("/invites/{token}/revoke")
+def revoke_invite(
+    platform: Platform, request: Request, caller_id: CallerId, token: str
+) -> InviteOut:
+    """Stops the link from seating anyone else (its creator or the match's owner).
+    The referral record is kept."""
+    invite = platform.revoke_invite(caller_id=caller_id, token=token)
+    return InviteOut.of_invite(invite, base_url=_public_base_url(request))
 
 
 # Languages: the catalogs of texts that frontends show, so they all share translations.
@@ -899,7 +1095,7 @@ async def _revalidate_pages(
     """Makes browsers check for newer pages and scripts on every load. Otherwise they
     may keep using a cached old script with a new page, which breaks it."""
     response = await call_next(request)
-    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
+    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/", "/users/me/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
         response.headers["Cache-Control"] = "private, no-store"
     elif request.method == "GET" and not response.headers.get(
         "content-type", ""
@@ -919,6 +1115,7 @@ def create_app(
     sms_sender: CodeSender | None = None,
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
+    public_base_url: str = "",
 ) -> FastAPI:
     """[debug_tools] adds the web pages (/portal, /builder, /admin, /console, /browse)
     and /debug/all-data, which exposes everything (including users' passwords),
@@ -927,7 +1124,10 @@ def create_app(
 
     [cors_allow_origins] are the origins whose pages may call the API from a browser;
     empty adds no CORS headers, for when a reverse proxy already adds them (two
-    `Access-Control-Allow-Origin` headers make browsers reject the response)."""
+    `Access-Control-Allow-Origin` headers make browsers reject the response).
+
+    [public_base_url] is where invite links and QR codes point; empty uses the
+    address each request came to."""
     app = FastAPI(title="Game platform")
     # Allow REST API requests from other domains (browser cross-origin requests).
     # Auth uses per-request headers, not cookies, so a wildcard origin is safe here.
@@ -940,6 +1140,8 @@ def create_app(
         )
     app.state.platform = platform if platform is not None else GamePlatform()
     app.state.master_password = master_password
+    app.state.public_base_url = public_base_url
+    app.state.started_at = time.monotonic()
     app.state.model_api_config = (
         model_api_config if model_api_config is not None else ModelApiConfig()
     )
