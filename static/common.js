@@ -233,7 +233,7 @@ class GameFrame {
       const work = container.closest(".work");
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const available = Math.min(work?.clientHeight || viewportHeight, viewportHeight) -
-        (container.getBoundingClientRect().top - (work?.getBoundingClientRect().top || 0)) - 20;
+        (container.getBoundingClientRect().top - (work?.getBoundingClientRect().top || 0) + (work?.scrollTop || 0)) - 20;
       container.style.setProperty("--game-height", Math.max(120, available) + "px");
     };
     if (typeof ResizeObserver !== "undefined") {
