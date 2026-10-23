@@ -29,8 +29,11 @@ test('Escape and choosing a game close the drawer and restore the opener',()=>{
   t.events.keydown({key:'Escape',preventDefault(){}});assert.equal(t.classes.has('sidebar-open'),false);assert.equal(button.focused,true);
   button.events.click();t.sidebar.events.click({target:{closest:()=>({})}});assert.equal(t.main.inert,false);
 });
-test('desktop sidebar stays available after rotating or resizing out of mobile layout',()=>{
-  const t=setup();t.toolbar.children[0].events.click();t.media.matches=false;t.events.media();
-  assert.equal(t.sidebar.inert,false);assert.equal(t.main.inert,false);assert.equal(t.sidebar.attrs['aria-hidden'],'false');
-  t.toolbar.children[0].events.click();assert.equal(t.classes.has('sidebar-open'),false);
+test('desktop web uses the same open and close controls as mobile',()=>{
+  const t=setup(false);assert.equal(t.sidebar.inert,true);
+  t.toolbar.children[0].events.click();
+  assert.equal(t.sidebar.inert,false);assert.equal(t.main.inert,true);assert.equal(t.sidebar.attrs['aria-hidden'],'false');
+  assert.equal(t.sidebar.attrs.role,'dialog');
+  t.sidebar.children[0].events.click();assert.equal(t.classes.has('sidebar-open'),false);
+  assert.equal(t.main.inert,false);assert.equal(t.sidebar.inert,true);
 });
