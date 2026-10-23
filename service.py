@@ -1021,6 +1021,64 @@ class GamePlatform:
             )
             return saved
 
+    def request_rematch(self, *, caller_id: str, match_id: str) -> Match:
+        with self._lock:
+            match = self._get_match(match_id)
+            self._get_seat(match, caller_id)
+            if match.status != "over":
+                raise ConflictError(
+                    "a rematch can only be requested after the match ends"
+                )
+
+            if match.rematch_match_id:
+                rematch = self._store.get_match(match.rematch_match_id)
+                if rematch is not None and rematch.status != "over":
+                    if rematch.seat_of(caller_id) is not None:
+                        return rematch
+                    return self.join_match(caller_id=caller_id, match_id=rematch.id)
+
+            game = self._get_game(match.game_id)
+            game_version = self._store.get_game_version(
+                match.game_id, match.game_version
+            )
+            if game.deleted or not game.published or game_version is None:
+                raise ConflictError("this game is no longer available for rematches")
+
+            solo_bot_rematch = (
+                len(match.human_user_ids) == 1 and match.num_computer_opponents > 0
+            )
+            now = self._clock()
+            rematch = Match(
+                id=self._new_id(),
+                game_id=match.game_id,
+                owner_user_id=caller_id,
+                game_version=match.game_version,
+                status="waiting_for_players",
+                seats=_waiting_seats(
+                    human_user_ids=[caller_id],
+                    num_computer_opponents=match.num_computer_opponents
+                    if solo_bot_rematch
+                    else 0,
+                ),
+                state=None,
+                turn_of_player_indices=None,
+                end_reason=None,
+                moves=(),
+                hidden_for_user_ids=frozenset(),
+                created_at=now,
+                updated_at=now,
+            )
+            self._store.put_match(rematch)
+            if solo_bot_rematch:
+                rematch = self.start_match(
+                    caller_id=caller_id,
+                    match_id=rematch.id,
+                    first_turn_player_indices=frozenset({0}),
+                    initial_state=None,
+                )
+            self._save(replace(match, rematch_match_id=rematch.id))
+            return rematch
+
     def start_match(
         self,
         *,

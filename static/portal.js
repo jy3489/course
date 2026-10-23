@@ -913,6 +913,27 @@ function renderMatch() {
       actionButton("Leave", call("POST", "/leave"), { danger: true, confirm }),
     );
   } else if (match.status === "over") {
+    if (mySeat && !match.localMode) {
+      const playingSoloWithComputers =
+        match.players.filter((player) => player.kind === "human").length === 1 &&
+        match.players.some((player) => player.kind === "computer");
+      actions.push(actionButton(
+        playingSoloWithComputers
+          ? "Play again"
+          : match.rematch_match_id
+            ? "Join rematch"
+            : "Request rematch",
+        async () => {
+          const rematch = await portalRequest(
+            "POST",
+            `/matches/${match.id}/rematch`,
+            {user},
+          );
+          selectMatch(rematch.id);
+        },
+        {primary:true},
+      ));
+    }
     if (isOwner)
       secondaryActions.push(
         actionButton("Delete match", call("DELETE"), {

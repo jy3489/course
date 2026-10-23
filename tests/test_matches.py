@@ -28,9 +28,100 @@ def test_create_a_match_with_computer_opponents(api: Api) -> None:
         "turn_of_player_indices": None,
         "state": None,
         "move_count": 0,
+        "rematch_match_id": None,
         "created_at": "2026-01-01T00:03:00Z",
         "updated_at": "2026-01-01T00:03:00Z",
     }
+
+
+def test_rematch_reuses_game_version_and_accepting_players_join_open_lobby(
+    api: Api,
+) -> None:
+    alice, bob, carol, dave = (
+        api.new_user("alice"),
+        api.new_user("bob"),
+        api.new_user("carol"),
+        api.new_user("dave"),
+    )
+    game_id = api.new_game(owner=alice, allowed_player_counts=[2, 3, 4])
+    match_id = api.new_match(
+        owner=alice, game_id=game_id, joiners=[bob, carol], start=True
+    )
+    api.ok(
+        "PATCH",
+        f"/games/{game_id}",
+        as_user=alice,
+        json={"code": "<div>version 2</div>"},
+    )
+    api.move(match_id, as_user=alice, next_turn=None, state={"winner": 0})
+
+    rematch = api.ok("POST", f"/matches/{match_id}/rematch", as_user=alice)
+    rematch_id = rematch["id"]
+    assert rematch["game_id"] == game_id
+    assert rematch["game_version"] == 1
+    assert rematch["status"] == "waiting_for_players"
+    assert [player["user_id"] for player in rematch["players"]] == [alice]
+    assert api.ok("GET", f"/matches/{match_id}")["rematch_match_id"] == rematch_id
+    assert rematch_id in [item["id"] for item in api.ok("GET", "/matches/open")]
+
+    # Original players accept into the same lobby. Players who don't accept leave
+    # seats open for other users to join.
+    bob_rematch = api.ok("POST", f"/matches/{match_id}/rematch", as_user=bob)
+    assert bob_rematch["id"] == rematch_id
+    assert [player["user_id"] for player in bob_rematch["players"]] == [alice, bob]
+    assert carol not in [player["user_id"] for player in bob_rematch["players"]]
+    api.ok("POST", f"/matches/{rematch_id}/join", as_user=dave)
+
+    # Repeated requests by an already accepted player are idempotent.
+    assert (
+        api.ok("POST", f"/matches/{match_id}/rematch", as_user=alice)["id"]
+        == rematch_id
+    )
+
+
+def test_rematch_requires_a_finished_match_and_an_original_player(api: Api) -> None:
+    alice, bob, stranger = (
+        api.new_user("alice"),
+        api.new_user("bob"),
+        api.new_user("stranger"),
+    )
+    game_id = api.new_game(owner=alice)
+    waiting_id = api.new_match(owner=alice, game_id=game_id, joiners=[bob])
+    assert error(
+        api.request("POST", f"/matches/{waiting_id}/rematch", as_user=alice)
+    ) == (409, "a rematch can only be requested after the match ends")
+
+    api.ok("POST", f"/matches/{waiting_id}/start", as_user=alice)
+    api.move(waiting_id, as_user=alice, next_turn=None, state={"winner": 0})
+    assert error(
+        api.request("POST", f"/matches/{waiting_id}/rematch", as_user=stranger)
+    ) == (403, "you are not a player in this match")
+
+
+def test_rematch_against_computers_restarts_immediately_with_same_bot_count(
+    api: Api,
+) -> None:
+    alice = api.new_user("alice")
+    game_id = api.new_game(owner=alice, allowed_player_counts=[2, 3])
+    match_id = api.new_match(
+        owner=alice, game_id=game_id, num_computer_opponents=2, start=True
+    )
+    api.move(match_id, as_user=alice, next_turn=None, state={"winner": 0})
+
+    rematch = api.ok("POST", f"/matches/{match_id}/rematch", as_user=alice)
+    assert rematch["status"] == "ongoing"
+    assert rematch["game_id"] == game_id
+    assert rematch["game_version"] == 1
+    assert [player["user_id"] for player in rematch["players"]] == [alice, None, None]
+    assert [player["kind"] for player in rematch["players"]] == [
+        "human",
+        "computer",
+        "computer",
+    ]
+    assert rematch["turn_of_player_indices"] == [0]
+    assert rematch["state"] is None
+    assert api.ok("GET", f"/matches/{match_id}")["rematch_match_id"] == rematch["id"]
+    assert api.ok("POST", f"/matches/{match_id}/rematch", as_user=alice)["id"] == rematch["id"]
 
 
 def test_create_match_checks_the_game(api: Api) -> None:

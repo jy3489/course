@@ -503,6 +503,14 @@ def join_match(platform: Platform, caller_id: CallerId, match_id: str) -> MatchO
     return MatchOut.of(platform.join_match(caller_id=caller_id, match_id=match_id))
 
 
+@router.post("/matches/{match_id}/rematch")
+def request_rematch(
+    platform: Platform, caller_id: CallerId, match_id: str
+) -> MatchOut:
+    match = platform.request_rematch(caller_id=caller_id, match_id=match_id)
+    return MatchOut.of(match)
+
+
 @router.post("/matches/{match_id}/start")
 def start_match(
     platform: Platform,

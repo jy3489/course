@@ -29,6 +29,8 @@
   "error.match_not_found": "لم يتم العثور على المباراة",
   "error.match_not_owner": "مالك المباراة فقط يمكنه القيام بذلك",
   "error.match_not_player": "أنت لست لاعبًا في هذه المباراة",
+  "error.rematch_not_finished": "لا يمكن طلب إعادة المباراة إلا بعد انتهائها",
+  "error.rematch_game_unavailable": "لم تعد هذه اللعبة متاحة لإعادة المباراة",
   "error.match_over": "انتهت المباراة",
   "error.match_not_ongoing": "المباراة ليست جارية",
   "error.match_already_started": "بدأت المباراة بالفعل",

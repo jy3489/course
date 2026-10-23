@@ -184,6 +184,7 @@ class Match:
     hidden_for_user_ids: frozenset[str]
     created_at: dt.datetime
     updated_at: dt.datetime
+    rematch_match_id: str | None = None
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)

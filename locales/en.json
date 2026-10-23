@@ -29,6 +29,8 @@
   "error.match_not_found": "match not found",
   "error.match_not_owner": "only the match's owner can do this",
   "error.match_not_player": "you are not a player in this match",
+  "error.rematch_not_finished": "a rematch can only be requested after the match ends",
+  "error.rematch_game_unavailable": "this game is no longer available for rematches",
   "error.match_over": "the match is over",
   "error.match_not_ongoing": "the match is not ongoing",
   "error.match_already_started": "the match has already started",

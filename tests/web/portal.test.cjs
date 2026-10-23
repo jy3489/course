@@ -252,6 +252,27 @@ test('selected match hides game setup while the catalog remains available',()=>{
   assert.equal(node('game-catalog').hidden,true);
 });
 
+test('finished multiplayer match offers a rematch to each human player',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path,options)=>{
+    calls.push([method,path,options?.user]);
+    return {id:'rematch-id',game_id:'game',game_version:2,status:'waiting_for_players'};
+  });
+  run('state.gameCache.set("game@2",state.games[0]);state.match={id:"finished-id",game_id:"game",game_version:2,owner_user_id:"owner",status:"over",players:[{player_index:0,kind:"human",user_id:"owner"},{player_index:1,kind:"human",user_id:"other"}],move_count:3,state:{winner:0}};renderMatch()');
+  const requestButton=node('actions').children.find(button=>button.textContent==='Request rematch');
+  assert.ok(requestButton);
+  await requestButton.onclick();
+  assert.deepEqual(calls[0].slice(0,2),['POST','/matches/finished-id/rematch']);
+  assert.equal(run('state.selectedId'),'rematch-id');
+});
+
+test('finished solo-versus-computers match offers Play again',()=>{
+  const {node,run}=setup();
+  run('state.gameCache.set("game@2",state.games[0]);state.match={id:"finished-id",game_id:"game",game_version:2,owner_user_id:"owner",status:"over",players:[{player_index:0,kind:"human",user_id:"owner"},{player_index:1,kind:"computer",user_id:null}],move_count:3,state:{winner:0}};renderMatch()');
+  assert.ok(node('actions').children.some(button=>button.textContent==='Play again'));
+  assert.ok(!node('actions').children.some(button=>button.textContent==='Request rematch'));
+});
+
 test('finished results are personalized including seat zero, draws, and spectators',()=>{
   const {run}=setup();
   run('state.match={status:"over",end_reason:"finished",players:[{player_index:0,user_id:"owner",kind:"human"},{player_index:1,user_id:"other",kind:"human"}],state:{winner:0}}');

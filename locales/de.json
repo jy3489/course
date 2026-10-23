@@ -29,6 +29,8 @@
   "error.match_not_found": "Partie nicht gefunden",
   "error.match_not_owner": "nur der Besitzer der Partie kann das tun",
   "error.match_not_player": "du bist kein Spieler in dieser Partie",
+  "error.rematch_not_finished": "eine Revanche kann erst nach Ende der Partie angefordert werden",
+  "error.rematch_game_unavailable": "dieses Spiel ist nicht mehr für Revanchen verfügbar",
   "error.match_over": "die Partie ist beendet",
   "error.match_not_ongoing": "die Partie läuft nicht",
   "error.match_already_started": "die Partie hat bereits begonnen",
