@@ -286,7 +286,8 @@ class GameFrame {
       this.onBadMessage(`ignored a malformed make_move: ${JSON.stringify(message)}`);
       return;
     }
-    this.onMakeMove({ new_state: message.new_state, next_turn_player_indices: next });
+    this.onMakeMove({ new_state: message.new_state, next_turn_player_indices: next,
+      ...(message.payout_player_indices !== undefined ? {payout_player_indices: message.payout_player_indices} : {}) });
   }
 }
 

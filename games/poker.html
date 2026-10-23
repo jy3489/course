@@ -37,6 +37,22 @@
 <div id="controls"></div>
 <div id="previous" hidden></div>
 <div id="log"></div>
+
+<script>
+/* Match-level virtual currency payout helper. In-game poker chips remain separate. */
+function platformTokenPayout(state, latest) {
+  const pot = latest?.token_pot || 0;
+  const humanSeats = (latest?.players || []).filter(p => p.kind === "human").map(p => p.player_index);
+  if (!pot || !humanSeats.length) return undefined;
+  const winner = state?.winner;
+  const winners = Number.isInteger(winner) && humanSeats.includes(winner)
+    ? [winner] : humanSeats; // draws split the pot equally
+  const payouts = Object.fromEntries(humanSeats.map(i => [i, 0]));
+  const base = Math.floor(pot / winners.length);
+  winners.forEach((i, index) => { payouts[i] = base + (index < pot % winners.length ? 1 : 0); });
+  return payouts;
+}
+</script>
 <script>
 "use strict";
 
@@ -421,6 +437,7 @@ if (typeof window !== "undefined" && window.document) {
     window.parent.postMessage(
       {
         type: "make_move",
+        ...(nextTurn === null ? {payout_player_indices: platformTokenPayout(newState, latest)} : {}),
         new_state: newState,
         next_turn_player_indices: nextTurn === null ? null : [nextTurn],
       },

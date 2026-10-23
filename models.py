@@ -72,6 +72,8 @@ class User:
     # Games the user saved to their library, most recently saved last. Defaults to
     # empty so older data files load.
     saved_game_ids: tuple[str, ...] = ()
+    token_balance: int = 0
+    last_token_grant_day: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -205,6 +207,9 @@ class Match:
     # None turn means this legacy match has no recorded starting snapshot.
     initial_state: JsonValue = None
     initial_turn_player_indices: frozenset[int] | None = None
+    bet_per_player: int = 0
+    token_pot: int = 0
+    token_payouts: dict[int, int] | None = None
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)

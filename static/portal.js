@@ -1006,6 +1006,7 @@ async function syncGame() {
     mySeat: mySeat ? mySeat.player_index : null,
     actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
   });
+  message.token_pot = view.token_pot ?? 0;
   const json = JSON.stringify(message);
   if (json !== state.lastSent) {
     state.lastSent = json;

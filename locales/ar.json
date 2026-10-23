@@ -62,7 +62,6 @@
   "error.method_not_allowed": "الطريقة غير مسموح بها",
   "error.push_subscription_not_found": "اشتراك الإشعارات غير موجود",
   "error.push_not_yours": "يمكنك فقط حذف اشتراكات الإشعارات الخاصة بك",
-
   "status.waiting_for_players": "في انتظار اللاعبين",
   "status.ongoing": "جارية",
   "status.over": "منتهية",
@@ -75,7 +74,6 @@
   "notify.player_joined": "انضم {name} إلى مباراتك في {game}",
   "notify.player_left": "غادر {name} مباراة {game}؛ يتولى الحاسوب اللعب",
   "notify.test": "إشعار تجريبي من منصة الألعاب",
-
   "ui.app_name": "منصة الألعاب",
   "ui.nav.portal": "البوابة",
   "ui.nav.builder": "منشئ الألعاب",
@@ -156,5 +154,17 @@
   "ui.builder.allow_leave": "السماح بالمغادرة أثناء المباراة",
   "ui.builder.allow_join": "السماح بالانضمام أثناء المباراة",
   "ui.builder.test": "اختبار",
-  "ui.builder.code": "الشيفرة"
+  "ui.builder.code": "الشيفرة",
+  "error.invalid_token_stake": "invalid token stake",
+  "error.paid_computer_match": "paid matches with computer opponents are not supported",
+  "error.computer_paid_match": "computer opponents cannot enter paid matches",
+  "error.duplicate_wager_accounts": "duplicate accounts cannot wager against themselves",
+  "error.player_not_found": "player not found",
+  "error.insufficient_tokens": "a player has insufficient tokens",
+  "error.payouts_final_only": "payouts only allowed on the final move",
+  "error.pot_distribution_required": "terminal move requires pot distribution",
+  "error.payouts_all_seats": "payouts must include every human seat",
+  "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
+  "error.payouts_total_pot": "payouts must total the token pot",
+  "error.no_tokens_for_payout": "no tokens available for payout"
 }

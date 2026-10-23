@@ -62,7 +62,6 @@
   "error.method_not_allowed": "不允许的请求方法",
   "error.push_subscription_not_found": "未找到推送订阅",
   "error.push_not_yours": "只能删除自己的推送订阅",
-
   "status.waiting_for_players": "等待玩家",
   "status.ongoing": "进行中",
   "status.over": "已结束",
@@ -75,7 +74,6 @@
   "notify.player_joined": "{name}加入了你在{game}的对局",
   "notify.player_left": "{name}离开了{game}；由电脑接管",
   "notify.test": "来自游戏平台的测试通知",
-
   "ui.app_name": "游戏平台",
   "ui.nav.portal": "游戏大厅",
   "ui.nav.builder": "游戏制作",
@@ -156,5 +154,17 @@
   "ui.builder.allow_leave": "允许对局中途离开",
   "ui.builder.allow_join": "允许对局中途加入",
   "ui.builder.test": "测试",
-  "ui.builder.code": "代码"
+  "ui.builder.code": "代码",
+  "error.invalid_token_stake": "invalid token stake",
+  "error.paid_computer_match": "paid matches with computer opponents are not supported",
+  "error.computer_paid_match": "computer opponents cannot enter paid matches",
+  "error.duplicate_wager_accounts": "duplicate accounts cannot wager against themselves",
+  "error.player_not_found": "player not found",
+  "error.insufficient_tokens": "a player has insufficient tokens",
+  "error.payouts_final_only": "payouts only allowed on the final move",
+  "error.pot_distribution_required": "terminal move requires pot distribution",
+  "error.payouts_all_seats": "payouts must include every human seat",
+  "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
+  "error.payouts_total_pot": "payouts must total the token pot",
+  "error.no_tokens_for_payout": "no tokens available for payout"
 }

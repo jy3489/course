@@ -62,7 +62,6 @@
   "error.method_not_allowed": "Método não permitido",
   "error.push_subscription_not_found": "assinatura push não encontrada",
   "error.push_not_yours": "você só pode excluir suas próprias assinaturas push",
-
   "status.waiting_for_players": "Aguardando jogadores",
   "status.ongoing": "Em andamento",
   "status.over": "Encerrada",
@@ -75,7 +74,6 @@
   "notify.player_joined": "{name} entrou na sua partida em {game}",
   "notify.player_left": "{name} saiu de {game}; um computador assume",
   "notify.test": "Notificação de teste da plataforma de jogos",
-
   "ui.app_name": "Plataforma de jogos",
   "ui.nav.portal": "Portal",
   "ui.nav.builder": "Criador",
@@ -156,5 +154,17 @@
   "ui.builder.allow_leave": "Permitir sair durante a partida",
   "ui.builder.allow_join": "Permitir entrar durante a partida",
   "ui.builder.test": "Testar",
-  "ui.builder.code": "Código"
+  "ui.builder.code": "Código",
+  "error.invalid_token_stake": "invalid token stake",
+  "error.paid_computer_match": "paid matches with computer opponents are not supported",
+  "error.computer_paid_match": "computer opponents cannot enter paid matches",
+  "error.duplicate_wager_accounts": "duplicate accounts cannot wager against themselves",
+  "error.player_not_found": "player not found",
+  "error.insufficient_tokens": "a player has insufficient tokens",
+  "error.payouts_final_only": "payouts only allowed on the final move",
+  "error.pot_distribution_required": "terminal move requires pot distribution",
+  "error.payouts_all_seats": "payouts must include every human seat",
+  "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
+  "error.payouts_total_pot": "payouts must total the token pot",
+  "error.no_tokens_for_payout": "no tokens available for payout"
 }

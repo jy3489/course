@@ -15,10 +15,13 @@ def test_create_and_get_a_guest_user(api: Api) -> None:
         "id": user["id"],
         "display_name": "alice",
         "picture_url": "",
+        "locale": "",
         "replaced_by_user_id": None,
         "replaced_user_ids": [],
         "password": user["password"],
         "linked_accounts": [],
+        "token_balance": 0,
+        "last_token_grant_day": None,
         "created_at": "2026-01-01T00:01:00Z",
         "updated_at": "2026-01-01T00:01:00Z",
     }

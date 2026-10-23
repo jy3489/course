@@ -143,6 +143,8 @@ class UserOut(BaseModel):
     replaced_user_ids: list[str] = []
     created_at: dt.datetime
     updated_at: dt.datetime
+    token_balance: int = 0
+    last_token_grant_day: str | None = None
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
@@ -151,6 +153,8 @@ class UserOut(BaseModel):
             display_name=user.display_name,
             picture_url=user.picture_url,
             locale=user.locale,
+            token_balance=user.token_balance,
+            last_token_grant_day=user.last_token_grant_day,
             replaced_by_user_id=user.replaced_by_user_id,
             replaced_user_ids=list(user.replaced_user_ids),
             created_at=user.created_at,
@@ -500,6 +504,7 @@ class MatchCreate(_Request):
     num_computer_opponents: Annotated[int, Field(ge=0)] = 0
     # Private matches aren't listed as open and can only be joined with an invite.
     private: bool = False
+    bet_per_player: Annotated[int, Field(ge=0, le=1000000)] = 0
 
 
 class QuickMatchRequest(_Request):
@@ -538,6 +543,9 @@ class MoveCreate(_Request):
     next_turn_player_indices: PlayerIndices | None
     # If given, the move is rejected unless the match has exactly this many moves.
     expected_move_count: int | None = None
+    # Amount of token pot paid to each human seat (integer keys encoded as strings).
+    # Required on a final move with nonzero pot; forbidden on other moves.
+    payout_player_indices: dict[int, Annotated[int, Field(ge=0)]] | None = None
 
 
 class PlayerOut(BaseModel):
@@ -561,6 +569,9 @@ class MatchOut(BaseModel):
     turn_of_player_indices: list[int] | None
     state: JsonValue
     move_count: int
+    bet_per_player: int = 0
+    token_pot: int = 0
+    token_payouts: dict[int, int] | None = None
     rematch_match_id: str | None
     created_at: dt.datetime
     updated_at: dt.datetime
@@ -583,6 +594,9 @@ class MatchOut(BaseModel):
             else sorted(match.turn_of_player_indices),
             state=match.state,
             move_count=len(match.moves),
+            bet_per_player=match.bet_per_player,
+            token_pot=match.token_pot,
+            token_payouts=match.token_payouts,
             rematch_match_id=match.rematch_match_id,
             created_at=match.created_at,
             updated_at=match.updated_at,
