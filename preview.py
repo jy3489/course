@@ -43,6 +43,50 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
         await client.aclose()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.middleware("http")
+    async def prevent_local_asset_caching(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["cache-control"] = "no-store"
+        return response
+
+    def preview_html(html: str, *, redirect_to_static: bool = False) -> HTMLResponse:
+        redirect = (
+            "location.replace('/static/portal.html'+location.hash);"
+            if redirect_to_static
+            else ""
+        )
+        bootstrap = f"""<meta name="local-preview" content="true">
+<script>
+void (async () => {{
+  if ("serviceWorker" in navigator) {{
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations
+      .filter((registration) =>
+        [registration.active, registration.waiting, registration.installing]
+          .some((worker) => worker?.scriptURL.endsWith("/static/portal-sw.js")))
+      .map((registration) => registration.unregister()));
+  }}
+  if ("caches" in window) {{
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter((name) => name.startsWith("playroom-portal-shell-"))
+      .map((name) => caches.delete(name)));
+  }}
+  {redirect}
+}})();
+</script>"""
+        return HTMLResponse(
+            html.replace("</head>", bootstrap + "</head>", 1),
+            headers={"cache-control": "no-store"},
+        )
+
+    @app.get("/static/portal.html")
+    async def local_portal_page():
+        html = (STATIC / "portal.html").read_text(encoding="utf-8")
+        return preview_html(html)
+
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
@@ -54,8 +98,10 @@ def create_preview(backend: str, *, transport=None) -> FastAPI:
             html = (STATIC / f"{page}.html").read_text(encoding="utf-8")
             notice = f'<div style="padding:8px 16px;background:#26304a;color:#eef0f5;font:12px/1.5 sans-serif">Local UI preview · Connected to {escape(parsed.netloc)}. Accounts, AI generation, and saved games use the live course server.</div>'
             if '<div class="sidebar-footer">' in html:
-                return HTMLResponse(html.replace('<div class="sidebar-footer">', '<div class="sidebar-footer">' + notice, 1))
-            return HTMLResponse(html.replace("<body>", "<body>" + notice, 1))
+                html = html.replace('<div class="sidebar-footer">', '<div class="sidebar-footer">' + notice, 1)
+            else:
+                html = html.replace("<body>", "<body>" + notice, 1)
+            return preview_html(html, redirect_to_static=page == "portal")
         if path.startswith("preview/jobs/") and request.method == "GET":
             job = jobs.get(path.rsplit("/", 1)[-1])
             owner = (request.headers.get("x-user-id", ""), request.headers.get("x-user-password", ""))

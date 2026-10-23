@@ -9,8 +9,9 @@
   font-family:'Trebuchet MS','Segoe UI',sans-serif; grid-template-columns:275px minmax(0,1fr);
 }
 .portal-shell [hidden] { display:none!important; }
-.game-detail-mode #match-creator > summary { display:none; }
-.game-detail-mode .creator-content { padding-top:0; }
+.game-detail-page { width:100%; max-width:900px; margin:0 auto; padding:28px 32px 30px; box-sizing:border-box; background:#171c2a; border:1px solid #343e55; border-top:3px solid #b49bff; border-radius:12px; }
+.game-detail-mode #match-creator { margin-bottom:0; }
+.game-detail-mode #game-detail-content { max-width:900px; margin:0 auto; }
 .back-to-games { display:inline-block; margin:0 0 20px; color:#5fd4ff; font-size:13px; text-decoration:none; }
 .back-to-games:hover { text-decoration:underline; }
 .game-detail-mode #game-detail-content { max-width:900px; margin:0 auto; }
@@ -89,7 +90,7 @@
 .portal-shell .frame-box { margin-top:20px; min-height:420px; border:1px solid #44506b; border-radius:9px; background:#fff; }
 .portal-shell .game-frame { min-height:420px; }
 .portal-shell .message { overflow-wrap:anywhere; font-size:13px; line-height:1.6; }
-@media(max-width:1050px) { .portal-shell { grid-template-columns:230px minmax(0,1fr); }.portal-main { padding:24px; }.creator-content { padding:0 24px 24px; }.match-creator > summary { padding:24px; }.creator-title { font-size:30px; } }
+@media(max-width:1050px) { .portal-shell { grid-template-columns:230px minmax(0,1fr); }.portal-main { padding:24px; }.creator-content { padding:0 24px 24px; }.game-detail-page { padding:24px; }.match-creator > summary { padding:24px; }.creator-title { font-size:30px; } }
 @media(max-width:860px) {
   .portal-shell { grid-template-columns:minmax(0,1fr); overflow:auto; }
   .portal-sidebar { overflow:visible; border-right:0; border-bottom:1px solid #343e55; padding:18px; gap:8px; }

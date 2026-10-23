@@ -36,6 +36,26 @@ def test_preview_serves_local_builder_and_forwards_authenticated_muse_requests()
         assert client.get('/debug/all-data').status_code == 404
 
 
+def test_preview_portal_disables_service_worker_and_prevents_asset_caching():
+    with TestClient(preview.create_preview('https://buildplay.fun', transport=httpx.MockTransport(lambda request: httpx.Response(200)))) as client:
+        entry = client.get('/portal')
+        assert entry.status_code == 200
+        assert entry.headers['cache-control'] == 'no-store'
+        assert 'name="local-preview"' in entry.text
+        assert "registration.unregister()" in entry.text
+        assert "location.replace('/static/portal.html'+location.hash)" in entry.text
+
+        portal = client.get('/static/portal.html')
+        assert portal.status_code == 200
+        assert portal.headers['cache-control'] == 'no-store'
+        assert 'name="local-preview"' in portal.text
+
+        script = client.get('/static/portal.js?v=20')
+        assert script.status_code == 200
+        assert script.headers['cache-control'] == 'no-store'
+        assert 'meta[name="local-preview"]' in script.text
+
+
 def test_preview_keeps_backend_errors_and_query_parameters():
     def backend(request):
         assert request.url.params['owner_user_id'] == 'owner'

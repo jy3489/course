@@ -1,6 +1,6 @@
 # Visual game chooser
 
-The shared portal includes a grid/list gallery, name/description search, player-support filters, and accessible native card buttons. Clicking a game card or search result opens that game's detail view in a new tab; the description and existing online/local match controls appear there, not below the gallery. The detail view reuses the current match-creation flow and can return to the catalog. The service-worker shell version is bumped with the changed assets.
+The shared portal includes a grid/list gallery, name/description search, player-support filters, and accessible native card buttons. The first catalog entry is **Random** (“Join an open match of any game”): it joins a randomly selected joinable match, or creates a lobby for a random published multiplayer game if no match is available. Clicking another game card or search result loads that game's detail view in the same tab; the description and existing online/local match controls appear there, not below the gallery. Query-string routing ensures the detail view initializes immediately after navigation; older `#game=` links remain supported. The detail view reuses the current match-creation flow and can return to the catalog. The service-worker shell version is bumped with the changed assets.
 
 ## Image integration pending
 

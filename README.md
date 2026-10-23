@@ -729,6 +729,10 @@ Google sign-in requires the course OAuth app to allow the local origin; guest
 login remains available for generation checks. Use the deployed site for final
 Google-login verification. The preview binds only to loopback and does not proxy
 admin/debug endpoints. Run `python -m pytest tests/test_preview.py` for its routing check.
+The local preview disables the portal service worker and sends static assets with
+`Cache-Control: no-store`, so ordinary reloads show edited files without repeated
+hard refreshes. Restart `preview.py` after changing Python preview behavior; a page
+already controlled by an older worker is cleaned up when opened through `/portal`.
 
 The connected preview submits Muse generation as a background job and polls for
 the result. This avoids relying on one long browser HTTP request for large games.

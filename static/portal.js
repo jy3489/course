@@ -54,6 +54,13 @@ const portalLock = (run) =>
         ),
       );
 let shellReady = false;
+const RANDOM_GAME = {
+  id: "__random__",
+  name: "Random",
+  description: "Join an open match of any game",
+  allowed_player_counts: [2],
+};
+const isRandomGame = (game) => game === RANDOM_GAME;
 function offlineStatus() {
   const data = offline.read();
   const pending = Object.values(data.queues).reduce((n, q) => n + q.length, 0);
@@ -194,6 +201,7 @@ const state = {
   refreshing: false,
   refreshAgain: false,
   creating: false,
+  randomJoining: false,
   revealedMatch: null,
   gameSearchOpen: false,
   gameSearchQuery: "",
@@ -205,7 +213,10 @@ const state = {
   libraryView: "grid",
   libraryKey: null,
   requestedGameHandled: false,
-  detailGameId: new URLSearchParams(location.hash.slice(1)).get("game"),
+  detailCreatorInitialized: false,
+  detailGameId:
+    new URLSearchParams(location.search).get("game") ||
+    new URLSearchParams(location.hash.slice(1)).get("game"),
 };
 
 class PortalGameFrame extends GameFrame {
@@ -490,7 +501,63 @@ function renderLists() {
 
 function openGamePage(id) {
   if (!state.games.some((game) => game.id === id)) return;
-  window.open(`/static/portal.html#game=${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+  location.assign(`/static/portal.html?game=${encodeURIComponent(id)}`);
+}
+
+async function joinRandomMatch() {
+  if (state.randomJoining) return;
+  const user = me();
+  if (!user) {
+    showPageError("Log in to join a random match.");
+    return;
+  }
+  if (!navigator.onLine) {
+    showPageError("Connect to the internet to join a random match.");
+    return;
+  }
+  state.randomJoining = true;
+  state.libraryKey = null;
+  renderLibrary();
+  try {
+    const [openMatches, games] = await Promise.all([
+      portalRequest("GET", "/matches/open"),
+      portalRequest("GET", "/games"),
+    ]);
+    state.openMatches = openMatches;
+    state.games = games;
+    await ensureDetails();
+    const candidates = state.openMatches.filter((match) => isJoinable(match, user.id));
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    for (const match of candidates) {
+      try {
+        await portalRequest("POST", `/matches/${match.id}/join`, {user});
+        selectMatch(match.id);
+        return;
+      } catch (error) {
+        if (error.status !== 409) throw error;
+      }
+    }
+
+    const multiplayerGames = state.games.filter((game) =>
+      game.published !== false && game.allowed_player_counts.some((count) => count > 1));
+    if (!multiplayerGames.length)
+      throw new Error("No published multiplayer games are available to create a lobby.");
+    const game = multiplayerGames[Math.floor(Math.random() * multiplayerGames.length)];
+    const match = await portalRequest("POST", "/matches", {
+      user,
+      body: {game_id: game.id, num_computer_opponents: 0},
+    });
+    selectMatch(match.id);
+  } catch (error) {
+    showPageError(`Couldn't join a random match: ${error.message}`);
+  } finally {
+    state.randomJoining = false;
+    state.libraryKey = null;
+    renderLibrary();
+  }
 }
 
 function gameCountLabel(game) {
@@ -500,17 +567,21 @@ function gameCountLabel(game) {
 
 function libraryGames() {
   const query = state.gameSearchQuery.trim().toLocaleLowerCase();
-  return state.games.filter(game =>
+  const matches = game =>
     `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query) &&
     (state.libraryFilter === "all" || (state.libraryFilter === "solo"
       ? game.allowed_player_counts.includes(1)
-      : game.allowed_player_counts.some(count => count > 1))));
+      : game.allowed_player_counts.some(count => count > 1)));
+  return [
+    ...(matches(RANDOM_GAME) ? [RANDOM_GAME] : []),
+    ...state.games.filter(matches),
+  ];
 }
 
 function renderLibrary() {
   const games = libraryGames();
   const selected = $("new-game").value;
-  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter]);
+  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter, state.randomJoining]);
   if (state.libraryKey === key) return;
   state.libraryKey = key;
   $("library-count").textContent = `${games.length} ${games.length === 1 ? "game" : "games"} to explore`;
@@ -519,15 +590,18 @@ function renderLibrary() {
   $("game-library").replaceChildren(...games.map(game => {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
     const initials = game.name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
+    const random = isRandomGame(game);
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
-      "aria-label":`Open ${game.name}, ${gameCountLabel(game)}`, onclick:() => openGamePage(game.id)},
+      "aria-label":random ? `${game.name}. ${game.description}` : `Open ${game.name}, ${gameCountLabel(game)}`,
+      disabled:random && state.randomJoining,
+      onclick:() => random ? joinRandomMatch() : openGamePage(game.id)},
       el("span", {class:"library-art", style:`--art-hue:${hue}`, "aria-hidden":"true"},
         el("span", {class:"library-monogram", textContent:initials}),
         el("span", {class:"library-art-label", textContent:"GAME PLATFORM"})),
       el("span", {class:"library-copy"}, el("span", {class:"library-mode", textContent:gameCountLabel(game)}),
         el("span", {class:"library-title", textContent:game.name}),
         el("span", {class:"library-description", textContent:game.description || "Choose this game to start a new match."}),
-        el("span", {class:"library-select", textContent:"Open game ↗"})));
+        el("span", {class:"library-select", textContent:random ? (state.randomJoining ? "Finding a match…" : "Join a random match ↗") : "Open game ↗"})));
   }));
 }
 
@@ -539,7 +613,8 @@ function renderGameSearch() {
   input.setAttribute("aria-expanded", String(state.gameSearchOpen));
   $("game-search-popup").hidden = !state.gameSearchOpen;
   const query = state.gameSearchQuery.trim().toLocaleLowerCase();
-  const results = state.games.filter((game) => `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query));
+  const results = [RANDOM_GAME, ...state.games].filter((game) =>
+    `${game.name} ${game.description || ""}`.toLocaleLowerCase().includes(query));
   state.filteredGames = results;
   state.gameSearchActive = Math.min(state.gameSearchActive, Math.max(0, state.filteredGames.length - 1));
   const key = JSON.stringify([state.gameSearchOpen, state.gameSearchQuery, state.gameSearchActive,
@@ -550,13 +625,13 @@ function renderGameSearch() {
   $("game-results").replaceChildren(...state.filteredGames.map((game, index) => el("button", {
     id: `game-result-${index}`, type: "button", role: "option", tabIndex: -1,
     class: "game-option", "aria-selected": String(index === state.gameSearchActive),
-    onclick: () => openGamePage(game.id),
+    onclick: () => isRandomGame(game) ? joinRandomMatch() : openGamePage(game.id),
   }, el("span", {class: "game-option-copy"},
     el("span", {textContent: game.name}),
     ...(game.description ? [el("span", {class: "game-option-description", textContent: game.description})] : [])),
     el("small", {textContent: gameCountLabel(game)}))));
   $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
-    : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to open a game.`;
+    : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to open or join a game.`;
 }
 
 function browseAllGames() {
@@ -589,7 +664,7 @@ function onGameSearchKey(event) {
   if (event.key === "Enter" && state.gameSearchOpen) {
     event.preventDefault();
     const game = state.filteredGames[state.gameSearchActive];
-    if (game) openGamePage(game.id);
+    if (game) isRandomGame(game) ? joinRandomMatch() : openGamePage(game.id);
   } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     const wasOpen = state.gameSearchOpen;
@@ -615,10 +690,17 @@ function renderMatchList(node, matches) {
 
 function updateMatchSetup() {
   const detailPage = Boolean(state.detailGameId);
+  if (detailPage && !state.detailCreatorInitialized) {
+    $("match-creator").open = false;
+    state.detailCreatorInitialized = true;
+  } else if (!detailPage) {
+    state.detailCreatorInitialized = false;
+  }
   const game = state.games.find((game) => game.id === (detailPage ? state.detailGameId : $("new-game").value));
+  const browsingGames = detailPage && $("match-creator").open;
   document.body?.classList.toggle("game-detail-mode", detailPage);
-  $("game-catalog").hidden = detailPage;
-  $("game-detail-page").hidden = !detailPage;
+  $("game-catalog").hidden = detailPage && !browsingGames;
+  $("game-detail-page").hidden = !detailPage || browsingGames || Boolean(state.selectedId);
   $("show-creator").hidden = detailPage;
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
@@ -1044,6 +1126,10 @@ function selectFromHash() {
   if (id && id !== state.selectedId) selectMatch(id);
 }
 
+function shouldRestoreSavedMatch() {
+  return !state.detailGameId && !location.hash;
+}
+
 async function main() {
   Auth.renderMenu($("account-menu"));
   $("notify-toggle").addEventListener("click", toggleNotifications);
@@ -1080,6 +1166,7 @@ async function main() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh();
   });
+  $("match-creator").addEventListener("toggle", updateMatchSetup);
   window.addEventListener("storage", () => {
     state.lastSent = null;
     refresh();
@@ -1125,7 +1212,7 @@ async function main() {
   });
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);
-  if (!location.hash && offline.read().selectedId)
+  if (shouldRestoreSavedMatch() && offline.read().selectedId)
     history.replaceState(null, "", `#match=${offline.read().selectedId}`);
   const cached = offline.read();
   state.selectedId = new URLSearchParams(location.hash.slice(1)).get("match");
@@ -1157,7 +1244,7 @@ async function main() {
   setInterval(() => {
     if (!document.hidden && !state.moveInFlight) refresh();
   }, POLL_MS);
-  if ("serviceWorker" in navigator)
+  if ("serviceWorker" in navigator && !document.querySelector('meta[name="local-preview"]'))
     navigator.serviceWorker
       .register("/static/portal-sw.js")
       .then(async () => {
