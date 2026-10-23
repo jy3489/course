@@ -37,6 +37,16 @@
   .dots span.tie { border-style: dashed; border-color: var(--muted); }
   #status { font: 11px var(--mono); color: var(--muted); }
   #status b { color: var(--lime); font-weight: 700; }
+  /* Cheat sheet: the card order, with this hand's super card highlighted. Tap for How to play. */
+  #cheat {
+    display: flex; align-items: center; gap: 4px; width: 100%; min-height: 22px; padding: 2px 6px;
+    border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted);
+    font: 10px var(--mono); white-space: nowrap; overflow: hidden; cursor: pointer;
+  }
+  #cheat .r { color: var(--text); font: 700 12px var(--mono); padding: 0 2px; border-radius: 2px; }
+  #cheat .r.super { background: var(--lime); color: var(--ink); }
+  #cheat .sup { margin-left: auto; color: var(--lime); font-weight: 700; }
+  @media (max-width: 360px) { #cheat .long { display: none; } #cheat { gap: 2px; } }
   #others { display: flex; gap: 6px; justify-content: center; }
   .other { flex: 1; max-width: 160px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; text-align: center; }
   .other .who { font: 700 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -97,6 +107,33 @@
     position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; padding: 24px; text-align: center; background: rgba(16, 20, 31, 0.95);
   }
+  /* How to play scrolls when it doesn't fit (phone landscape); auto margins keep it centered otherwise. */
+  #help { justify-content: flex-start; overflow-y: auto; padding: 16px; }
+  #help > :first-child { margin-top: auto; }
+  #help > :last-child { margin-bottom: auto; flex: none; }
+  #order { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 6px; }
+  #order .ends { display: flex; align-items: center; gap: 8px; font: 700 12px var(--mono); color: var(--muted); }
+  #order .ends .arrow { flex: 1; height: 2px; background: var(--muted); position: relative; }
+  #order .ends .arrow::after {
+    content: ""; position: absolute; right: -1px; top: -4px;
+    border: 5px solid transparent; border-left: 8px solid var(--muted); border-right: 0;
+  }
+  #order .ends .strong { color: var(--lime); }
+  #orderCards { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+  @media (max-width: 520px) { #orderCards { grid-template-columns: repeat(5, minmax(0, 1fr)); row-gap: 14px; } }
+  .ocard {
+    position: relative; aspect-ratio: 5 / 7; max-height: 96px; justify-self: center; width: 100%; max-width: 68px;
+    display: flex; align-items: center; justify-content: center; border-radius: 6px;
+    background: var(--paper); color: var(--ink); font-size: clamp(20px, 6vw, 32px); font-weight: 800;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  }
+  .ocard i { position: absolute; bottom: 3px; right: 5px; font: 10px var(--mono); font-style: normal; color: #6B7280; }
+  .ocard.super { box-shadow: 0 0 0 3px var(--lime); }
+  .ocard.super .tag {
+    position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); white-space: nowrap;
+    background: var(--lime); color: var(--ink); font: 700 9px var(--mono); padding: 1px 5px; border-radius: 3px;
+  }
+  #order .note { font: 11px var(--mono); color: var(--muted); }
   #help .intro { margin: 0; color: var(--lime); font: 13px var(--mono); max-width: 320px; }
   #help ol { text-align: left; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
   #help h2, #end h2 { margin: 0; font-size: 24px; }
@@ -114,6 +151,7 @@
 <div id="top"><h1>Brazilian Truco</h1><button id="helpButton">? how to play</button></div>
 <div id="scores"></div>
 <div id="status"></div>
+<button id="cheat" aria-label="Card order, weakest to strongest. Tap for how to play." hidden></button>
 <div id="others"></div>
 <div id="table">
   <div id="turnedBox"><div class="label">// turned card</div><div id="turned"></div><div class="label trump" id="trump"></div></div>
@@ -125,10 +163,15 @@
 
 <div id="help" class="overlay" hidden>
   <h2>How to play</h2>
+  <div id="order">
+    <div class="ends"><span>weakest</span><span class="arrow"></span><span class="strong">strongest</span></div>
+    <div id="orderCards"></div>
+    <div class="note" id="orderNote"></div>
+  </div>
   <p class="intro">Usually played in pairs (2 vs 2), or 1 vs 1.</p>
   <ol>
-    <li>Cards, low to high: 4 5 6 7 Q J K A 2 3.</li>
-    <li>Each hand a turned card (vira) is shown; the next rank up is trump (manilhas), strongest of all: ♣ &gt; ♥ &gt; ♠ &gt; ♦.</li>
+    <li>Each card beats the cards before it in the row above. Suits don't matter, except for super cards.</li>
+    <li>Each hand a turned card (vira) is shown; the next rank up is the super card (manilha), strongest of all: ♣ &gt; ♥ &gt; ♠ &gt; ♦.</li>
     <li>Play one card each; the highest wins the round. Best of 3 rounds wins the hand (1 point).</li>
     <li>On your turn call TRUCO! to raise the hand to 3. The other side accepts, gives up (you score), or raises: 6, 9, 12.</li>
     <li>First side to 12 points wins.</li>
@@ -347,7 +390,7 @@ function cardHTML(card, size, turned, withTag = false) {
   const suit = Logic.suit(card);
   const red = suit === "H" || suit === "D";
   const sym = Logic.SYMBOLS[suit];
-  const tag = withTag && Logic.isTrump(card, turned) ? `<div class="tag">★ trump</div>` : "";
+  const tag = withTag && Logic.isTrump(card, turned) ? `<div class="tag">★ super</div>` : "";
   // Cards in my hand are buttons; the others are pictures.
   const role = withTag ? `role="button" aria-label="play ${Logic.rank(card)}${sym}"` : `role="img" aria-label="${Logic.rank(card)}${sym}"`;
   return `<div class="card ${size} ${red ? "red" : ""}" data-card="${card}" ${role}>` +
@@ -406,6 +449,17 @@ function render() {
   const trickNo = Math.min(state.tricks.length + 1, 3);
   $("status").innerHTML = `this hand: <b>${state.value}</b> pts · ${raiseText} · round ${trickNo} of 3`;
 
+  // Cheat sheet strip and the How to play card order, with this hand's super card rank.
+  const superRank = Logic.trumpRank(state.turned);
+  $("cheat").innerHTML = `<span>weak</span>` +
+    Logic.RANKS.map((r) => `<span class="r${r === superRank ? " super" : ""}">${r}</span>`).join("") +
+    `<span>strong</span><span class="sup">★ <span class="long">super card: </span>${superRank}</span>`;
+  $("cheat").hidden = false;
+  $("orderCards").innerHTML = Logic.RANKS.map((r, i) => r === superRank
+    ? `<div class="ocard super">${r}<i>${i + 1}</i><span class="tag">★ super</span></div>`
+    : `<div class="ocard">${r}<i>${i + 1}</i></div>`).join("");
+  $("orderNote").textContent = `this hand: the turned card is ${Logic.rank(state.turned)}, so ${superRank} is the super card and beats every other card`;
+
   // Everyone else's cards, face down (spectators see every seat face down).
   const others = [...Array(n).keys()].filter((s) => s !== me);
   $("others").replaceChildren(...others.map((s) => {
@@ -420,7 +474,7 @@ function render() {
 
   // Turned card and trump.
   $("turned").innerHTML = cardHTML(state.turned, "mid", state.turned);
-  $("trump").innerHTML = `trump: <b>${Logic.trumpRank(state.turned)}</b>`;
+  $("trump").innerHTML = `★ super: <b>${superRank}</b>`;
 
   // This trick (or the last one, until the next card is played).
   const showLast = state.trick.length === 0 && state.tricks.length > 0 && state.last_trick;
@@ -522,6 +576,7 @@ function render() {
 }
 
 $("helpButton").onclick = () => { helpOpen = true; render(); };
+$("cheat").onclick = () => { helpOpen = true; render(); };
 $("helpClose").onclick = () => { helpOpen = false; render(); };
 
 window.addEventListener("message", (event) => {
