@@ -183,35 +183,29 @@ function actingUser(select, users) {
 // Hosting a game: its code runs in a sandboxed iframe and talks to the page with
 // postMessage. The page sends state_changed; the game sends make_move. See README.md.
 
-/** Runs inside the sandbox. Reflow at the device width first, then shrink only
- * overflowing games. Keep the iframe, scripts, canvas and current state alive. */
+/** Measure inside the sandbox, but scale the iframe outside it. CSS zoom changes
+ * the game's own layout/measurements and can feed back into its resize handlers. */
 function fitGameViewport() {
   const root = document.documentElement;
   let scheduled = false;
+  let previous = "";
   function fit() {
     scheduled = false;
     if (!document.body || !innerWidth || !innerHeight) return;
-    root.style.setProperty("zoom", "1", "important");
-    let scale = 1;
-    for (let pass = 0; pass < 8; pass++) {
-      const body = document.body;
-      const rect = body.getBoundingClientRect();
-      const width = Math.max(rect.right, body.scrollWidth * scale + Math.max(0, rect.left));
-      const height = Math.max(rect.bottom, body.scrollHeight * scale + Math.max(0, rect.top));
-      const ratio = Math.min(1, innerWidth / Math.max(1, width), innerHeight / Math.max(1, height));
-      if (ratio >= .999) break;
-      scale *= ratio * .995;
-      root.style.setProperty("zoom", String(scale), "important");
-    }
+    const body = document.body, rect = body.getBoundingClientRect(), style = getComputedStyle(body);
+    const width = Math.ceil(Math.max(rect.right, body.scrollWidth + rect.left) + (parseFloat(style.marginRight) || 0));
+    const height = Math.ceil(Math.max(rect.bottom, body.scrollHeight + rect.top) + (parseFloat(style.marginBottom) || 0));
+    const key = [width, height, innerWidth, innerHeight].join(",");
+    if (key === previous) return;
+    previous = key;
+    parent.postMessage({type:"game_viewport", width, height, viewport_width:innerWidth, viewport_height:innerHeight}, "*");
   }
   function schedule() {
     if (!scheduled) { scheduled = true; requestAnimationFrame(fit); }
   }
   addEventListener("resize", schedule);
   addEventListener("load", schedule, true); // late images and fonts can change the board size
-  new MutationObserver(records => {
-    if (records.some(record => record.target !== root)) schedule();
-  }).observe(root, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style","class","width","height","hidden"]});
+  new MutationObserver(schedule).observe(root, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style","class","width","height","hidden"]});
   new ResizeObserver(schedule).observe(document.body);
   document.fonts?.ready.then(schedule);
   schedule();
@@ -225,6 +219,7 @@ class GameFrame {
     this.onBadMessage = onBadMessage;
     this.iframe = null;
     this.ready = null;
+    this.viewport = null;
     window.addEventListener("message", (event) => this.receive(event));
     // Builder previews use the height left below their toolbar. Portal matches
     // already allocate the entire available work area through flex layout.
@@ -234,29 +229,77 @@ class GameFrame {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const available = Math.min(work?.clientHeight || viewportHeight, viewportHeight) -
         (container.getBoundingClientRect().top - (work?.getBoundingClientRect().top || 0) + (work?.scrollTop || 0)) - 20;
-      container.style.setProperty("--game-height", Math.max(120, available) + "px");
+      const height = Math.max(120, available) + "px";
+      if (container.style.getPropertyValue("--game-height") !== height) container.style.setProperty("--game-height", height);
     };
     if (typeof ResizeObserver !== "undefined") {
-      new ResizeObserver(resize).observe(container.closest(".work") || container);
-      new ResizeObserver(resize).observe(container);
+      // Changing an observed box during ResizeObserver delivery emits a loop
+      // error on phones. Write the preview height in the next animation frame.
+      let pending = false;
+      const observer = new ResizeObserver(() => {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => { pending = false; resize(); });
+      });
+      observer.observe(container.closest(".work") || container);
+      observer.observe(container);
     }
     window.addEventListener("resize", resize);
     window.visualViewport?.addEventListener("resize", resize);
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.resizeViewport()).observe(container);
   }
 
   /** Loads [code] as the iframe's document. Scripts run, but in an opaque origin, so
    * the game can't reach the platform's cookies, storage or API. */
   load(code) {
+    this.viewport = null;
     this.iframe = el("iframe", { className: "game-frame", title: "Game" });
     this.iframe.setAttribute("sandbox", "allow-scripts");
     this.ready = new Promise((resolve) => this.iframe.addEventListener("load", resolve, { once: true }));
     this.iframe.srcdoc = code + "<script>(" + fitGameViewport.toString() + ")()<" + "/script>";
     this.container.replaceChildren(this.iframe);
+    this.resizeViewport();
+  }
+
+  resizeViewport() {
+    if (!this.iframe) return;
+    const width = this.container.clientWidth, height = this.container.clientHeight;
+    if (!width || !height) return; // a closed test panel will be measured when shown
+    if (this.viewport?.width === width && this.viewport?.height === height) return;
+    this.viewport = {width, height, scale:1, passes:0};
+    this.applyViewport();
+  }
+
+  applyViewport() {
+    const {width, height, scale} = this.viewport;
+    // Keep the layout viewport and visual viewport proportional. Responsive
+    // boards reflow normally; transforming their iframe cannot change their DOM
+    // measurements or canvas coordinates. Never reload a game to resize it.
+    Object.assign(this.iframe.style, {width:Math.ceil(width / scale)+"px", height:Math.ceil(height / scale)+"px",
+      minHeight:"0", maxWidth:"none", flex:"none", transformOrigin:"top left", transform:`scale(${scale})`});
+  }
+
+  fitViewport(message) {
+    const view = this.viewport;
+    if (!view) return;
+    const {width, height, viewport_width:vw, viewport_height:vh} = message;
+    if (![width,height,vw,vh].every(n => Number.isFinite(n) && n > 0)) return;
+    if (Math.abs(vw - Math.ceil(view.width / view.scale)) > 1 || Math.abs(vh - Math.ceil(view.height / view.scale)) > 1) return;
+    const ratio = Math.min(1, vw / width, vh / height);
+    // Ignore rounding and bound viewport-dependent games (e.g. 100vh + a
+    // footer). Their own scrolling remains available instead of shrinking forever.
+    if (ratio >= .998 || view.passes >= 8) return;
+    const scale = Math.max(.1, view.scale * ratio);
+    if (view.scale - scale < .001) return;
+    view.scale = scale;
+    view.passes++;
+    this.applyViewport();
   }
 
   unload() {
     this.iframe = null;
     this.ready = null;
+    this.viewport = null;
     this.container.replaceChildren();
   }
 
@@ -270,6 +313,7 @@ class GameFrame {
   receive(event) {
     if (!this.iframe || event.source !== this.iframe.contentWindow) return;
     const message = event.data;
+    if (message?.type === "game_viewport") { this.fitViewport(message); return; }
     if (!message || message.type !== "make_move") {
       this.onBadMessage(`ignored a message that isn't make_move: ${JSON.stringify(message)}`);
       return;
