@@ -748,6 +748,9 @@ python -m pytest game_platform/tests
 The tests start the app in-process (no server or network needed) and use temporary
 directories for data files, so they don't touch your data.
 
+GitHub Actions runs these tests on every push and pull request
+(`.github/workflows/tests.yml`, Python 3.14). The web checks below aren't part of it yet.
+
 ### Web builder regression checks
 
 All backend tests and their fixtures/helpers live in `tests/`; web checks live in
