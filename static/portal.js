@@ -142,6 +142,82 @@ const frame = new PortalGameFrame(
 
 // Data
 
+// TOKEN_UI_POLISH_V1: backend-owned balances; never award or settle tokens in the browser.
+let walletBalance = null;
+function updateStakePreview() {
+  const select = $("match-stake"), preview = $("stake-preview"), panel = $("token-stake-panel");
+  if (!select || !preview || !panel) return;
+  const game = state.games.find(g => g.id === (state.detailGameId || $("new-game").value));
+  const solo = Boolean(game && game.allowed_player_counts.length === 1 && game.allowed_player_counts[0] === 1);
+  panel.classList.toggle("is-solo", solo);
+  select.disabled = solo;
+  if (solo && select.value !== "0") select.value = "0";
+  const amount = Number(select.value);
+  if (!amount || solo) {
+    preview.replaceChildren(el("span", {class:"stake-preview-text", textContent: solo ? "Solo game · No wager" : "Free game · No tokens at risk"}));
+  } else {
+    const extra = walletBalance === null ? "" : ` · Wallet: ${walletBalance} tokens`;
+    preview.replaceChildren(
+      el("span", {class:"stake-preview-text", textContent:`${amount} tokens per person · ${amount * 2} tokens in a 2-player pot${extra}`}));
+  }
+}
+
+async function updateTokenWallet(user) {
+  const wallet = $("token-wallet");
+  if (!user) { wallet.hidden = true; walletBalance = null; updateStakePreview(); return; }
+  try {
+    const record = await portalTransport("GET", `/users/${encodeURIComponent(user.id)}`, {user});
+    if (me()?.id !== user.id) return;
+    if (!Number.isSafeInteger(record.token_balance) || record.token_balance < 0) {
+      wallet.hidden = true; walletBalance = null; updateStakePreview(); return;
+    }
+    walletBalance = record.token_balance;
+    const balance = String(walletBalance);
+    if ($("token-balance").textContent !== balance) $("token-balance").textContent = balance;
+    wallet.title = `${balance} virtual tokens · Earn 10 when starting your first eligible match each day`;
+    wallet.hidden = false;
+    // No optimistic balance adjustments: the server may grant today's +10 at start.
+    updateStakePreview();
+  } catch {
+    wallet.hidden = true; walletBalance = null; updateStakePreview();
+  }
+}
+
+function updateMatchCurrency(match, user) {
+  const box = $("match-currency");
+  if (!match || match.localMode) { box.hidden = true; return; }
+  const stake = match.bet_per_player ?? 0;
+  const pot = match.token_pot ?? 0;
+  if (!Number.isSafeInteger(stake) || !Number.isSafeInteger(pot)) { box.hidden = true; return; }
+  const paid = stake > 0;
+  box.className = `match-currency token-summary${paid ? " is-paid" : ""}`;
+  const title = el("div", {class:"token-summary-title"},
+    el("span", {class:"token-summary-icon", "aria-hidden":"true", textContent:"✦"}),
+    el("strong", {textContent: paid ? "Match stakes" : "Free match"}));
+  const values = el("div", {class:"token-summary-values"},
+    el("div", {}, el("span", {textContent:"Per player"}), el("strong", {textContent:`${stake} tokens`})),
+    el("div", {}, el("span", {textContent:"Pot"}), el("strong", {textContent:`${pot} tokens`})));
+  const notes = [];
+  if (paid && match.status === "waiting_for_players")
+    notes.push(el("p", {class:"token-summary-note", textContent:"Pot is collected when the match starts. Paid matches need human players."}));
+  if (paid && match.status === "over" && match.token_payouts != null) {
+    const seat = user && match.players.find(p => p.user_id === user.id);
+    if (seat) {
+      const payout = match.token_payouts[String(seat.player_index)] ?? 0;
+      const net = payout - stake;
+      notes.push(el("div", {class:"token-summary-payout"},
+        el("span", {textContent:"Your payout"}),
+        el("strong", {textContent:`${payout} tokens`}),
+        el("small", {textContent:`Net ${net > 0 ? "+" : ""}${net} tokens`})));
+    } else notes.push(el("p", {class:"token-summary-note", textContent:"Payouts settled for all players."}));
+  }
+  if (!paid && match.status === "over")
+    notes.push(el("p", {class:"token-summary-note", textContent:"No tokens were wagered in this game."}));
+  box.replaceChildren(title, values, ...notes);
+  box.hidden = false;
+}
+
+
 function me() {
   return Auth.current();
 }
@@ -268,6 +344,7 @@ async function refreshLocked() {
   state.refreshAgain = false;
   try {
     const user = me();
+    if (!user) $("token-wallet").hidden = true;
     await offline.sync();
     const [games, myMatches, openMatches] = await Promise.all([
       portalRequest("GET", "/games"),
@@ -293,6 +370,7 @@ async function refreshLocked() {
     await ensureDetails();
     if (user?.id !== me()?.id) return;
     render();
+    await updateTokenWallet(user);
     await syncGame();
     showPageError("");
     offlineStatus();
@@ -606,6 +684,7 @@ function updateMatchSetup() {
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
   $("practice").disabled = !me() || !game;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
+  updateStakePreview();
   $("create").textContent = solo ? "Play solo ↗" : "Create match ↗";
   $("selected-game-card").hidden = !game;
   $("selected-game-name").textContent = game?.name || "Choose a game";
@@ -685,6 +764,7 @@ function renderMatch() {
     return;
   }
   const game = gameOf(match.game_id, match.game_version);
+  updateMatchCurrency(match, user);
   const counts = game ? game.allowed_player_counts : [];
   const ownerName = nameOf(match.owner_user_id);
   $("match-title").textContent =
@@ -801,15 +881,24 @@ function renderMatch() {
         }, {primary: true}));
       }
       const computers = match.players.filter((player) => player.kind === "computer").length;
+      const paidMatch = (match.bet_per_player ?? 0) > 0;
       const max = Math.max(...counts, 0);
-      const minus = actionButton("−", call("PATCH", "", {num_computer_opponents: computers - 1}), {disabled:computers === 0});
-      const plus = actionButton("+", call("PATCH", "", {num_computer_opponents: computers + 1}), {disabled:match.players.length >= max});
-      minus.setAttribute?.("aria-label", "Remove computer opponent");
-      plus.setAttribute?.("aria-label", "Add computer opponent");
-      actions.push(el("div", {class:"computer-stepper", role:"group", "aria-label":"Computer opponents"},
-        el("span", {class:"stepper-label", textContent:"Computers"}), minus,
-        el("span", {class:"stepper-count", textContent:String(computers), "aria-label":`${computers} computer opponents`}), plus));
-      actions.push(actionButton("Start game", call("POST", "/start"), {primary:true, disabled:!counts.includes(match.players.length)}));
+      if (!paidMatch) {
+        const minus = actionButton("−", call("PATCH", "", {num_computer_opponents: computers - 1}), {disabled:computers === 0});
+        const plus = actionButton("+", call("PATCH", "", {num_computer_opponents: computers + 1}), {disabled:match.players.length >= max});
+        minus.setAttribute?.("aria-label", "Remove computer opponent");
+        plus.setAttribute?.("aria-label", "Add computer opponent");
+        actions.push(el("div", {class:"computer-stepper", role:"group", "aria-label":"Computer opponents"},
+          el("span", {class:"stepper-label", textContent:"Computers"}), minus,
+          el("span", {class:"stepper-count", textContent:String(computers), "aria-label":`${computers} computer opponents`}), plus));
+      } else {
+        actions.push(el("p", {class:"paid-lobby-hint", textContent: computers ?
+          "Paid matches need human opponents. Remove the computer to continue." :
+          "Invite a human player to join this token match."}));
+        if (computers > 0) actions.push(actionButton("Remove computer", call("PATCH", "", {num_computer_opponents: computers - 1})));
+      }
+      const readyToStart = counts.includes(match.players.length) && (!paidMatch || computers === 0);
+      actions.push(actionButton("Start game", call("POST", "/start"), {primary:true, disabled:!readyToStart}));
       secondaryActions.push(actionButton("Delete match", call("DELETE"), {danger:true, confirm:"Delete this match for everyone?"}));
     } else if (mySeat) {
       actions.push(
@@ -1080,11 +1169,15 @@ async function createMatch() {
   $("create").disabled = true;
   const game = state.games.find((item) => item.id === $("new-game").value);
   try {
+    const bet = Number($("match-stake").value);
+    if (!Number.isSafeInteger(bet) || bet < 0) throw new Error("Invalid token stake");
+    if (bet > 0 && game?.allowed_player_counts?.length === 1 && game.allowed_player_counts[0] === 1) throw new Error("Token stakes require a multiplayer match");
     match = await portalRequest("POST", "/matches", {
       user,
       body: {
         game_id: $("new-game").value,
         num_computer_opponents: 0,
+        bet_per_player: Number($("match-stake").value),
       },
     });
     // Solo-only games have no lobby or second seat to wait for. Start the pinned
@@ -1200,6 +1293,7 @@ async function main() {
     document.querySelectorAll("[data-game-filter]").forEach(item => item.setAttribute("aria-pressed", String(item.dataset.gameFilter === "all")));
     browseAllGames();
   });
+  $("match-stake").addEventListener("change", updateStakePreview);
   $("create").addEventListener("click", createMatch);
   window.addEventListener("hashchange", selectFromHash);
   if (shouldRestoreSavedMatch() && offline.read().selectedId)
