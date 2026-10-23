@@ -10,7 +10,7 @@
       gtag('js', new Date());
       gtag('config', 'G-6CCXZQYVE7');
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#101827" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="/static/portal-icon-180.png" />
@@ -19,6 +19,7 @@
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=7" />
     <link rel="stylesheet" href="/static/portal.css?v=14" />
+    <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
   </head>
   <body>
     <header class="topbar">
@@ -107,7 +108,15 @@
           </div>
         </section>
         <div id="placeholder" class="muted">Your match will open here. You can also select a match from the sidebar.</div>
-        <section id="match" class="match-stage" hidden>
+        <section id="match" class="match-stage" aria-label="Play match" hidden>
+          <div class="match-toolbar">
+            <button id="match-back" type="button" aria-label="Back to games and matches">← Back</button>
+            <h2 id="match-toolbar-title"></h2>
+            <button id="match-focus-toggle" type="button" aria-pressed="false">Focus</button>
+            <button id="match-controls-toggle" type="button" aria-expanded="false" aria-controls="match-tools">Controls</button>
+          </div>
+          <p id="match-play-notice" class="match-play-notice" role="status" hidden></p>
+          <div id="match-tools" class="match-tools" role="region" aria-label="Match controls" hidden>
           <div class="match-header">
             <h2>
               <span id="match-title"></span>
@@ -120,6 +129,7 @@
           <div id="actions" class="inline-row"></div>
           <div id="match-message" class="message" role="status"></div>
           <div id="waiting" class="waiting-note" hidden></div>
+          </div>
           <div id="game-box" class="frame-box" hidden></div>
         </section>
       </main>
@@ -128,6 +138,7 @@
     <script src="/static/auth.js?v=2"></script>
     <script src="/static/portal-offline.js?v=1"></script>
     <script src="/static/portal-install.js?v=1"></script>
-    <script src="/static/portal.js?v=29"></script>
+    <script src="/static/portal-match-layout.js?v=1"></script>
+    <script src="/static/portal.js?v=30"></script>
   </body>
 </html>

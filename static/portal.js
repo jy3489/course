@@ -62,6 +62,7 @@ const RANDOM_GAME = {
 };
 const isRandomGame = (game) => game === RANDOM_GAME;
 function offlineStatus() {
+  window.PortalMatchLayout?.connection(navigator.onLine && offline.network);
   const data = offline.read();
   const pending = Object.values(data.queues).reduce((n, q) => n + q.length, 0);
   const conflicts = Object.keys(data.conflicts).length;
@@ -775,6 +776,7 @@ function renderMatch() {
   $("match").hidden = !match;
   $("placeholder").hidden = Boolean(match);
   if (!match) {
+    window.PortalMatchLayout?.update(null);
     $("placeholder").textContent = user
       ? "Your match will open here. You can also select a match from the sidebar."
       : "Sign in at the top right, then choose a game above.";
@@ -995,6 +997,7 @@ function renderMatch() {
     }
   }
   $("game-box").hidden = waiting;
+  window.PortalMatchLayout?.update(match);
 }
 
 function render() {
@@ -1152,6 +1155,13 @@ function shouldRestoreSavedMatch() {
 }
 
 async function main() {
+  window.PortalMatchLayout?.init(() => {
+    selectMatch(null);
+    render();
+    syncGame();
+    if (!state.detailGameId) $("match-creator").open = true;
+    (state.detailGameId ? document.querySelector(".back-to-games") : $("game-search"))?.focus({preventScroll: true});
+  });
   Auth.renderMenu($("account-menu"));
   $("notify-toggle").addEventListener("click", toggleNotifications);
   document.addEventListener("auth-changed", () => {
