@@ -235,7 +235,7 @@ function startTest() {
   const [countText,mode]=$("play-mode").value.split(":");const count=Number(countText);
   if (!state.editor.allowed_player_counts.includes(count)) return;
   const players=Array.from({length:count},(_,seat)=>({player_index:seat,kind:mode==="computer"&&seat>0?"computer":"human",name:mode==="computer"&&seat>0?"Computer "+seat:"Player "+(seat+1)}));
-  state.test={code:state.editor.code,players,moves:[],state:null,turn:[0],status:"ongoing",awaiting:false};
+  state.test={code:state.editor.code,players,moves:[],state:null,turn:[0],status:"ongoing",awaiting:false,paused:false,redo:[]};
   frame.load(state.editor.code);sendTestState();
 }
 function stopTest(){state.test=null;frame.unload();$("test-status").textContent="";}
@@ -253,14 +253,19 @@ function sendTestState() {
     moveCount: test.moves.length,
     // In pass-and-play the person at the screen is whichever human has the turn.
     mySeat: turnSeat && turnSeat.kind === "human" ? firstTurn : null,
-    actingFor: test.status === "ongoing" ? firstTurn : null,
+    actingFor: test.status === "ongoing" && !test.paused ? firstTurn : null,
   });
-  test.awaiting = test.status === "ongoing";
+  test.awaiting = test.status === "ongoing" && !test.paused;
+  $("pause-test").textContent = test.paused ? "Resume" : "Pause";
+  $("step-test").disabled = !test.paused || test.status === "over";
+  $("undo-move").disabled = !test.moves.length;
+  $("redo-move").disabled = !test.redo?.length;
+  $("test-state").textContent = JSON.stringify(test.state, null, 2);
   frame.send(message);
   setMessage("test-status",
     test.status === "over"
       ? `The game ended after ${test.moves.length} moves.`
-      : `Move ${test.moves.length + 1}: ${test.turn.map((seat) => test.players[seat].name).join(", ")}'s turn.`,
+      : `${test.paused ? "Paused · " : ""}Move ${test.moves.length + 1}: ${test.turn.map((seat) => test.players[seat].name).join(", ")}'s turn.`,
     test.status === "over" ? "ok" : "");
   testLog(`sent state_changed: move_count=${test.moves.length} turn=${JSON.stringify(test.turn)} status=${test.status}`);
 }
@@ -281,18 +286,21 @@ function onTestMove(move) {
     return;
   }
   test.awaiting = false;
+  test.redo = [];
   test.moves.push({ seats: test.turn, new_state: move.new_state, next });
   testLog(`received make_move from seats ${JSON.stringify(test.turn)}: next=${JSON.stringify(next)} new_state=${JSON.stringify(move.new_state)}`);
   test.state = move.new_state;
   test.turn = next;
   test.status = next === null ? "over" : "ongoing";
+  if (test.stepping) {test.paused = true;test.stepping = false;}
   sendTestState();
 }
 
 function undoTestMove() {
   const test = state.test;
   if (!test || test.moves.length === 0) return;
-  test.moves.pop();
+  (test.redo ||= []).push(test.moves.pop());
+  test.paused = true;
   const last = test.moves[test.moves.length - 1];
   test.state = last ? last.new_state : null;
   test.turn = last ? last.next : [0];
@@ -301,6 +309,23 @@ function undoTestMove() {
   sendTestState();
 }
 
+
+function redoTestMove() {
+  const test = state.test;
+  if (!test?.redo?.length) return;
+  const move = test.redo.pop();test.moves.push(move);
+  test.state = move.new_state;test.turn = move.next;
+  test.status = move.next === null ? "over" : "ongoing";test.paused = true;
+  sendTestState();
+}
+function pauseTest() {
+  if (!state.test) return;
+  state.test.paused = !state.test.paused;state.test.stepping = false;sendTestState();
+}
+function stepTest() {
+  if (!state.test?.paused || state.test.status === "over") return;
+  state.test.paused = false;state.test.stepping = true;sendTestState();
+}
 
 function generationActivity(phase, started) {
   $("agent-activity").hidden = false;
@@ -373,7 +398,8 @@ async function sendAgentMessage() {
   try {
     let gameId = null;
     try { gameId = await ensureDraftId(user, session); } catch { gameId = null; }
-    if (!isCurrent() || request.cancelled) return;
+    if (!isCurrent()) return;
+    if (request.cancelled) throw new Error("Waiting stopped.");
     const reply=await requestAgentReply(user,{game_name:values.name,game_description:values.description,
       allowed_player_counts:values.allowed_player_counts,player_count_mode:"auto",
       allows_leave_mid_match:values.allows_leave_mid_match,allows_join_mid_match:values.allows_join_mid_match,
@@ -483,6 +509,10 @@ async function main() {
   $("publish").addEventListener("click",publishVersion);$("retry-save").addEventListener("click",()=>flushAutosave());
   $("game-name").addEventListener("input",changeName);$("undo-ai-change").addEventListener("click",undoAppliedChange);
   $("play-mode").addEventListener("change",startTest);$("restart").addEventListener("click",startTest);
+  $("pause-test").addEventListener("click",pauseTest);
+  $("step-test").addEventListener("click",stepTest);
+  $("redo-move").addEventListener("click",redoTestMove);
+  $("test-size").addEventListener("change",()=> {$("test-frame").style.maxWidth=$("test-size").value;});
   $("undo-move").addEventListener("click",undoTestMove);$("load-version").addEventListener("click",restoreVersion);
   $("delete-game").addEventListener("click",deleteGame);$("agent-send").addEventListener("click",sendAgentMessage);
   $("load-starters").addEventListener("click",loadStarters);$("use-starter").addEventListener("click",useStarter);
