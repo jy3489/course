@@ -19,6 +19,7 @@ be swapped for a database. The server binary uses `JsonFileStore`
 |--------------|-----------------------------------------------------------------|
 | `models.py`  | Immutable domain records                                        |
 | `store.py`   | `Store` protocol and `InMemoryStore`                            |
+| `saving_store.py` | `SavingStore`: an `InMemoryStore` saved in the background (base of the stores below) |
 | `json_file_store.py` | `JsonFileStore`: `InMemoryStore` saved to a JSON file   |
 | `config.py`  | Server config, read from a JSON file                            |
 | `config.example.json` | Example config with every field at its default         |
