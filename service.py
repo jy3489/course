@@ -909,9 +909,19 @@ class GamePlatform:
             self._store.set_game_published(game_id, False)
             return self._get_game(game_id)
 
-    def list_games(self, *, owner_user_id: str | None) -> list[Game]:
+    def list_games(self, *, owner_user_id: str | None, query: str = "") -> list[Game]:
+        """Published games, optionally one owner's. A [query] keeps the games whose
+        name or description contains every one of its words, ignoring case."""
+        words = query.casefold().split()
         with self._lock:
-            return self._store.list_games(owner_user_id=owner_user_id)
+            return [
+                game
+                for game in self._store.list_games(owner_user_id=owner_user_id)
+                if all(
+                    word in f"{game.name} {game.description}".casefold()
+                    for word in words
+                )
+            ]
 
     def update_game(
         self,

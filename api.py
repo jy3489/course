@@ -463,10 +463,15 @@ def create_game(platform: Platform, caller_id: CallerId, body: GameCreate) -> Ga
 
 
 @router.get("/games")
-def list_games(platform: Platform, owner_user_id: str | None = None) -> list[GameOut]:
-    return [
-        GameOut.of(game) for game in platform.list_games(owner_user_id=owner_user_id)
-    ]
+def list_games(
+    platform: Platform,
+    owner_user_id: str | None = None,
+    q: str = "",
+) -> list[GameOut]:
+    """Published games, oldest first. `q` searches names and descriptions (every word
+    must match, ignoring case)."""
+    games = platform.list_games(owner_user_id=owner_user_id, query=q)
+    return [GameOut.of(game) for game in games]
 
 
 @router.get("/builder/games")
