@@ -1,0 +1,14 @@
+{
+  "name": "game-platform-ui-tests",
+  "private": true,
+  "scripts": {
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "test:ui:ui": "playwright test --ui",
+    "test:ui:report": "playwright show-report",
+    "audit": "playwright test -c playwright.audit.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

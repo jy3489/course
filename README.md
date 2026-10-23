@@ -967,3 +967,85 @@ creating another match. **Remove practice from list** archives the local session
 Deleting a match archives any pending offline work before removing its cached list
 entry, preventing deleted matches from reappearing. The action menu stays inside
 the viewport, and invalid next-player indices are rejected before queueing moves.
+
+## UI tests and CI/CD
+
+Playwright UI tests live in `e2e/` (separate from the Python `tests/`). They start a
+throwaway server with an empty data file (`e2e/start-server.py`) and drive the real pages
+in Chromium (desktop and phone). Use `page.route()` to mock API responses.
+
+### Running the UI tests
+
+Prerequisites: Node.js 18+ and a Python venv with the server's packages. One-time setup,
+from this folder:
+
+```
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+npm install && npx playwright install chromium
+```
+
+The config uses `.venv/bin/python` automatically (CI uses the `python` on PATH). To use a
+different Python, set `E2E_PYTHON` to its real path, e.g. `E2E_PYTHON=/Users/me/venv/bin/python`.
+
+```
+npx playwright test                       # headless, all tests
+npx playwright test --ui                  # interactive, shows each step
+npx playwright test --headed              # visible browser window
+SLOWMO=800 npx playwright test --headed --workers=1 --project=chromium   # watch it slowly
+npx playwright test e2e/portal.spec.ts    # one file
+npx playwright test -g "Log in"           # tests whose name matches
+npx playwright show-report                # HTML report after a run
+```
+
+Every test runs twice: on desktop Chrome and on a phone profile (Pixel 7), except `responsive.spec.ts`, which sets its own screen sizes and runs once. Add new tests as
+`e2e/*.spec.ts`; prefer role/text locators (`getByRole`, `getByText`) and auto-waiting
+`expect(...)` over fixed sleeps. Record/UI mode does not work in remote VS Code or Codespaces.
+
+### What the UI tests cover
+
+| File | Checks |
+|------|--------|
+| `e2e/portal.spec.ts` | Title and "Game platform" heading; logged-out visitors see a "Log in" button; match groups (Your turn, Ongoing, Waiting, Finished) start at 0; the page survives a mocked 500 from `/games` with no JS errors; a mocked game appears under "Browse all games" |
+| `e2e/builder.spec.ts` | Title and "Game Builder" heading; "Sign in" button visible and workspace hidden when logged out |
+| `e2e/pages.spec.ts` | `portal`, `builder`, `browse`, `invites` and `stats` pages each return HTTP 200 and load without JS errors (one parameterized test) |
+| `e2e/login.spec.ts` | Real guest login through the dialog; the name appears in the menu; log out; login survives a reload; the dialog closes with ×; an error shows when account creation fails (mocked 500) |
+| `e2e/play.spec.ts` | Search for a game, open it and play a practice match against the computer (click a square, see X); create an online match |
+| `e2e/multiplayer.spec.ts` | Two players in two separate browsers join one match; a move by one appears for the other |
+| `e2e/builder-loggedin.spec.ts` | Logged-in builder: welcome button, "Create a game" workspace, typing a prompt, disabled "Use as starting point" with no games, and the page staying usable when the AI request fails (mocked) |
+| `e2e/responsive.spec.ts` | Desktop-Chrome only: no horizontal scrolling for portal, builder and browse at 360x640, 390x844, 844x390, 820x1180, 1366x768 and 1920x1080; the sidebar drawer opens/closes on phone and laptop; the game frame stays usable and keeps its state when the screen is rotated |
+
+Shared helpers are in `e2e/helpers.ts`: `createUser` and `createGame` call the real API, and
+`loginAs` fakes a logged-in browser through `localStorage`. Tests share one server, so give
+them unique names (`uniqueName`) and mock the API (`page.route`) when you need a known state.
+
+Not covered yet: Google/phone/email login, joining someone else's open match from the lobby,
+the in-builder AI conversation with a real model, publishing/deleting games, and the admin,
+console and privacy pages. `tests/web/match-layout.browser.cjs` has more layout checks.
+
+### UI audit: report what doesn't look right
+
+```
+npm run audit
+```
+
+Unlike the tests, the audit never fails. It opens 8 pages (logged out and logged in) at 6
+screen sizes, from a 360px phone to a 1920px desktop, and writes `audit-report/report.md`
+(also printed in the terminal), plus a full-page screenshot of each in `audit-report/screenshots/`.
+It reports: page-level horizontal scrolling and elements sticking out of the screen (errors),
+wide tables/panels that need sideways scrolling, controls with no accessible name, broken
+images, JavaScript errors, failed HTTP requests (4xx/5xx except 401), tap targets under 40px on
+touch screens, text under 11px, clipped text, and missing `<title>`/`lang`. Identical findings
+are grouped across sizes. The audit is in `audit/audit.spec.ts`; add checks to `inspect()`.
+
+### CI/CD
+
+`.github/workflows/ci.yml` runs the pytest suite and the UI tests on every push and pull
+request. On a push to `main`, once both pass, it SSHes into the Google Cloud VM and runs a
+command. Configure these repository secrets (Settings > Secrets and variables > Actions):
+
+| Secret | Meaning |
+|--------|---------|
+| `GCP_VM_HOST` | VM external IP or hostname |
+| `GCP_VM_USER` | SSH user |
+| `GCP_VM_SSH_KEY` | Private key of a deploy key whose public half is in the VM's `~/.ssh/authorized_keys` |
+| `GCP_VM_DEPLOY_COMMAND` | Command run on the VM, e.g. `cd ~/game_platform && git pull --ff-only && ~/venv/bin/pip install -r requirements.txt && sudo systemctl restart game-platform` (the real path and service name depend on how the server is set up) |

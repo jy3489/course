@@ -1,0 +1,72 @@
+# Unit tests + Playwright UI tests on every push/PR; deploys to the Google Cloud VM
+# when both pass on a push to main.
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The code imports itself as `game_platform`, so check it out under that name.
+          path: game_platform
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: game_platform/requirements*.txt
+      - run: pip install -r game_platform/requirements-dev.txt
+      - run: python -m pytest game_platform/tests
+
+  ui-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game_platform
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: game_platform
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: game_platform/requirements*.txt
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game_platform/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: game_platform/playwright-report/
+          retention-days: 14
+
+  deploy:
+    needs: [unit-tests, ui-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: deploy
+    steps:
+      - name: Deploy over SSH
+        env:
+          VM_HOST: ${{ secrets.GCP_VM_HOST }}
+          VM_USER: ${{ secrets.GCP_VM_USER }}
+          VM_SSH_KEY: ${{ secrets.GCP_VM_SSH_KEY }}
+          VM_DEPLOY_COMMAND: ${{ secrets.GCP_VM_DEPLOY_COMMAND }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_deploy "$VM_USER@$VM_HOST" "$VM_DEPLOY_COMMAND"
