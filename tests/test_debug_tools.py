@@ -6,6 +6,7 @@ from game_platform.api import create_app
 from game_platform.schemas import (
     GameCreate,
     GameUpdate,
+    InviteCreate,
     MatchCreate,
     MatchStart,
     MatchUpdate,
@@ -67,9 +68,14 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         "/games/{game_id}/versions/{version}",
         "/i18n/locales",
         "/i18n/{locale}",
+        "/invites/{token}",
+        "/invites/{token}/accept",
+        "/invites/{token}/qr.svg",
+        "/invites/{token}/revoke",
         "/matches",
         "/matches/open",
         "/matches/{match_id}",
+        "/matches/{match_id}/invites",
         "/matches/{match_id}/join",
         "/matches/{match_id}/leave",
         "/matches/{match_id}/moves",
@@ -79,6 +85,7 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         "/push/subscriptions/{subscription_id}",
         "/push/test",
         "/users",
+        "/users/me/invites",
         "/users/me/saved-games",
         "/users/me/saved-games/{game_id}",
         "/users/{user_id}",
@@ -97,6 +104,7 @@ def test_debug_endpoints_are_not_in_the_api_schema(api: Api) -> None:
         MatchUpdate,
         MatchStart,
         MoveCreate,
+        InviteCreate,
     ],
 )
 def test_request_examples_shown_in_the_console_are_valid(

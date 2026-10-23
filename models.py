@@ -208,6 +208,32 @@ class Match:
 
 
 @dataclass(frozen=True, kw_only=True)
+class InviteAcceptance:
+    """Someone who opened an invite link and took a seat with it."""
+
+    user_id: str
+    accepted_at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class Invite:
+    """A shareable link (or QR code) to one match. The token is the secret: whoever
+    has it can see the match and take a seat, even in a private match."""
+
+    token: str
+    match_id: str
+    created_by_user_id: str
+    created_at: dt.datetime
+    # None means no expiry.
+    expires_at: dt.datetime | None = None
+    # None means unlimited.
+    max_uses: int | None = None
+    revoked: bool = False
+    # Who used the invite, oldest first; the referral record.
+    acceptances: tuple[InviteAcceptance, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class WebPushSubscription:
     """A browser's web push subscription, bound to a user.
 

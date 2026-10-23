@@ -1,5 +1,6 @@
 """FastAPI routes for the game platform."""
 
+import io
 import secrets
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+import segno
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
@@ -36,6 +38,10 @@ from game_platform.schemas import (
     GameOut,
     GameUpdate,
     GoogleLogin,
+    InviteCreate,
+    InviteLinks,
+    InviteOut,
+    InviteViewOut,
     MatchCreate,
     MatchOut,
     MatchStart,
@@ -573,6 +579,104 @@ def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -
     return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
 
 
+# Invites: shareable links and QR codes to a match, which also track referrals.
+
+
+def _public_base_url(request: Request) -> str:
+    """Where invite links point: the configured public address, else this request's."""
+    configured: str = request.app.state.public_base_url
+    return configured or str(request.base_url)
+
+
+@router.post("/matches/{match_id}/invites", status_code=HTTPStatus.CREATED)
+def create_invite(
+    platform: Platform,
+    request: Request,
+    caller_id: CallerId,
+    match_id: str,
+    body: InviteCreate | None = None,
+) -> InviteOut:
+    """Creates a link (and QR code) that lets anyone who has it see the match and
+    take a seat, including in a private match. Any player in the match may create
+    one, and who takes a seat with it is recorded."""
+    body = body if body is not None else InviteCreate()
+    invite = platform.create_invite(
+        caller_id=caller_id,
+        match_id=match_id,
+        expires_in_seconds=body.expires_in_seconds,
+        max_uses=body.max_uses,
+    )
+    return InviteOut.of_invite(invite, base_url=_public_base_url(request))
+
+
+@router.get("/users/me/invites")
+def list_invites(
+    platform: Platform, request: Request, caller_id: CallerId, match_id: str | None = None
+) -> list[InviteOut]:
+    """The match invites the caller created, optionally for one match. (/invites is
+    the backoffice's referral dashboard page.)"""
+    base_url = _public_base_url(request)
+    return [
+        InviteOut.of_invite(invite, base_url=base_url)
+        for invite in platform.list_invites(caller_id=caller_id, match_id=match_id)
+    ]
+
+
+@router.get("/invites/{token}")
+def view_invite(platform: Platform, request: Request, token: str) -> InviteViewOut:
+    """What an invite link opens: the match and who invited you. Public: the token is
+    the secret."""
+    view = platform.view_invite(token)
+    reason = code = None
+    if view.problem is not None:
+        reason, code, _ = i18n.localize_error(view.problem, request.state.locale)
+    return InviteViewOut(
+        token=view.invite.token,
+        match=MatchOut.of(view.match),
+        game_name=view.game_name,
+        created_by_user_id=view.inviter.id,
+        created_by_display_name=view.inviter.display_name,
+        expires_at=view.invite.expires_at,
+        usable=view.problem is None,
+        unusable_reason=reason,
+        unusable_code=code,
+    )
+
+
+@router.get(
+    "/invites/{token}/qr.svg",
+    response_class=Response,
+    responses={HTTPStatus.OK: {"content": {"image/svg+xml": {}}}},
+)
+def invite_qr_code(platform: Platform, request: Request, token: str) -> Response:
+    """The invite link as an SVG QR code, e.g. for an <img> tag or for printing."""
+    platform.check_invite_exists(token)
+    url = InviteLinks.of(token, _public_base_url(request)).url
+    svg = io.BytesIO()
+    segno.make(url, error="m").save(svg, kind="svg", scale=8, border=4, xmldecl=False)
+    return Response(
+        svg.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.post("/invites/{token}/accept")
+def accept_invite(platform: Platform, caller_id: CallerId, token: str) -> MatchOut:
+    """Takes a seat in the invite's match, even a private one."""
+    return MatchOut.of(platform.accept_invite(caller_id=caller_id, token=token))
+
+
+@router.post("/invites/{token}/revoke")
+def revoke_invite(
+    platform: Platform, request: Request, caller_id: CallerId, token: str
+) -> InviteOut:
+    """Stops the link from seating anyone else (its creator or the match's owner).
+    The record of who took a seat with it is kept."""
+    invite = platform.revoke_invite(caller_id=caller_id, token=token)
+    return InviteOut.of_invite(invite, base_url=_public_base_url(request))
+
+
 # Languages: the catalogs of texts that frontends show, so they all share translations.
 
 i18n_router = APIRouter(prefix="/i18n")
@@ -946,6 +1050,7 @@ def create_app(
     sms_sender: CodeSender | None = None,
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
+    public_base_url: str = "",
 ) -> FastAPI:
     """[debug_tools] adds the web pages (/portal, /builder, /admin, /console, /browse)
     and /debug/all-data, which exposes everything (including users' passwords),
@@ -954,7 +1059,10 @@ def create_app(
 
     [cors_allow_origins] are the origins whose pages may call the API from a browser;
     empty adds no CORS headers, for when a reverse proxy already adds them (two
-    `Access-Control-Allow-Origin` headers make browsers reject the response)."""
+    `Access-Control-Allow-Origin` headers make browsers reject the response).
+
+    [public_base_url] is where invite links and QR codes point; empty uses the
+    address each request came to."""
     app = FastAPI(title="Game platform")
     # Allow REST API requests from other domains (browser cross-origin requests).
     # Auth uses per-request headers, not cookies, so a wildcard origin is safe here.
@@ -967,6 +1075,7 @@ def create_app(
         )
     app.state.platform = platform if platform is not None else GamePlatform()
     app.state.master_password = master_password
+    app.state.public_base_url = public_base_url
     app.state.model_api_config = (
         model_api_config if model_api_config is not None else ModelApiConfig()
     )

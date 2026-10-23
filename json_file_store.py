@@ -23,6 +23,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    Invite,
     Match,
     User,
     WebPushSubscription,
@@ -298,6 +299,28 @@ class JsonFileStore:
     def delete_push_subscription_by_endpoint(self, endpoint: str) -> None:
         with self._lock:
             self._inner.delete_push_subscription_by_endpoint(endpoint)
+            self._set_dirty()
+
+    def put_invite(self, invite: Invite) -> None:
+        with self._lock:
+            self._inner.put_invite(invite)
+            self._set_dirty()
+
+    def get_invite(self, token: str) -> Invite | None:
+        with self._lock:
+            return self._inner.get_invite(token)
+
+    def list_invites(
+        self, *, created_by_user_id: str | None = None, match_id: str | None = None
+    ) -> list[Invite]:
+        with self._lock:
+            return self._inner.list_invites(
+                created_by_user_id=created_by_user_id, match_id=match_id
+            )
+
+    def delete_invite(self, token: str) -> None:
+        with self._lock:
+            self._inner.delete_invite(token)
             self._set_dirty()
 
 

@@ -13,6 +13,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    Invite,
     Match,
     User,
     WebPushSubscription,
@@ -104,6 +105,18 @@ class Store(Protocol):
 
     def delete_push_subscription_by_endpoint(self, endpoint: str) -> None: ...
 
+    def put_invite(self, invite: Invite) -> None: ...
+
+    def get_invite(self, token: str) -> Invite | None: ...
+
+    def list_invites(
+        self, *, created_by_user_id: str | None = None, match_id: str | None = None
+    ) -> list[Invite]:
+        """Invites matching every given filter, oldest first."""
+        ...
+
+    def delete_invite(self, token: str) -> None: ...
+
 
 @dataclass(frozen=True, kw_only=True)
 class Snapshot:
@@ -122,6 +135,9 @@ class Snapshot:
     # Optional so existing data files load without a migration. The browsers that
     # signed up for web push notifications.
     push_subscriptions: tuple[WebPushSubscription, ...] = ()
+    # Optional so existing data files load without a migration. Match invite links,
+    # with who used them (referrals).
+    invites: tuple[Invite, ...] = ()
 
 
 class InMemoryStore:
@@ -140,6 +156,7 @@ class InMemoryStore:
         self._push_subscriptions: dict[str, WebPushSubscription] = {}
         # Secondary index, endpoint -> subscription id; endpoints are unique.
         self._push_subscription_ids_by_endpoint: dict[str, str] = {}
+        self._invites: dict[str, Invite] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -158,6 +175,8 @@ class InMemoryStore:
             store._agent_conversations[conversation.game_id] = list(conversation.entries)
         for subscription in snapshot.push_subscriptions:
             store.put_push_subscription(subscription)
+        for invite in snapshot.invites:
+            store.put_invite(invite)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -176,6 +195,7 @@ class InMemoryStore:
                 for game_id, entries in self._agent_conversations.items()
             ),
             push_subscriptions=tuple(self._push_subscriptions.values()),
+            invites=tuple(self._invites.values()),
         )
 
     def put_user(self, user: User) -> None:
@@ -321,3 +341,22 @@ class InMemoryStore:
         subscription_id = self._push_subscription_ids_by_endpoint.pop(endpoint, None)
         if subscription_id is not None:
             self._push_subscriptions.pop(subscription_id, None)
+
+    def put_invite(self, invite: Invite) -> None:
+        self._invites[invite.token] = invite
+
+    def get_invite(self, token: str) -> Invite | None:
+        return self._invites.get(token)
+
+    def list_invites(
+        self, *, created_by_user_id: str | None = None, match_id: str | None = None
+    ) -> list[Invite]:
+        return [
+            invite
+            for invite in self._invites.values()
+            if (created_by_user_id is None or invite.created_by_user_id == created_by_user_id)
+            and (match_id is None or invite.match_id == match_id)
+        ]
+
+    def delete_invite(self, token: str) -> None:
+        self._invites.pop(token, None)

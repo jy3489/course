@@ -24,6 +24,8 @@ from game_platform.models import (
     Game,
     GameDraft,
     GameRules,
+    Invite,
+    InviteAcceptance,
     LinkedAccount,
     LinkedAccountKind,
     Match,
@@ -35,6 +37,18 @@ from game_platform.models import (
 )
 from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
+
+
+@dataclass(frozen=True, kw_only=True)
+class InviteView:
+    """What an invite link shows to whoever opens it."""
+
+    invite: Invite
+    match: Match
+    game_name: str
+    inviter: User
+    # Why the invite can't seat anyone new (an English error message), or None.
+    problem: str | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,6 +95,11 @@ def _new_id() -> str:
 
 def _new_password() -> str:
     return secrets.token_urlsafe(16)
+
+
+def _new_invite_token() -> str:
+    # 96 random bits: short enough for a QR code, impossible to guess.
+    return secrets.token_urlsafe(12)
 
 
 def _new_verification_code() -> str:
@@ -203,6 +222,7 @@ class GamePlatform:
         new_id: Callable[[], str] = _new_id,
         new_password: Callable[[], str] = _new_password,
         new_verification_code: Callable[[], str] = _new_verification_code,
+        new_invite_token: Callable[[], str] = _new_invite_token,
         push_notifier: PushNotifier | None = None,
         max_push_subscriptions_per_user: int = 10,
     ) -> None:
@@ -211,6 +231,7 @@ class GamePlatform:
         self._new_id = new_id
         self._new_password = new_password
         self._new_verification_code = new_verification_code
+        self._new_invite_token = new_invite_token
         self._push_notifier = (
             push_notifier if push_notifier is not None else LogPushNotifier()
         )
@@ -628,6 +649,20 @@ class GamePlatform:
             self._store.put_push_subscription(
                 replace(subscription, user_id=into_user_id)
             )
+        for invite in self._store.list_invites():
+            updated_invite = invite
+            if invite.created_by_user_id == from_user_id:
+                updated_invite = replace(updated_invite, created_by_user_id=into_user_id)
+            if any(a.user_id == from_user_id for a in invite.acceptances):
+                updated_invite = replace(
+                    updated_invite,
+                    acceptances=tuple(
+                        replace(a, user_id=into_user_id) if a.user_id == from_user_id else a
+                        for a in invite.acceptances
+                    ),
+                )
+            if updated_invite is not invite:
+                self._store.put_invite(updated_invite)
         have = {
             (account.kind, account.identifier) for account in into.linked_accounts
         }
@@ -1243,7 +1278,7 @@ class GamePlatform:
         with self._lock:
             match = self._get_match(match_id)
             if caller_id == match.owner_user_id:
-                self._store.delete_match(match_id)
+                self._delete_match_and_invites(match_id)
                 return
             if match.status != "over":
                 raise ForbiddenError(
@@ -1256,6 +1291,126 @@ class GamePlatform:
                     hidden_for_user_ids=match.hidden_for_user_ids | {caller_id},
                 )
             )
+
+    # Invites: links (and QR codes) to a match, which also track referrals
+
+    def create_invite(
+        self,
+        *,
+        caller_id: str,
+        match_id: str,
+        expires_in_seconds: int | None = None,
+        max_uses: int | None = None,
+    ) -> Invite:
+        """Any player in the match (or its owner) can create invites to it."""
+        with self._lock:
+            match = self._get_match(match_id)
+            if not match.involves(caller_id):
+                raise ForbiddenError("you are not a player in this match")
+            if match.status == "over":
+                raise ConflictError("the match is over")
+            now = self._clock()
+            invite = Invite(
+                token=self._new_invite_token(),
+                match_id=match.id,
+                created_by_user_id=caller_id,
+                created_at=now,
+                expires_at=None
+                if expires_in_seconds is None
+                else now + dt.timedelta(seconds=expires_in_seconds),
+                max_uses=max_uses,
+            )
+            self._store.put_invite(invite)
+            return invite
+
+    def view_invite(self, token: str) -> InviteView:
+        """What an invite link shows: its match (even a private one, since the token
+        is the secret), who sent it, and why it can't be used, if it can't. Public."""
+        with self._lock:
+            invite = self._get_invite(token)
+            match = self._get_match(invite.match_id)
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            try:
+                self._check_invite_usable(invite)
+                problem = None
+            except PlatformError as error:
+                problem = str(error)
+            return InviteView(
+                invite=invite,
+                match=match,
+                game_name=game.name if game is not None else "",
+                inviter=self._resolve_replaced(
+                    self._require_user(invite.created_by_user_id)
+                ),
+                problem=problem,
+            )
+
+    def check_invite_exists(self, token: str) -> None:
+        """Raises NotFoundError unless [token] names an invite."""
+        with self._lock:
+            self._get_invite(token)
+
+    def accept_invite(self, *, caller_id: str, token: str) -> Match:
+        """Takes a seat through an invite, even in a private match. Players already
+        in the match just get it back, so opening your own link is harmless."""
+        with self._lock:
+            invite = self._get_invite(token)
+            match = self._get_match(invite.match_id)
+            if match.seat_of(caller_id) is not None:
+                return match
+            self._check_invite_usable(invite)
+            joined = self._join(match, caller_id=caller_id)
+            acceptance = InviteAcceptance(user_id=caller_id, accepted_at=self._clock())
+            self._store.put_invite(
+                replace(invite, acceptances=(*invite.acceptances, acceptance))
+            )
+            return joined
+
+    def revoke_invite(self, *, caller_id: str, token: str) -> Invite:
+        with self._lock:
+            invite = self._get_invite(token)
+            match = self._store.get_match(invite.match_id)
+            if caller_id != invite.created_by_user_id and (
+                match is None or caller_id != match.owner_user_id
+            ):
+                raise ForbiddenError(
+                    "only the invite's creator or the match's owner can revoke it"
+                )
+            revoked = replace(invite, revoked=True)
+            self._store.put_invite(revoked)
+            return revoked
+
+    def list_invites(
+        self, *, caller_id: str, match_id: str | None = None
+    ) -> list[Invite]:
+        """The invites the caller created, oldest first, optionally for one match."""
+        with self._lock:
+            return self._store.list_invites(
+                created_by_user_id=caller_id, match_id=match_id
+            )
+
+    def _get_invite(self, token: str) -> Invite:
+        invite = self._store.get_invite(token)
+        if invite is None:
+            raise NotFoundError("invite not found")
+        return invite
+
+    def _check_invite_usable(self, invite: Invite) -> None:
+        """Raises unless someone new could take a seat with [invite] now."""
+        if invite.revoked:
+            raise ConflictError("this invite link was revoked")
+        if invite.expires_at is not None and self._clock() >= invite.expires_at:
+            raise ConflictError("this invite link has expired")
+        if invite.max_uses is not None and len(invite.acceptances) >= invite.max_uses:
+            raise ConflictError("this invite link has been used up")
+        match = self._get_match(invite.match_id)
+        if match.status == "over":
+            raise ConflictError("the match is over")
+
+    def _delete_match_and_invites(self, match_id: str) -> None:
+        for invite in self._store.list_invites(match_id=match_id):
+            self._store.delete_invite(invite.token)
+        self._store.delete_match(match_id)
 
     # Saved games: each user's library of games to come back to
 
@@ -1716,13 +1871,15 @@ class GamePlatform:
                 self._store.delete_game(game.id)
             for match in self._store.list_matches_involving(user_id):
                 if match.owner_user_id == user_id:
-                    self._store.delete_match(match.id)
+                    self._delete_match_and_invites(match.id)
                 elif match.status != "over" and match.seat_of(user_id) is not None:
                     self.leave_match(caller_id=user_id, match_id=match.id)
             for draft in self._store.list_game_drafts(owner_user_id=user_id):
                 self._store.delete_game_draft(draft.id)
             for subscription in self._store.list_push_subscriptions(user_id=user_id):
                 self._store.delete_push_subscription(subscription.id)
+            for invite in self._store.list_invites(created_by_user_id=user_id):
+                self._store.delete_invite(invite.token)
             # The people this user invited now count as invited by this user's own
             # inviter (or nobody), so everyone above keeps the credit.
             deleted = self._require_user(user_id)
@@ -1747,7 +1904,7 @@ class GamePlatform:
     def admin_delete_match(self, match_id: str) -> None:
         with self._lock:
             self._get_match(match_id)
-            self._store.delete_match(match_id)
+            self._delete_match_and_invites(match_id)
 
     # Helpers; callers must hold [_lock].
 

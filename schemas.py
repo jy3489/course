@@ -24,6 +24,8 @@ from game_platform.models import (
     EndReason,
     Game,
     GameDraft,
+    Invite,
+    InviteAcceptance,
     LinkedAccount,
     Match,
     MatchStatus,
@@ -734,3 +736,87 @@ class CatalogOut(BaseModel):
     # Changes exactly when a text does; also the ETag, so clients can cache the catalog.
     version: str
     messages: dict[str, str]
+
+
+# Invites and referrals
+
+_MAX_INVITE_LIFETIME_SECONDS: Final = 30 * 24 * 3600
+
+
+class InviteCreate(_Request):
+    model_config = _example({"expires_in_seconds": 86400, "max_uses": 1})
+
+    # Omit for a link that never expires (it still stops working when the match ends).
+    expires_in_seconds: Annotated[
+        int, Field(ge=60, le=_MAX_INVITE_LIFETIME_SECONDS)
+    ] | None = None
+    # Omit for unlimited uses.
+    max_uses: Annotated[int, Field(ge=1, le=MAX_PLAYERS)] | None = None
+
+
+class InviteAcceptanceOut(BaseModel):
+    user_id: str
+    accepted_at: dt.datetime
+
+    @classmethod
+    def of(cls, acceptance: InviteAcceptance) -> "InviteAcceptanceOut":
+        return cls(user_id=acceptance.user_id, accepted_at=acceptance.accepted_at)
+
+
+class InviteLinks(BaseModel):
+    """Where an invite leads: [url] opens the portal at the invite; [qr_code_url] is an
+    SVG QR code of [url], for showing on a screen or printing."""
+
+    url: str
+    qr_code_url: str
+
+    @classmethod
+    def of(cls, token: str, base_url: str) -> "InviteLinks":
+        base_url = base_url.rstrip("/")
+        return cls(
+            url=f"{base_url}/portal#invite={token}",
+            qr_code_url=f"{base_url}/invites/{token}/qr.svg",
+        )
+
+
+class InviteOut(InviteLinks):
+    """An invite as its creator sees it, with who took a seat through it."""
+
+    token: str
+    match_id: str
+    created_by_user_id: str
+    created_at: dt.datetime
+    expires_at: dt.datetime | None
+    max_uses: int | None
+    revoked: bool
+    acceptances: list[InviteAcceptanceOut]
+
+    @classmethod
+    def of_invite(cls, invite: Invite, *, base_url: str) -> "InviteOut":
+        return cls(
+            **InviteLinks.of(invite.token, base_url).model_dump(),
+            token=invite.token,
+            match_id=invite.match_id,
+            created_by_user_id=invite.created_by_user_id,
+            created_at=invite.created_at,
+            expires_at=invite.expires_at,
+            max_uses=invite.max_uses,
+            revoked=invite.revoked,
+            acceptances=[InviteAcceptanceOut.of(a) for a in invite.acceptances],
+        )
+
+
+class InviteViewOut(BaseModel):
+    """What anyone holding an invite link sees: enough to decide whether to join."""
+
+    token: str
+    match: MatchOut
+    game_name: str
+    created_by_user_id: str
+    created_by_display_name: str
+    expires_at: dt.datetime | None
+    # False when the link can't seat anyone new; [unusable_reason] says why (in the
+    # request's language) and [unusable_code] names the reason in every language.
+    usable: bool
+    unusable_reason: str | None = None
+    unusable_code: str | None = None

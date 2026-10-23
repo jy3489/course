@@ -248,7 +248,7 @@ without). On iOS, push works only when the portal is installed to the home scree
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `POST /users` |  | Create a guest user `{display_name, locale?}`; returns its `password` |
+| `POST /users` |  | Create a guest user `{display_name, locale?, invited_by_user_id?}`; returns its `password` |
 | `GET /users/{id}` |  | Get a user |
 | `PATCH /users/{id}` | yes | Change your own `display_name` and/or `locale` (403 for other users) |
 | `GET /i18n/locales` |  | The supported languages (see [Languages](#languages)) |
@@ -274,6 +274,12 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `GET /users/me/saved-games` | yes | The caller's saved games, most recently saved first |
 | `PUT /users/me/saved-games/{game_id}` | yes | Save a game (idempotent); returns the library |
 | `DELETE /users/me/saved-games/{game_id}` | yes | Unsave a game (idempotent); returns the library |
+| `POST /matches/{id}/invites` | yes | Create an invite link + QR code `{expires_in_seconds?, max_uses?}` (players only) |
+| `GET /users/me/invites?match_id=` | yes | The caller's match invites, with who accepted |
+| `GET /invites/{token}` |  | What an invite opens: the match, game and inviter, and whether it's still usable (counts a view) |
+| `GET /invites/{token}/qr.svg` |  | The invite link as an SVG QR code |
+| `POST /invites/{token}/accept` | yes | Take a seat through the invite (works for private matches) |
+| `POST /invites/{token}/revoke` | yes | Stop the link working (its creator or the match's owner) |
 | `GET /push/config` |  | Whether web push is set up, and the VAPID public key to subscribe with |
 | `POST /push/subscriptions` | yes | Register (201) or refresh (200) the caller's browser subscription `{endpoint, keys, expiration_time?}`, keyed by endpoint |
 | `GET /push/subscriptions` | yes | List the caller's subscriptions |
@@ -312,11 +318,19 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
 
-### Private matches
+### Private matches and invites
 
 - **Private matches** (`private: true` on `POST /matches`) never appear in
   `GET /matches/open`, are a 404 to anyone not in
-  them, and `POST /matches/{id}/join` refuses outsiders (403).
+  them, and `POST /matches/{id}/join` refuses outsiders (403). Invites are the way in.
+- **Invites** are links of the form `<public_base_url>/portal#invite=<token>`, also
+  served as a QR code at `/invites/{token}/qr.svg`. The 16-character token is the
+  secret (96 random bits), so anyone holding the link can see the match and take a
+  seat. Any player in the match can create one, optionally expiring
+  (`expires_in_seconds`, 60s to 30 days) or limited (`max_uses`). A link stops seating
+  people when it's revoked, expired, used up, or the match is over;
+  `GET /invites/{token}` then reports `usable: false` with a localized
+  `unusable_reason` and a stable `unusable_code`. Deleting a match deletes its invites.
 
 ### Languages
 
@@ -417,6 +431,7 @@ stop the server at startup with an error naming the field.
 | `server.port`                     | `8000`                                   | Port to listen on |
 | `server.keep_alive_timeout_seconds` | `3600`                                 | How long an idle connection is kept open; see below |
 | `server.cors_allow_origins`       | `["*"]`                                  | Origins whose pages may call the API from a browser. Use `[]` when a reverse proxy (Caddy, nginx) already adds CORS headers: if both do, responses carry two `Access-Control-Allow-Origin` headers and browsers reject them |
+| `server.public_base_url`          | `""`                                     | The site's public address (e.g. `"https://buildplay.fun"`) that invite links and QR codes point to. Empty uses the address each request came to, which behind a load balancer (e.g. Google Cloud) or reverse proxy may be `http://` or an internal host, so set it in production |
 | `data_file.path`                  | `"~/.local/share/game-platform/data.json"` | Where all data is saved. `~` is expanded, and a relative path is relative to the config file's directory |
 | `data_file.save_interval_seconds` | `1.0`                                    | After a change, the data file is rewritten at most once per this many seconds. `0` writes after every change |
 | `data_file.backup_interval_seconds` | `3600.0`                               | Copy the data file to `<path>.backups/data-<UTC time>.json` at most this often (checked when the file is written). `0` turns backups off |
@@ -463,8 +478,9 @@ any idle connection a browser keeps.
 ### Data file
 
 The data file holds everything: users (including their passwords), every
-version of every game, which games are deleted, all matches with their moves,
-web push subscriptions, and each user's saved games. Its layout is
+version of every game, which games are deleted, all matches with their moves, and
+web push subscriptions, invites (with who took a seat through them), and each user's saved
+games and referrer. Its layout is
 `{"format_version": 1, "data": {"users": [...], "game_versions": [...], "deleted_game_ids": [...], "matches": [...]}}`.
 `format_version` is for incompatible layout changes after launch.
 
