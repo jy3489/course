@@ -227,6 +227,7 @@ function focusPreview(focused) {
   document.body.classList.toggle("builder-preview-focus",focused);
   $("test-focus").textContent=focused?"Exit preview":"Focus preview";
   $("test-focus").setAttribute("aria-pressed",String(focused));
+  frame.resizeViewport();
 }
 function renderPlayModes() {
   const choices=state.editor.allowed_player_counts.flatMap(count=>count===1

@@ -19,13 +19,15 @@ function reporter(width,height) {
   return {body,ctx,callbacks,queue,messages,flush(){while(queue.length)queue.shift()();}};
 }
 
-function host() {
+function host(builder=false,initialHeight=480) {
   const iframe={style:{},contentWindow:{}};
-  const container={clientWidth:390,clientHeight:480};
-  const ctx=vm.createContext({window:{addEventListener(){}},document:{},container,iframe});
+  let focused=false;
+  const container={id:builder?'test-frame':'game-box',clientWidth:390,clientHeight:initialHeight,
+    get offsetHeight(){return this.clientHeight+2;},style:{removeProperty(){container.clientHeight=initialHeight;},setProperty(k,v){container.clientHeight=parseFloat(v)-2;}}};
+  const ctx=vm.createContext({window:{addEventListener(){}},document:{body:{classList:{contains:()=>focused}}},container,iframe});
   vm.runInContext(source,ctx);
   vm.runInContext('frame=new GameFrame(container,()=>{},()=>{});frame.iframe=iframe;frame.resizeViewport()',ctx);
-  return {iframe,container,ctx,report(width,height,extra={}){
+  return {iframe,container,ctx,focus(value){focused=value;vm.runInContext('frame.resizeViewport()',ctx);},report(width,height,extra={}){
     ctx.message={type:'game_viewport',width,height,viewport_width:parseInt(iframe.style.width),viewport_height:parseInt(iframe.style.height),...extra};
     vm.runInContext('frame.receive({source:iframe.contentWindow,data:message})',ctx);
   },view(){return vm.runInContext('frame.viewport',ctx);}};
@@ -76,25 +78,43 @@ test('fitting stays inside the script-only sandbox and preserves the move protoc
   assert.equal(calls.length,1);assert.equal(calls[0].new_state.n,1);
 });
 
-test('scrolling the builder cannot increase preview height or push its controls away',()=>{
-  const events={};let top=200,height;
-  const work={clientHeight:600,scrollTop:0,getBoundingClientRect:()=>({top:0})};
-  const container={id:'test-frame',closest:()=>work,getBoundingClientRect:()=>({width:800,top}),style:{getPropertyValue(){return height;},setProperty(k,v){height=v;}}};
-  const ctx=vm.createContext({window:{innerHeight:600,addEventListener(k,fn){events[k]=fn;}},document:{},container});
-  vm.runInContext(source,ctx);vm.runInContext('new GameFrame(container,()=>{},()=>{})',ctx);
-  events.resize();assert.equal(height,'380px');
-  top=0;work.scrollTop=200;events.resize();assert.equal(height,'380px');
+test('inline Builder grows for a portrait game instead of shrinking its width',()=>{
+  const t=host(true,214);
+  t.report(390,760);
+  assert.equal(t.view().scale,1);
+  assert.equal(t.iframe.style.width,'390px');assert.equal(t.container.clientHeight,762);
+  for(let i=0;i<20;i++)t.report(390,t.container.clientHeight+1);
+  assert.equal(t.container.clientHeight,762); // 100vh plus rounding must not grow forever
+  assert.equal(t.view().passes,1);
+  t.focus(true);t.report(390,900);
+  assert.ok(t.view().scale<1); // Focus still fits its fixed viewport
+  t.focus(false);t.report(390,760);
+  assert.equal(t.view().scale,1);assert.equal(t.container.clientHeight,762);
 });
 
-test('builder size observers defer writes and do not rewrite an unchanged height',()=>{
-  const observers=[],queue=[];let height,writes=0;
-  const work={clientHeight:650,scrollTop:0,getBoundingClientRect:()=>({top:0})};
-  const container={id:'test-frame',closest:()=>work,getBoundingClientRect:()=>({width:390,top:250}),
-    style:{getPropertyValue:()=>height,setProperty(k,v){writes++;height=v;}}};
-  const ctx=vm.createContext({window:{innerHeight:650,addEventListener(){}},document:{},container,
+test('inline fixed-width games fit width before calculating natural preview height',()=>{
+  const t=host(true);t.report(600,900);
+  assert.equal(t.container.clientHeight,480);assert.equal(t.view().scale,.65);
+  t.report(600,900);assert.equal(t.container.clientHeight,587);
+  assert.equal(t.view().scale,.65);assert.equal(t.iframe.style.width,'600px');
+});
+
+test('inline previews bound viewport-dependent growth and reset for a narrower preset',()=>{
+  const t=host(true);
+  for(let i=0;i<30;i++)t.report(parseInt(t.iframe.style.width),parseInt(t.iframe.style.height)+40);
+  assert.equal(t.view().passes,8);assert.equal(t.view().scale,1);
+  t.container.clientWidth=320;vm.runInContext('frame.resizeViewport()',t.ctx);
+  assert.equal(t.container.clientHeight,480);assert.equal(t.view().passes,0);
+});
+
+test('observed resize work is deferred and independent of page scroll position',()=>{
+  const observers=[],queue=[];let measurements=0;
+  const container={};
+  const ctx=vm.createContext({window:{addEventListener(){}},document:{},container,
     requestAnimationFrame:fn=>queue.push(fn),ResizeObserver:class{constructor(fn){observers.push(fn);}observe(){}}});
-  vm.runInContext(source,ctx);vm.runInContext('new GameFrame(container,()=>{},()=>{})',ctx);
-  observers[0]();observers[0]();assert.equal(writes,0);assert.equal(queue.length,1);
-  queue.shift()();assert.equal(writes,1);assert.equal(height,'380px');
-  observers[0]();queue.shift()();assert.equal(writes,1);
+  vm.runInContext(source,ctx);vm.runInContext('frame=new GameFrame(container,()=>{},()=>{})',ctx);
+  ctx.measure=()=>measurements++;vm.runInContext('frame.resizeViewport=measure',ctx);
+  observers[0]();observers[0]();assert.equal(measurements,0);assert.equal(queue.length,1);
+  queue.shift()();assert.equal(measurements,1);
+  assert.doesNotMatch(source.slice(source.indexOf('class GameFrame'),source.indexOf('function stateChangedMessage')),/getBoundingClientRect|scrollTop/);
 });

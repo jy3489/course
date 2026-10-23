@@ -15,7 +15,7 @@ function setup(request=async()=>{},catalog=async()=>[]) {
     document:{getElementById:node,addEventListener(){}},window:{addEventListener(){},innerWidth:1280,innerHeight:720},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:(fn,ms)=>{if(ms===1500)Promise.resolve().then(fn);return ++timer;},clearTimeout(){},setInterval:()=>++timer,clearInterval(){},
-    Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}},
+    Auth:{current:()=>user},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}resizeViewport(){this.resizes=(this.resizes||0)+1;}},
     apiRequest:(method,url,options)=>url==='/games'?catalog():request(method,url,options),showPageError(){},stateChangedMessage:x=>x,
     el:(tag,attrs={},...children)=>({...attrs,children})});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../../static/builder.js'),'utf8').replace(/main\(\);\s*$/,''),ctx);
@@ -35,6 +35,7 @@ test('focused preview preserves the running game and emulator state',async()=>{
   t.run('onTestMove({new_state:{n:1},next_turn_player_indices:[0]});focusPreview(true)');
   assert.equal(t.run('document.focused'),true);assert.equal(t.node('test-focus').textContent,'Exit preview');
   t.run('focusPreview(false)');assert.equal(t.run('document.focused'),false);
+  assert.equal(t.run('frame.resizes'),2);
   assert.equal(t.run('state.test.state.n'),1);assert.equal(t.run('state.test.moves.length'),1);
 });
 test('autosave writes a working copy without publishing a version',async()=>{

@@ -221,32 +221,20 @@ class GameFrame {
     this.ready = null;
     this.viewport = null;
     window.addEventListener("message", (event) => this.receive(event));
-    // Builder previews use the height left below their toolbar. Portal matches
-    // already allocate the entire available work area through flex layout.
+    // Inline Builder previews scroll with the workspace. Do not squeeze them
+    // into the space left below the toolbar: on phones that can be only 120px.
+    // Defer observed size changes so fitting never writes during delivery.
+    let pending = false;
     const resize = () => {
-      if (container.id !== "test-frame" || !container.getBoundingClientRect().width) return;
-      const work = container.closest(".work");
-      const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      const available = Math.min(work?.clientHeight || viewportHeight, viewportHeight) -
-        (container.getBoundingClientRect().top - (work?.getBoundingClientRect().top || 0) + (work?.scrollTop || 0)) - 20;
-      const height = Math.max(120, available) + "px";
-      if (container.style.getPropertyValue("--game-height") !== height) container.style.setProperty("--game-height", height);
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; this.resizeViewport(); });
     };
     if (typeof ResizeObserver !== "undefined") {
-      // Changing an observed box during ResizeObserver delivery emits a loop
-      // error on phones. Write the preview height in the next animation frame.
-      let pending = false;
-      const observer = new ResizeObserver(() => {
-        if (pending) return;
-        pending = true;
-        requestAnimationFrame(() => { pending = false; resize(); });
-      });
-      observer.observe(container.closest(".work") || container);
-      observer.observe(container);
+      new ResizeObserver(resize).observe(container);
     }
     window.addEventListener("resize", resize);
     window.visualViewport?.addEventListener("resize", resize);
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.resizeViewport()).observe(container);
   }
 
   /** Loads [code] as the iframe's document. Scripts run, but in an opaque origin, so
@@ -263,10 +251,18 @@ class GameFrame {
 
   resizeViewport() {
     if (!this.iframe) return;
-    const width = this.container.clientWidth, height = this.container.clientHeight;
+    const width = this.container.clientWidth;
+    const autoHeight = this.container.id === "test-frame" && !document.body.classList.contains("builder-preview-focus");
+    // A new width/game or leaving Focus gets a fresh natural-height measurement.
+    if (autoHeight && (this.viewport?.width !== width || !this.viewport?.autoHeight)) {
+      this.container.style.removeProperty("--game-height");
+    }
+    const height = this.container.clientHeight;
     if (!width || !height) return; // a closed test panel will be measured when shown
-    if (this.viewport?.width === width && this.viewport?.height === height) return;
-    this.viewport = {width, height, scale:1, passes:0};
+    if (this.viewport?.width === width && this.viewport?.height === height && this.viewport?.autoHeight === autoHeight) return;
+    if (autoHeight && this.viewport?.autoHeight && this.viewport.width === width) {
+      this.viewport.height = height;
+    } else this.viewport = {width, height, scale:1, passes:0, autoHeight};
     this.applyViewport();
   }
 
@@ -285,7 +281,21 @@ class GameFrame {
     const {width, height, viewport_width:vw, viewport_height:vh} = message;
     if (![width,height,vw,vh].every(n => Number.isFinite(n) && n > 0)) return;
     if (Math.abs(vw - Math.ceil(view.width / view.scale)) > 1 || Math.abs(vh - Math.ceil(view.height / view.scale)) > 1) return;
-    const ratio = Math.min(1, vw / width, vh / height);
+    if (view.autoHeight && width <= vw + 1 && height * view.scale > view.height + 2 && view.passes < 8) {
+      // Preserve readable width in the editor. Grow the surrounding page instead
+      // of shrinking a portrait game into a short, wide strip. Bound games whose
+      // own height is always larger than 100vh, leaving their scrolling available.
+      const desired = Math.min(4096, Math.ceil(height * view.scale) + 2);
+      if (desired > view.height + 2) {
+        view.passes++;
+        view.height = desired;
+        const border = this.container.offsetHeight - this.container.clientHeight;
+        this.container.style.setProperty("--game-height", (desired + border) + "px");
+        this.applyViewport();
+        return;
+      }
+    }
+    const ratio = Math.min(1, width <= vw + 1 ? 1 : vw / width, view.autoHeight || height <= vh + 1 ? 1 : vh / height);
     // Ignore rounding and bound viewport-dependent games (e.g. 100vh + a
     // footer). Their own scrolling remains available instead of shrinking forever.
     if (ratio >= .998 || view.passes >= 8) return;
