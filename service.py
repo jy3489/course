@@ -987,17 +987,23 @@ class GamePlatform:
         game_id: str,
         num_computer_opponents: int,
         private: bool = False,
+        bet_per_player: int = 0,
     ) -> Match:
         with self._lock:
             game = self._get_live_game(game_id)
             if not game.published:
                 raise NotFoundError("game not found")
             self._check_fits(game.rules, num_players=1 + num_computer_opponents)
+            if type(bet_per_player) is not int or not 0 <= bet_per_player <= 1000000:
+                raise InvalidRequestError("invalid token stake")
+            if bet_per_player and num_computer_opponents:
+                raise InvalidRequestError("paid matches with computer opponents are not supported")
             return self._new_match(
                 game,
                 caller_id=caller_id,
                 num_computer_opponents=num_computer_opponents,
                 private=private,
+                bet_per_player=bet_per_player,
             )
 
     def _new_match(
@@ -1008,6 +1014,7 @@ class GamePlatform:
         num_computer_opponents: int = 0,
         private: bool = False,
         matchmaking_player_count: int | None = None,
+        bet_per_player: int = 0,
     ) -> Match:
         """Stores a new waiting match of [game] owned (and first seated) by [caller_id].
         The caller holds the lock and has checked the game."""
@@ -1031,6 +1038,7 @@ class GamePlatform:
             updated_at=now,
             private=private,
             matchmaking_player_count=matchmaking_player_count,
+            bet_per_player=bet_per_player,
         )
         self._store.put_match(match)
         return match
@@ -1131,12 +1139,14 @@ class GamePlatform:
         ):
             # Like the portal's Start button: seat 0 moves first, and the game
             # creates its own initial state.
+            humans = self._fund_match_tokens(saved)
             saved = self._save(
                 replace(
                     saved,
                     status="ongoing",
                     state=None,
                     turn_of_player_indices=frozenset({0}),
+                    token_pot=saved.bet_per_player * len(humans),
                 )
             )
             self._notify_match_event(
@@ -1209,6 +1219,28 @@ class GamePlatform:
             self._save(replace(match, rematch_match_id=rematch.id))
             return rematch
 
+    def _fund_match_tokens(self, match: Match) -> list[str]:
+        humans = [seat.user_id for seat in match.seats if seat.kind == "human"]
+        if match.bet_per_player and len(humans) != len(match.seats):
+            raise InvalidRequestError("computer opponents cannot enter paid matches")
+        if len(set(humans)) != len(humans):
+            raise InvalidRequestError("duplicate accounts cannot wager against themselves")
+        day = self._clock().astimezone(dt.timezone.utc).date().isoformat()
+        updates = []
+        for uid in humans:
+            user = self._store.get_user(uid)
+            if user is None:
+                raise NotFoundError("player not found")
+            grant = 10 if user.last_token_grant_day != day else 0
+            if user.token_balance + grant < match.bet_per_player:
+                raise ConflictError("a player has insufficient tokens")
+            updates.append(replace(user,
+                token_balance=user.token_balance + grant - match.bet_per_player,
+                last_token_grant_day=day if grant else user.last_token_grant_day))
+        for user in updates:
+            self._store.put_user(user)
+        return humans
+
     def start_match(
         self,
         *,
@@ -1233,6 +1265,7 @@ class GamePlatform:
                     "the first turn must name at least one player"
                 )
             self._check_player_indices(match, first_turn_player_indices)
+            humans = self._fund_match_tokens(match)
             return self._save(
                 replace(
                     match,
@@ -1241,6 +1274,7 @@ class GamePlatform:
                     initial_state=initial_state,
                     initial_turn_player_indices=first_turn_player_indices,
                     turn_of_player_indices=first_turn_player_indices,
+                    token_pot=match.bet_per_player * len(humans),
                 )
             )
 
@@ -1308,6 +1342,7 @@ class GamePlatform:
         new_state: JsonValue,
         next_turn_player_indices: frozenset[int] | None,
         expected_move_count: int | None,
+        payout_player_indices: dict[int, int] | None = None,
     ) -> Match:
         """Records a move by one of the players whose turn it is.
 
@@ -1336,6 +1371,27 @@ class GamePlatform:
                         "the next turn must name at least one player"
                     )
                 self._check_player_indices(match, next_turn_player_indices)
+            # On a paid terminal move the server checks the complete pot distribution.
+            if next_turn_player_indices is not None and payout_player_indices is not None:
+                raise InvalidRequestError("payouts only allowed on the final move")
+            if next_turn_player_indices is None:
+                if match.token_pot:
+                    if payout_player_indices is None:
+                        raise InvalidRequestError("terminal move requires pot distribution")
+                    human_seats = {s.player_index for s in match.seats if s.kind == "human"}
+                    if set(payout_player_indices) != human_seats:
+                        raise InvalidRequestError("payouts must include every human seat")
+                    if any(type(v) is not int or v < 0 for v in payout_player_indices.values()):
+                        raise InvalidRequestError("payouts must be nonnegative integer tokens")
+                    if sum(payout_player_indices.values()) != match.token_pot:
+                        raise InvalidRequestError("payouts must total the token pot")
+                elif payout_player_indices is not None and any(payout_player_indices.values()):
+                    raise InvalidRequestError("no tokens available for payout")
+            if next_turn_player_indices is None and match.token_pot:
+                for index, amount in payout_player_indices.items():
+                    uid = match.seats[index].user_id
+                    user = self._store.get_user(uid)
+                    self._store.put_user(replace(user, token_balance=user.token_balance + amount))
             now = self._clock()
             move = Move(
                 move_number=len(match.moves) + 1,
@@ -1357,6 +1413,7 @@ class GamePlatform:
                     end_reason=None
                     if next_turn_player_indices is not None
                     else "finished",
+                    token_payouts=payout_player_indices if next_turn_player_indices is None else None,
                 )
             )
             if saved.status == "over":

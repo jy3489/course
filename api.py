@@ -537,6 +537,7 @@ def create_match(
         game_id=body.game_id,
         num_computer_opponents=body.num_computer_opponents,
         private=body.private,
+        bet_per_player=body.bet_per_player,
     )
     return MatchOut.of(match)
 
@@ -644,6 +645,7 @@ def make_move(
         if body.next_turn_player_indices is None
         else frozenset(body.next_turn_player_indices),
         expected_move_count=body.expected_move_count,
+        payout_player_indices=body.payout_player_indices,
     )
     return MatchOut.of(match)
 
