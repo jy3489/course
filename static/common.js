@@ -313,11 +313,10 @@ function statusClass(status) {
   return "error";
 }
 
-/** A shared mobile drawer; desktop keeps the normal sidebar. */
+/** The same collapsible left drawer on phones, tablets and desktop web. */
 function setUpSidebarDrawer() {
   const sidebar=document.querySelector('.builder-shell > .sidebar, .portal-shell > .sidebar');
   if (!sidebar) return;
-  const media=window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1366px)');
   const main=document.querySelector('.work'), openers=[];
   let opened=false, returnFocus=null;
   sidebar.id ||= 'app-sidebar';
@@ -326,12 +325,12 @@ function setUpSidebarDrawer() {
   const backdrop=el('button',{type:'button',class:'sidebar-backdrop',tabIndex:-1,'aria-label':'Close sidebar',onclick:()=>setOpen(false)});
   document.body.append(backdrop);
   function setOpen(value,opener) {
-    opened=media.matches && value;
+    opened=Boolean(value);
     if (opened) returnFocus=opener || document.activeElement;
     document.body.classList.toggle('sidebar-open',opened);
-    sidebar.inert=media.matches && !opened;
-    sidebar.setAttribute('aria-hidden',String(media.matches && !opened));
-    sidebar.setAttribute('role',media.matches?'dialog':'complementary');
+    sidebar.inert=!opened;
+    sidebar.setAttribute('aria-hidden',String(!opened));
+    sidebar.setAttribute('role','dialog');
     sidebar.setAttribute('aria-label',document.querySelector('.builder-shell')?'Your games':'Your matches');
     sidebar.setAttribute('aria-modal',String(opened));
     main.inert=opened;
@@ -357,7 +356,6 @@ function setUpSidebarDrawer() {
       else if (!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
     }
   });
-  media.addEventListener('change',()=>setOpen(false));
   setOpen(false);
 }
 if (document.readyState==='complete'||document.readyState==='interactive') setUpSidebarDrawer();
