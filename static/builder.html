@@ -12,7 +12,7 @@
     </script><meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Game platform · Builder</title>
   <link rel="stylesheet" href="/static/common.css?v=7" />
-  <link rel="stylesheet" href="/static/builder.css?v=12" />
+  <link rel="stylesheet" href="/static/builder.css?v=13" />
 </head>
 <body>
 <header class="topbar">
@@ -57,10 +57,11 @@
         <div class="workspace-heading"><div class="game-heading"><label class="sr-only" for="game-name">Game name</label><input id="game-name" aria-label="Game name" placeholder="Untitled game" /><span id="game-version"></span></div><button id="publish" class="primary" type="button">Publish</button></div>
         <div class="workspace-meta"><span id="save-status" role="status"></span><button id="retry-save" type="button" hidden>Retry autosave</button><a id="play-game" href="/portal" hidden>Play online ↗</a></div>
         <p id="game-summary"></p>
-        <div class="play-toolbar"><label for="play-mode" class="sr-only">Play mode</label><select id="play-mode" aria-label="Play mode"></select><button id="restart" type="button">Restart</button><button id="pause-test" type="button">Pause</button><button id="step-test" type="button" disabled>Step</button><button id="redo-move" type="button" disabled>Redo move</button><label for="test-size" class="sr-only">Preview width</label><select id="test-size" aria-label="Preview width"><option value="100%">Responsive</option><option value="375px">Phone · 375px</option><option value="768px">Tablet · 768px</option></select><button id="undo-move" type="button">Undo move</button><span class="toolbar-spacer"></span><button id="undo-ai-change" type="button">Undo AI change</button></div>
+        <div class="play-toolbar"><label for="play-mode" class="sr-only">Play mode</label><select id="play-mode" aria-label="Play mode"></select><button id="test-focus" type="button" aria-pressed="false">Focus preview</button><button id="restart" type="button">Restart</button><button id="pause-test" type="button">Pause</button><button id="step-test" type="button" disabled>Step</button><button id="redo-move" type="button" disabled>Redo move</button><label for="test-size" class="sr-only">Preview width</label><select id="test-size" aria-label="Preview width"><option value="100%">Responsive</option><option value="375px">Phone · 375px</option><option value="768px">Tablet · 768px</option></select><button id="undo-move" type="button">Undo move</button><span class="toolbar-spacer"></span><button id="undo-ai-change" type="button">Undo AI change</button></div>
         <div id="test-frame" class="frame-box"></div><div id="test-status" class="message" role="status"></div>
         <details><summary>Inspect game state</summary><pre id="test-state" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto"></pre></details>
-        <details class="game-history"><summary>Version history</summary><div id="version-history" class="history-controls"><label class="sr-only" for="versions">Published version</label><select id="versions" aria-label="Published version"></select><button id="load-version" type="button">Load version</button></div><button id="delete-game" type="button" class="danger">Delete game</button></details>
+        <details class="game-history"><summary>Version history</summary><div id="version-history" class="history-controls"><label class="sr-only" for="versions">Published version</label><select id="versions" aria-label="Published version"></select><button id="load-version" type="button">Load version</button></div></details>
+        <div class="game-management" aria-label="Game management"><button id="delete-game" type="button" class="danger">Delete game</button></div>
         <div id="workspace-message" class="message" role="status"></div>
       </section>
     </div>
@@ -71,6 +72,6 @@
   <div id="ai-panel-body"></div>
 </aside>
 <button id="open-ai" type="button" hidden>Ask AI</button>
-<script src="/static/common.js?v=4"></script><script src="/static/auth.js?v=2"></script><script src="/static/builder.js?v=25"></script>
+<script src="/static/common.js?v=5"></script><script src="/static/auth.js?v=2"></script><script src="/static/builder.js?v=26"></script>
 </body>
 </html>

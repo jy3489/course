@@ -93,9 +93,9 @@
 @media(max-width:1050px) { .portal-shell { grid-template-columns:230px minmax(0,1fr); }.portal-main { padding:24px; }.creator-content { padding:0 24px 24px; }.game-detail-page { padding:24px; }.match-creator > summary { padding:24px; }.creator-title { font-size:30px; } }
 @media(max-width:860px) {
   .portal-shell { grid-template-columns:minmax(0,1fr); overflow:auto; }
-  .portal-sidebar { overflow:visible; border-right:0; border-bottom:1px solid #343e55; padding:18px; gap:8px; }
+  .portal-sidebar { overflow:auto; max-height:30dvh; border-right:0; border-bottom:1px solid #343e55; padding:18px; gap:8px; }
   #show-creator { align-self:flex-start; }.builder-link { padding:14px 4px 4px; }
-  .portal-main { overflow:visible; padding:22px 14px 36px; }
+  .portal-main { overflow:auto; padding:22px 14px 36px; }
   .creator-title { font-size:28px; }.creator-content { padding:0 20px 24px; }.match-creator > summary { padding:22px 20px; }
   .selected-game-card { padding:18px; gap:14px; }.game-symbol { width:48px; height:48px; font-size:34px; }.selected-game-card h2 { font-size:21px; }
   .create-controls { align-items:stretch; flex-direction:column; } #create { width:100%; margin-left:0; }

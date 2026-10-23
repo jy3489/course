@@ -183,6 +183,40 @@ function actingUser(select, users) {
 // Hosting a game: its code runs in a sandboxed iframe and talks to the page with
 // postMessage. The page sends state_changed; the game sends make_move. See README.md.
 
+/** Runs inside the sandbox. Reflow at the device width first, then shrink only
+ * overflowing games. Keep the iframe, scripts, canvas and current state alive. */
+function fitGameViewport() {
+  const root = document.documentElement;
+  let scheduled = false;
+  function fit() {
+    scheduled = false;
+    if (!document.body || !innerWidth || !innerHeight) return;
+    root.style.setProperty("zoom", "1", "important");
+    let scale = 1;
+    for (let pass = 0; pass < 8; pass++) {
+      const body = document.body;
+      const rect = body.getBoundingClientRect();
+      const width = Math.max(rect.right, body.scrollWidth * scale + Math.max(0, rect.left));
+      const height = Math.max(rect.bottom, body.scrollHeight * scale + Math.max(0, rect.top));
+      const ratio = Math.min(1, innerWidth / Math.max(1, width), innerHeight / Math.max(1, height));
+      if (ratio >= .999) break;
+      scale *= ratio * .995;
+      root.style.setProperty("zoom", String(scale), "important");
+    }
+  }
+  function schedule() {
+    if (!scheduled) { scheduled = true; requestAnimationFrame(fit); }
+  }
+  addEventListener("resize", schedule);
+  addEventListener("load", schedule, true); // late images and fonts can change the board size
+  new MutationObserver(records => {
+    if (records.some(record => record.target !== root)) schedule();
+  }).observe(root, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["style","class","width","height","hidden"]});
+  new ResizeObserver(schedule).observe(document.body);
+  document.fonts?.ready.then(schedule);
+  schedule();
+}
+
 class GameFrame {
   /** [onMakeMove({new_state, next_turn_player_indices})] is called for valid make_move messages. */
   constructor(container, onMakeMove, onBadMessage) {
@@ -192,6 +226,22 @@ class GameFrame {
     this.iframe = null;
     this.ready = null;
     window.addEventListener("message", (event) => this.receive(event));
+    // Builder previews use the height left below their toolbar. Portal matches
+    // already allocate the entire available work area through flex layout.
+    const resize = () => {
+      if (container.id !== "test-frame" || !container.getBoundingClientRect().width) return;
+      const work = container.closest(".work");
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const available = Math.min(work?.clientHeight || viewportHeight, viewportHeight) -
+        (container.getBoundingClientRect().top - (work?.getBoundingClientRect().top || 0)) - 20;
+      container.style.setProperty("--game-height", Math.max(120, available) + "px");
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(resize).observe(container.closest(".work") || container);
+      new ResizeObserver(resize).observe(container);
+    }
+    window.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
   }
 
   /** Loads [code] as the iframe's document. Scripts run, but in an opaque origin, so
@@ -200,7 +250,7 @@ class GameFrame {
     this.iframe = el("iframe", { className: "game-frame", title: "Game" });
     this.iframe.setAttribute("sandbox", "allow-scripts");
     this.ready = new Promise((resolve) => this.iframe.addEventListener("load", resolve, { once: true }));
-    this.iframe.srcdoc = code;
+    this.iframe.srcdoc = code + "<script>(" + fitGameViewport.toString() + ")()<" + "/script>";
     this.container.replaceChildren(this.iframe);
   }
 
