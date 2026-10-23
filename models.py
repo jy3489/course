@@ -65,6 +65,9 @@ class User:
     # another one; GamePlatform.invite_stats resolves it to the survivor.
     # Defaults to None so older data files still load.
     invited_by_user_id: str | None = None
+    # Games the user saved to their library, most recently saved last. Defaults to
+    # empty so older data files load.
+    saved_game_ids: tuple[str, ...] = ()
     created_at: dt.datetime
     updated_at: dt.datetime
 

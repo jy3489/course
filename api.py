@@ -134,6 +134,32 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
     return UserWithPasswordOut.of_user(user)
 
 
+# The caller's own data. Declared before /users/{user_id} so "me" isn't taken for an id.
+
+
+@router.get("/users/me/saved-games")
+def list_saved_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
+    """The caller's library of saved games, most recently saved first."""
+    return [GameOut.of(g) for g in platform.list_saved_games(caller_id=caller_id)]
+
+
+@router.put("/users/me/saved-games/{game_id}")
+def save_game(platform: Platform, caller_id: CallerId, game_id: str) -> list[GameOut]:
+    """Adds a game to the caller's library (idempotent); returns the library."""
+    return [
+        GameOut.of(g) for g in platform.save_game(caller_id=caller_id, game_id=game_id)
+    ]
+
+
+@router.delete("/users/me/saved-games/{game_id}")
+def unsave_game(platform: Platform, caller_id: CallerId, game_id: str) -> list[GameOut]:
+    """Removes a game from the caller's library (idempotent); returns the library."""
+    return [
+        GameOut.of(g)
+        for g in platform.unsave_game(caller_id=caller_id, game_id=game_id)
+    ]
+
+
 @router.get("/users/{user_id}")
 def get_user(platform: Platform, user_id: str) -> UserOut:
     return UserOut.of(platform.get_user(user_id))
@@ -899,7 +925,7 @@ async def _revalidate_pages(
     """Makes browsers check for newer pages and scripts on every load. Otherwise they
     may keep using a cached old script with a new page, which breaks it."""
     response = await call_next(request)
-    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
+    if request.url.path == "/builder/games" or request.url.path.startswith(("/games/", "/matches/", "/users/me/")) or request.url.path == "/game-drafts" or request.url.path.startswith("/game-drafts/"):
         response.headers["Cache-Control"] = "private, no-store"
     elif request.method == "GET" and not response.headers.get(
         "content-type", ""

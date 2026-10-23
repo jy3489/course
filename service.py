@@ -654,6 +654,7 @@ class GamePlatform:
             into,
             linked_accounts=(*into.linked_accounts, *moved),
             replaced_user_ids=replaced_ids,
+            saved_game_ids=_dedupe((*into.saved_game_ids, *source.saved_game_ids)),
             invited_by_user_id=invited_by,
             updated_at=self._clock(),
         )
@@ -1218,6 +1219,56 @@ class GamePlatform:
                     hidden_for_user_ids=match.hidden_for_user_ids | {caller_id},
                 )
             )
+
+    # Saved games: each user's library of games to come back to
+
+    def save_game(self, *, caller_id: str, game_id: str) -> list[Game]:
+        """Adds a game to the caller's library (idempotent); returns the library."""
+        with self._lock:
+            game = self._get_live_game(game_id)
+            if not game.published and game.owner_user_id != caller_id:
+                raise NotFoundError("game not found")
+            user = self._require_user(caller_id)
+            if game_id not in user.saved_game_ids:
+                user = replace(
+                    user,
+                    saved_game_ids=(*user.saved_game_ids, game_id),
+                    updated_at=self._clock(),
+                )
+                self._store.put_user(user)
+            return self._saved_games(user)
+
+    def unsave_game(self, *, caller_id: str, game_id: str) -> list[Game]:
+        """Removes a game from the caller's library (idempotent)."""
+        with self._lock:
+            user = self._require_user(caller_id)
+            if game_id in user.saved_game_ids:
+                user = replace(
+                    user,
+                    saved_game_ids=tuple(
+                        saved for saved in user.saved_game_ids if saved != game_id
+                    ),
+                    updated_at=self._clock(),
+                )
+                self._store.put_user(user)
+            return self._saved_games(user)
+
+    def list_saved_games(self, *, caller_id: str) -> list[Game]:
+        with self._lock:
+            return self._saved_games(self._require_user(caller_id))
+
+    def _saved_games(self, user: User) -> list[Game]:
+        """The user's saved games that can still be played, most recently saved
+        first. Deleted or unpublished games are skipped but stay saved, so they
+        reappear if republished."""
+        games = (self._store.get_game(game_id) for game_id in reversed(user.saved_game_ids))
+        return [
+            game
+            for game in games
+            if game is not None
+            and not game.deleted
+            and (game.published or game.owner_user_id == user.id)
+        ]
 
     # Web push notifications
 

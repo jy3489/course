@@ -271,6 +271,9 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `POST /matches/{id}/moves` | yes | Make a move `{new_state, next_turn_player_indices, expected_move_count?}` |
 | `GET /matches/{id}/moves` |  | Full move history |
 | `DELETE /matches/{id}` | yes | Owner: delete the match. Other players: hide an ended match from their list |
+| `GET /users/me/saved-games` | yes | The caller's saved games, most recently saved first |
+| `PUT /users/me/saved-games/{game_id}` | yes | Save a game (idempotent); returns the library |
+| `DELETE /users/me/saved-games/{game_id}` | yes | Unsave a game (idempotent); returns the library |
 | `GET /push/config` |  | Whether web push is set up, and the VAPID public key to subscribe with |
 | `POST /push/subscriptions` | yes | Register (201) or refresh (200) the caller's browser subscription `{endpoint, keys, expiration_time?}`, keyed by endpoint |
 | `GET /push/subscriptions` | yes | List the caller's subscriptions |
@@ -454,8 +457,8 @@ any idle connection a browser keeps.
 ### Data file
 
 The data file holds everything: users (including their passwords), every
-version of every game, which games are deleted, all matches with their moves, and
-web push subscriptions. Its layout is
+version of every game, which games are deleted, all matches with their moves,
+web push subscriptions, and each user's saved games. Its layout is
 `{"format_version": 1, "data": {"users": [...], "game_versions": [...], "deleted_game_ids": [...], "matches": [...]}}`.
 `format_version` is for incompatible layout changes after launch.
 
