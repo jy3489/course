@@ -297,6 +297,20 @@ test('unfinished, abandoned, unknown and unsynced results are not false confirme
   assert.match(run('matchOutcome(state.match,"owner").label'),/awaiting sync/);
 });
 
+test('completed games using winner minus one show Draw for players and spectators',()=>{
+  const {run,node}=setup();
+  run('state.gameCache.set("game@2",state.games[0]);state.match={id:"nine-stars-draw",game_id:"game",game_version:2,owner_user_id:"owner",status:"over",end_reason:"finished",players:[{player_index:0,kind:"human",user_id:"owner"},{player_index:1,kind:"computer",user_id:null}],move_count:10,state:{winner:-1}};renderMatch()');
+  assert.equal(node('match-result').textContent,'Draw');
+  assert.equal(run('matchOutcome(state.match,"owner").kind'),'draw');
+  assert.equal(run('matchOutcome(state.match,"spectator").label'),'Draw');
+  run('state.match.pending=1');assert.equal(run('matchOutcome(state.match,"owner").label'),'Draw · awaiting sync');
+  run('state.match.pending=0;state.match.end_reason="player_left"');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Ended early');
+  run('state.match.status="ongoing"');assert.equal(run('matchOutcome(state.match,"owner")'),null);
+  run('state.match.status="over";state.match.end_reason="finished";state.match.state.winner=-2');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Result unavailable');
+});
+
 
 test('match history navigates read-only snapshots and returns to live',async()=>{
   const moves=[{new_state:{score:1},next_turn_player_indices:[0]},{new_state:{score:2},next_turn_player_indices:null}];
