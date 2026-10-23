@@ -325,3 +325,19 @@ test('history reaches a recorded custom initial state at move zero',async()=>{
   await t.run('browseHistory(-1)');assert.equal(t.run('state.replay.index'),0);
   assert.equal(t.run('state.replay.move.new_state.score'),42);assert.equal(t.node('history-back').disabled,true);
 });
+
+test('invalid next seats are rejected before a move is durably queued',async()=>{
+  const t=setup();t.run('navigator.locks={request:async(name,run)=>run()};state.match={id:"m",game_id:"g",game_version:1,status:"ongoing",turn_of_player_indices:[0],players:[{player_index:0,user_id:"owner",kind:"human"}]};state.loaded="m@g@1";offline.enqueue=()=>{throw new Error("must not enqueue")};offline.sync=async()=>{}');
+  await t.run('onMakeMove({new_state:{score:1},next_turn_player_indices:[1]})');
+  assert.match(t.node('match-message').textContent,/invalid next player/);
+});
+test('switching matches unloads the old iframe immediately',()=>{
+  const t=setup();t.run('state.loaded="old@g@1";frame.unload=()=>{state.unloaded=true};selectMatch("new")');
+  assert.equal(t.run('state.unloaded'),true);assert.equal(t.run('state.loaded'),null);
+});
+test('late game-code responses cannot populate a newly selected match',async()=>{
+  let resolve;const wait=new Promise(r=>resolve=r);const t=setup(()=>wait);
+  t.run('state.match={id:"old",game_id:"g",game_version:1,status:"ongoing"};state.loaded=null;frame.load=()=>{state.badLoad=true}');
+  const pending=t.run('syncGame()');t.run('state.match={id:"new"}');resolve({code:'old game'});await pending;
+  assert.equal(t.run('state.badLoad'),undefined);assert.equal(t.run('state.loaded'),null);
+});

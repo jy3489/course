@@ -718,6 +718,8 @@ function updateMatchSetup() {
 function selectMatch(id) {
   if (id === state.selectedId) return;
   state.selectedId = id;
+  frame.unload();state.loaded = null;
+  if (id) $("game-box").textContent = "Loading game…";
   const saved = offline.read();
   saved.selectedId = id;
   offline.write(saved);
@@ -823,9 +825,14 @@ function renderMatch() {
 
   const actions = [];
   const secondaryActions = [];
+  if (match.localMode) {
+    if (match.status === "ongoing") actions.push(actionButton("End practice", async()=>{offline.endPractice(match.id);state.lastSent=null;}));
+    else if (match.resumeTurn) actions.push(actionButton("Resume practice",async()=>{offline.resumePractice(match.id);state.lastSent=null;}));
+    secondaryActions.push(actionButton("Remove practice from list",async()=>{await portalRequest("DELETE",`/matches/${match.id}`);selectMatch(null);},{danger:true,confirm:"Archive this practice and remove it from your list?"}));
+  }
   if (game?.code)
     secondaryActions.push(
-      actionButton("Practice this game", async () => {
+      actionButton("Start a new practice", async () => {
         const practiceMatch = offline.practice(game, $("practice-mode").value);
         selectMatch(practiceMatch.id);
       }),
@@ -873,8 +880,11 @@ function renderMatch() {
   const path = `/matches/${match.id}`;
   const call =
     (method, suffix = "", body = undefined) =>
-    () =>
-      portalRequest(method, path + suffix, { user, body });
+    async () => {
+      const result = await portalRequest(method, path + suffix, {user, body});
+      if (method === "DELETE") selectMatch(null);
+      return result;
+    };
   if (user && isJoinable(match, user.id)) {
     actions.push(
       actionButton("Join", call("POST", "/join"), { primary: true }),
@@ -976,7 +986,15 @@ function renderMatch() {
       el("summary", {"aria-label":"More match actions", textContent:"⋯"}),
       el("div", {class:"match-more-panel"}, ...secondaryActions));
     menu.addEventListener?.("toggle", () => {
-      if (menu.isConnected) state.moreActionsMatch = menu.open ? match.id : null;
+      if (menu.isConnected) {
+        state.moreActionsMatch = menu.open ? match.id : null;
+        if (menu.open) {
+          const panel = menu.querySelector(".match-more-panel"), rect = menu.getBoundingClientRect();
+          const width = panel.getBoundingClientRect().width, height = panel.getBoundingClientRect().height;
+          panel.style.left = Math.max(8,Math.min(rect.left,window.innerWidth-width-8))+"px";
+          panel.style.top = Math.max(8,Math.min(rect.bottom+8,window.innerHeight-height-8))+"px";
+        }
+      }
     });
     actions.push(menu);
   }
@@ -1057,7 +1075,10 @@ async function syncGame() {
   }
   const key = `${match.id}@${match.game_id}@${match.game_version}`;
   if (state.loaded !== key) {
-    frame.load(await gameCode(match));
+    const userId = me()?.id;
+    const code = await gameCode(match);
+    if (state.match?.id !== match.id || me()?.id !== userId) return;
+    frame.load(code);
     state.loaded = key;
     state.lastSent = null;
   }
@@ -1093,11 +1114,18 @@ async function syncGame() {
 
 async function onMakeMove(move) {
   if (state.moveInFlight || state.replay?.id === state.match?.id) return;
+  const receivedFor = state.match;
+  if (!receivedFor || state.loaded !== `${receivedFor.id}@${receivedFor.game_id}@${receivedFor.game_version}`) return;
   state.moveInFlight = true;
   try {
     await portalLock(async () => {
       const match = state.match,
         user = me();
+      if (match?.id !== receivedFor.id) return;
+      const next = move.next_turn_player_indices;
+      const seats = new Set(match.players.map(player=>player.player_index));
+      if (!(next === null || (Array.isArray(next) && next.length && new Set(next).size === next.length && next.every(seat=>Number.isInteger(seat)&&seats.has(seat)))))
+        throw new Error("The game sent an invalid next player. Your move was not queued. Restart or repair this game in Builder.");
       if (!match || !user || actingFor(match, user.id) === null)
         throw new Error("It isn't your turn.");
       state.match = offline.enqueue(match, {

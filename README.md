@@ -895,3 +895,10 @@ The Builder supports Pause / Resume and Step (one accepted move, then pause),
 Undo / Redo, responsive/phone/tablet preview widths, and an expandable JSON state
 inspector. Undo pauses playback so computers cannot immediately overwrite it.
 Making a new move after undo clears the redo branch. Restart resets the session.
+
+
+Practice sessions have a visible **End practice** control and can be resumed without
+creating another match. **Remove practice from list** archives the local session.
+Deleting a match archives any pending offline work before removing its cached list
+entry, preventing deleted matches from reappearing. The action menu stays inside
+the viewport, and invalid next-player indices are rejected before queueing moves.
