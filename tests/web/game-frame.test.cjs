@@ -51,3 +51,13 @@ test('fitting stays inside the script-only sandbox and preserves the move protoc
   vm.runInContext('frame.receive({source:frame.iframe.contentWindow,data:{type:"make_move",new_state:{n:1},next_turn_player_indices:[0]}})',context);
   assert.equal(calls.length,1);assert.equal(calls[0].new_state.n,1);
 });
+
+test('scrolling the builder cannot increase preview height or push its controls away',()=>{
+  const events={};let top=200,height;
+  const work={clientHeight:600,scrollTop:0,getBoundingClientRect:()=>({top:0})};
+  const container={id:'test-frame',closest:()=>work,getBoundingClientRect:()=>({width:800,top}),style:{setProperty(k,v){height=v;}}};
+  const ctx=vm.createContext({window:{innerHeight:600,addEventListener(k,fn){events[k]=fn;}},document:{},container});
+  vm.runInContext(source,ctx);vm.runInContext('new GameFrame(container,()=>{},()=>{})',ctx);
+  events.resize();assert.equal(height,'380px');
+  top=0;work.scrollTop=200;events.resize();assert.equal(height,'380px');
+});
