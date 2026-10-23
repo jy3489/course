@@ -296,3 +296,48 @@ test('unfinished, abandoned, unknown and unsynced results are not false confirme
   run('state.match.state={winner:null,done:true};state.match.pending=1');
   assert.match(run('matchOutcome(state.match,"owner").label'),/awaiting sync/);
 });
+
+
+test('match history navigates read-only snapshots and returns to live',async()=>{
+  const moves=[{new_state:{score:1},next_turn_player_indices:[0]},{new_state:{score:2},next_turn_player_indices:null}];
+  const t=setup(async()=>({moves,initial_state:null,initial_turn_player_indices:null}));
+  t.run('state.match={id:"match",move_count:2};syncGame=async()=>{}');
+  await t.run('browseHistory(-1)');assert.equal(t.run('state.replay.index'),1);
+  assert.equal(t.run('state.replay.move.new_state.score'),1);
+  assert.equal(t.node('history-back').disabled,true);
+  await t.run('onMakeMove({new_state:99,next_turn_player_indices:null})');
+  assert.equal(t.run('state.match.move_count'),2);
+  await t.run('browseHistory(1)');assert.equal(t.run('state.replay.index'),2);
+  assert.equal(t.node('history-forward').disabled,true);
+  await t.run('browseHistory("live")');assert.equal(t.run('state.replay'),null);
+});
+test('history responses for a previously selected match are discarded',async()=>{
+  let resolve;const response=new Promise(r=>resolve=r),t=setup(()=>response);
+  t.run('state.match={id:"old",move_count:2}');const pending=t.run('browseHistory(-1)');
+  t.run('state.match={id:"new",move_count:3}');resolve({moves:[{new_state:1}],initial_state:null,initial_turn_player_indices:null});await pending;
+  assert.equal(t.run('state.replay'),undefined);
+});
+
+
+test('history reaches a recorded custom initial state at move zero',async()=>{
+  const t=setup(async()=>({initial_state:{score:42},initial_turn_player_indices:[1],moves:[{new_state:{score:43},next_turn_player_indices:[0]}]}));
+  t.run('state.match={id:"match",move_count:1};syncGame=async()=>{}');
+  await t.run('browseHistory(-1)');assert.equal(t.run('state.replay.index'),0);
+  assert.equal(t.run('state.replay.move.new_state.score'),42);assert.equal(t.node('history-back').disabled,true);
+});
+
+test('invalid next seats are rejected before a move is durably queued',async()=>{
+  const t=setup();t.run('navigator.locks={request:async(name,run)=>run()};state.match={id:"m",game_id:"g",game_version:1,status:"ongoing",turn_of_player_indices:[0],players:[{player_index:0,user_id:"owner",kind:"human"}]};state.loaded="m@g@1";offline.enqueue=()=>{throw new Error("must not enqueue")};offline.sync=async()=>{}');
+  await t.run('onMakeMove({new_state:{score:1},next_turn_player_indices:[1]})');
+  assert.match(t.node('match-message').textContent,/invalid next player/);
+});
+test('switching matches unloads the old iframe immediately',()=>{
+  const t=setup();t.run('state.loaded="old@g@1";frame.unload=()=>{state.unloaded=true};selectMatch("new")');
+  assert.equal(t.run('state.unloaded'),true);assert.equal(t.run('state.loaded'),null);
+});
+test('late game-code responses cannot populate a newly selected match',async()=>{
+  let resolve;const wait=new Promise(r=>resolve=r);const t=setup(()=>wait);
+  t.run('state.match={id:"old",game_id:"g",game_version:1,status:"ongoing"};state.loaded=null;frame.load=()=>{state.badLoad=true}');
+  const pending=t.run('syncGame()');t.run('state.match={id:"new"}');resolve({code:'old game'});await pending;
+  assert.equal(t.run('state.badLoad'),undefined);assert.equal(t.run('state.loaded'),null);
+});

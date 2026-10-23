@@ -3,7 +3,8 @@
 ## Scope and behavior
 
 This assignment changes the shared web portal in `static/`, not the native iOS
-app. It builds on upstream main at `199531c`.
+app. It incorporates upstream main through `55fe2c9`, including match history and
+practice lifecycle fixes. Match history remains accessible under Controls.
 
 - Phone/tablet portrait: the selected match replaces the catalog/sidebar, with
   Back, Focus, and Controls above the game. Controls reveals existing sharing,
@@ -28,7 +29,7 @@ unused space inside its iframe even when the portal gives it the entire screen.
 node --test tests/web/match-layout.test.cjs tests/web/portal.test.cjs tests/web/pwa.test.cjs tests/web/offline.test.cjs
 ```
 
-42 tests pass. The five new layout unit tests cover automatic/manual focus,
+53 tests pass after integrating the latest upstream changes. The five new layout unit tests cover automatic/manual focus,
 lobby controls, pending/conflict notices, finished matches, and keyboard return.
 
 With Playwright installed and Chrome available:

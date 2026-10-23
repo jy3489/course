@@ -1238,6 +1238,8 @@ class GamePlatform:
                     match,
                     status="ongoing",
                     state=initial_state,
+                    initial_state=initial_state,
+                    initial_turn_player_indices=first_turn_player_indices,
                     turn_of_player_indices=first_turn_player_indices,
                 )
             )

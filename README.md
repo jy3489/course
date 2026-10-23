@@ -879,3 +879,26 @@ Creating or selecting a match folds the creator to leave room for the game;
 the sidebar New match button opens it again. Player counts normally follow prompts;
 manual generation overrides remain in the builder's collapsed advanced settings.
 Your turn appears only when the signed-in human has a turn to take.
+
+
+### Match replay and builder emulator
+
+The Portal's Previous move / Next move controls browse recorded move states.
+Replay disables game moves; Return to live restores the current match, including
+updates received while browsing. Newly started matches retain their initial state and turn, so replay reaches move
+zero. Older matches without that snapshot start at the first recorded move. Local practice records
+moves on this device; older local sessions can only replay newly recorded moves.
+Online history is cached after opening it for later offline browsing.
+Starting snapshots persist in data file format 9 (formats 1–8 still load).
+
+The Builder supports Pause / Resume and Step (one accepted move, then pause),
+Undo / Redo, responsive/phone/tablet preview widths, and an expandable JSON state
+inspector. Undo pauses playback so computers cannot immediately overwrite it.
+Making a new move after undo clears the redo branch. Restart resets the session.
+
+
+Practice sessions have a visible **End practice** control and can be resumed without
+creating another match. **Remove practice from list** archives the local session.
+Deleting a match archives any pending offline work before removing its cached list
+entry, preventing deleted matches from reappearing. The action menu stays inside
+the viewport, and invalid next-player indices are rejected before queueing moves.

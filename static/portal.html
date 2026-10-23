@@ -18,7 +18,7 @@
     <link rel="manifest" href="/static/portal.webmanifest" />
     <title>Game platform · Portal</title>
     <link rel="stylesheet" href="/static/common.css?v=7" />
-    <link rel="stylesheet" href="/static/portal.css?v=14" />
+    <link rel="stylesheet" href="/static/portal.css?v=15" />
     <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
   </head>
   <body>
@@ -129,6 +129,7 @@
           <div id="actions" class="inline-row"></div>
           <div id="match-message" class="message" role="status"></div>
           <div id="waiting" class="waiting-note" hidden></div>
+          <div id="match-history" class="inline-row" hidden><button id="history-back" type="button">← Previous move</button><span id="history-position" role="status"></span><button id="history-forward" type="button">Next move →</button><button id="history-live" type="button">Return to live</button></div>
           </div>
           <div id="game-box" class="frame-box" hidden></div>
         </section>
@@ -136,9 +137,9 @@
     </div>
     <script src="/static/common.js?v=4"></script>
     <script src="/static/auth.js?v=2"></script>
-    <script src="/static/portal-offline.js?v=1"></script>
+    <script src="/static/portal-offline.js?v=3"></script>
     <script src="/static/portal-install.js?v=1"></script>
     <script src="/static/portal-match-layout.js?v=1"></script>
-    <script src="/static/portal.js?v=30"></script>
+    <script src="/static/portal.js?v=32"></script>
   </body>
 </html>

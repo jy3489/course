@@ -168,6 +168,6 @@
 .match-more > summary { display:grid; place-items:center; width:42px; height:42px; border:1px solid #343e55; border-radius:8px; list-style:none; cursor:pointer; font-size:24px; color:#c9cfdc; }
 .match-more > summary::-webkit-details-marker { display:none; }
 .match-more[open] > summary { background:#26304a; }
-.match-more-panel { position:absolute; right:0; top:calc(100% + 8px); z-index:25; display:flex; flex-direction:column; gap:4px; width:230px; max-width:75vw; padding:8px; background:#1c2233; border:1px solid #44506b; border-radius:10px; box-shadow:0 10px 30px #0006; }
+.match-more-panel { position:fixed; left:8px; top:8px; z-index:25; display:flex; flex-direction:column; gap:4px; width:230px; max-width:75vw; padding:8px; background:#1c2233; border:1px solid #44506b; border-radius:10px; box-shadow:0 10px 30px #0006; }
 .portal-shell .match-more-panel button { text-align:left; white-space:normal; border:0; background:transparent; }
 .portal-shell .match-more-panel button:hover { background:#26304a; }

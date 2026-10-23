@@ -67,9 +67,12 @@ class PortalOffline {
   async get(path, options = {}) {
     const localId = path.startsWith("/matches/") ? path.slice(9) : null;
     if (localId?.startsWith("local-")) {
-      const match = this.read().local[localId];
+      const snapshot = localId.endsWith("/history");
+      const history = localId.endsWith("/moves") || snapshot;
+      const match = this.read().local[snapshot ? localId.slice(0, -8) : history ? localId.slice(0, -6) : localId];
       if (!match) throw new Error("Local practice is no longer saved.");
-      return match;
+      if (snapshot) return {initial_state: null, initial_turn_player_indices: match.historyStart === 0 ? [0] : null, moves: match.moves || []};
+      return history ? (match.moves || []) : match;
     }
     let value;
     const identity = this.key();
@@ -120,16 +123,48 @@ class PortalOffline {
       return this.decorate(value);
     return value;
   }
+  archiveMatch(id) {
+    const d = this.read();
+    d.archivedMatches ||= [];
+    d.archivedMatches.push({id, match:d.local[id] || d.responses[`/matches/${id}`], moves:d.queues[id] || [], conflict:d.conflicts[id] || null, savedAt:new Date().toISOString()});
+    delete d.local[id];delete d.queues[id];delete d.conflicts[id];
+    for (const key of Object.keys(d.responses)) {
+      if (key === `/matches/${id}` || key.startsWith(`/matches/${id}/`)) delete d.responses[key];
+      else if (Array.isArray(d.responses[key]) && key.startsWith("/matches")) d.responses[key] = d.responses[key].filter(match=>match.id!==id);
+    }
+    if (d.selectedId === id) d.selectedId = null;
+    this.write(d);
+  }
+  endPractice(id) {
+    const d = this.read(), match = d.local[id];
+    if (!match || match.status !== "ongoing") return;
+    match.resumeTurn = match.turn_of_player_indices;
+    match.turn_of_player_indices = null;match.status = "over";match.end_reason = "player_left";
+    this.write(d);
+  }
+  resumePractice(id) {
+    const d = this.read(), match = d.local[id];
+    if (!match?.resumeTurn) return;
+    match.turn_of_player_indices = match.resumeTurn;delete match.resumeTurn;
+    match.status = "ongoing";match.end_reason = null;this.write(d);
+  }
   async api(method, path, options = {}) {
+    const matchId = /^\/matches\/([^/]+)$/.exec(path)?.[1];
+    if (method === "DELETE" && matchId?.startsWith("local-")) {this.archiveMatch(matchId);return null;}
     if (method === "GET") return this.get(path, options);
     if (!this.online())
       throw new Error(
         "This action needs a connection. Saved matches and local practice are available offline.",
       );
     const identity = this.key();
-    const result = await this.request(method, path, options);
+    let result;
+    try {result = await this.request(method, path, options);}
+    catch (error) {
+      if (!(method === "DELETE" && matchId && error.status === 404 && this.cached(path)?.owner_user_id === this.user()?.id)) throw error;
+    }
     if (identity !== this.key())
       throw new Error("Account changed; refresh to see the result.");
+    if (method === "DELETE" && matchId) this.archiveMatch(matchId);
     if (result?.id && path.startsWith("/matches"))
       this.save(`/matches/${result.id}`, result);
     return result;
@@ -144,7 +179,9 @@ class PortalOffline {
         throw new Error(
           "Local practice changed in another tab. Refresh before moving.",
         );
-      data.local[id] = this.apply(data.local[id], body);
+      const previous = data.local[id];
+      data.local[id] = this.apply(previous, body);
+      data.local[id].moves = [...(previous.moves || []), {new_state: body.new_state, next_turn_player_indices: body.next_turn_player_indices}];
       this.write(data);
       return data.local[id];
     }
@@ -300,6 +337,7 @@ class PortalOffline {
       end_reason: null,
       created_at: new Date().toISOString(),
       localMode: mode,
+      historyStart: 0,
     };
     const d = this.read();
     d.local[id] = match;

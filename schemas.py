@@ -613,6 +613,20 @@ class MoveOut(BaseModel):
         )
 
 
+class MatchHistoryOut(BaseModel):
+    initial_state: JsonValue
+    initial_turn_player_indices: list[int] | None
+    moves: list[MoveOut]
+
+    @classmethod
+    def of(cls, match: Match) -> "MatchHistoryOut":
+        return cls(
+            initial_state=match.initial_state,
+            initial_turn_player_indices=None if match.initial_turn_player_indices is None else sorted(match.initial_turn_player_indices),
+            moves=[MoveOut.of(move) for move in match.moves],
+        )
+
+
 class MatchDetailOut(MatchOut):
     moves: list[MoveOut]
     hidden_for_user_ids: list[str]

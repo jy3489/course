@@ -63,9 +63,9 @@ test('a failed publish keeps the successfully autosaved game',async()=>{
   assert.equal(t.run('selectedDraft().name'),'Changed');assert.equal(t.run('state.games[0].name'),'Counter');assert.match(t.node('save-status').textContent,/Couldn't publish/);
 });
 test('AI updates automatically apply code and inferred counts and open the playable workspace',async()=>{
-  const calls=[];const t=setup(async(method,url,{body})=>{calls.push([url,body]);return {message:'Ready',name:'Solo counter',code:'<html>solo</html>',allowed_player_counts:[1]};});
+  const calls=[];const t=setup(async(method,url,{body})=>{calls.push([url,body]);if(url==='/game-drafts')return saved(body,'new-id');return {message:'Ready',name:'Solo counter',code:'<html>solo</html>',allowed_player_counts:[1]};});
   await t.run('select("new")');t.node('agent-input').value='Make a solo counter';await t.run('sendAgentMessage()');
-  assert.equal(calls[0][1].player_count_mode,'auto');assert.equal(t.run('state.editor.code'),'<html>solo</html>');
+  assert.equal(calls.find(([url])=>url==='/agent/chat')[1].player_count_mode,'auto');assert.equal(t.run('state.editor.code'),'<html>solo</html>');
   assert.equal(t.run('state.editor.allowed_player_counts[0]'),1);assert.equal(t.node('starter-view').hidden,true);assert.equal(t.node('play-view').hidden,false);
   assert.equal(t.run('state.test.players.length'),1);assert.equal(t.run('isDirty()'),true);assert.equal(t.run('state.undo.length'),1);
 });
@@ -113,7 +113,7 @@ test('floating panel movement is clamped to accessible viewport coordinates',()=
 });
 test('stopping a request aborts its wait and restores the submitted prompt',async()=>{
   const wait=deferred(),t=setup(()=>wait.promise);await t.choose();t.node('agent-input').value='Original prompt';const pending=t.run('sendAgentMessage()');
-  t.run('stopAgentWaiting()');assert.equal(t.run('state.agentRequest.controller.signal.aborted'),true);wait.reject(new Error('aborted'));await pending;
+  await new Promise(setImmediate);t.run('stopAgentWaiting()');assert.equal(t.run('state.agentRequest.controller.signal.aborted'),true);wait.reject(new Error('aborted'));await pending;
   assert.equal(t.node('agent-input').value,'Original prompt');assert.equal(t.run('state.editor.code'),game.code);
 });
 test('preview jobs are polled without submitting another paid generation',async()=>{
@@ -180,4 +180,33 @@ test('a late catalog response is ignored after switching accounts',async()=>{
   const wait=deferred(),t=setup(async()=>[],()=>wait.promise);const loading=t.run('select("new")');
   t.setUser({id:'other'});await t.run('onUserChanged()');wait.resolve([game]);await loading;
   assert.equal(t.run('state.starters.length'),0);assert.equal(t.run('state.editor.code'),'');assert.equal(t.run('state.starterLoading'),false);
+});
+
+
+test('emulator pauses, single steps, undoes and redoes a terminal move',async()=>{
+  const t=setup();await t.choose();t.run('pauseTest()');
+  assert.equal(t.run('state.test.awaiting'),false);
+  t.run('onTestMove({new_state:99,next_turn_player_indices:null})');
+  assert.equal(t.run('state.test.moves.length'),0);
+  t.run('stepTest();onTestMove({new_state:{score:1},next_turn_player_indices:null})');
+  assert.equal(t.run('state.test.paused'),true);assert.equal(t.run('state.test.status'),'over');
+  t.run('undoTestMove()');assert.equal(t.run('state.test.state'),null);
+  assert.equal(t.run('state.test.awaiting'),false);
+  t.run('redoTestMove()');assert.equal(t.run('state.test.state.score'),1);
+  assert.equal(t.run('state.test.status'),'over');
+  assert.match(t.node('test-state').textContent,/score/);
+});
+test('a new emulator move clears the abandoned redo branch',async()=>{
+  const t=setup();await t.choose();
+  t.run('onTestMove({new_state:1,next_turn_player_indices:[0]});undoTestMove();stepTest();onTestMove({new_state:2,next_turn_player_indices:[0]})');
+  assert.equal(t.run('state.test.redo.length'),0);assert.equal(t.run('state.test.state'),2);
+  assert.equal(t.run('state.test.paused'),true);
+});
+
+
+test('stopping while a new draft is being created restores the prompt',async()=>{
+  const wait=deferred(),t=setup(()=>wait.promise);await t.run('select("new")');
+  t.node('agent-input').value='Keep this prompt';const pending=t.run('sendAgentMessage()');
+  t.run('stopAgentWaiting()');wait.resolve(saved({name:'Draft',code:'',allowed_player_counts:[1]},'new-id'));await pending;
+  assert.equal(t.node('agent-input').value,'Keep this prompt');assert.equal(t.run('state.agentSending'),false);
 });

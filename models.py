@@ -202,6 +202,10 @@ class Match:
     # have joined. Defaults to None so older data files load.
     matchmaking_player_count: int | None = None
 
+    # None turn means this legacy match has no recorded starting snapshot.
+    initial_state: JsonValue = None
+    initial_turn_player_indices: frozenset[int] | None = None
+
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)
 

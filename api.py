@@ -1,6 +1,7 @@
 """FastAPI routes for the game platform."""
 
 import io
+import mimetypes
 import secrets
 import asyncio
 import time
@@ -47,6 +48,7 @@ from game_platform.schemas import (
     InviteViewOut,
     MatchCreate,
     MatchOut,
+    MatchHistoryOut,
     MatchStart,
     MatchUpdate,
     MergeRequest,
@@ -646,6 +648,11 @@ def make_move(
     return MatchOut.of(match)
 
 
+@router.get("/matches/{match_id}/history")
+def get_match_history(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchHistoryOut:
+    return MatchHistoryOut.of(platform.get_match(match_id, caller_id=caller_id))
+
+
 @router.get("/matches/{match_id}/moves")
 def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> list[MoveOut]:
     return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
@@ -1136,6 +1143,9 @@ def create_app(
 
     [public_base_url] is where invite links and QR codes point; empty uses the
     address each request came to."""
+    # Windows registry associations can otherwise break service-worker loading.
+    mimetypes.init()
+    mimetypes.add_type("text/javascript", ".js")
     app = FastAPI(title="Game platform")
     # Allow REST API requests from other domains (browser cross-origin requests).
     # Auth uses per-request headers, not cookies, so a wildcard origin is safe here.

@@ -168,3 +168,39 @@ test("409 rejection retries are bounded and preserve queued move", async () => {
   assert.equal(o.read().queues.match.length, 1);
   assert.ok(o.read().conflicts.match);
 });
+
+test('local practice history survives storage reload and is readable offline', async () => {
+  const {o,storage}=setup();
+  const d=o.read();d.local['local-replay']={...base,id:'local-replay'};o.write(d);
+  const match=await o.get('/matches/local-replay');o.enqueue(match,body);
+  const restored=new Offline(storage,()=>{throw new Error('must stay offline');},()=>({id:'alice',password:'test'}),()=>false);
+  const moves=await restored.get('/matches/local-replay/moves');
+  assert.equal(moves.length,1);assert.deepEqual(moves[0].new_state,{score:1});
+  assert.deepEqual(moves[0].next_turn_player_indices,[1]);
+});
+
+test('ending and resuming practice preserves the same match and moves',()=>{
+  const {o}=setup();const d=o.read();d.local['local-a']={...base,id:'local-a',move_count:3,state:{score:3}};o.write(d);
+  o.endPractice('local-a');let saved=o.read().local['local-a'];
+  assert.equal(saved.status,'over');assert.equal(saved.state.score,3);assert.equal(saved.move_count,3);
+  assert.equal(Object.keys(o.read().local).length,1);
+  o.resumePractice('local-a');saved=o.read().local['local-a'];assert.equal(saved.status,'ongoing');assert.deepEqual(saved.turn_of_player_indices,[0]);
+});
+test('removing local practice is local-only and retains an archive',async()=>{
+  const {o}=setup(()=>assert.fail('local removal must not call the server'));
+  const d=o.read();d.local['local-a']={...base,id:'local-a'};o.write(d);
+  await o.api('DELETE','/matches/local-a');assert.equal(o.read().local['local-a'],undefined);
+  assert.equal(o.read().archivedMatches[0].match.id,'local-a');
+});
+test('successful match deletion archives pending work and cannot resurrect a ghost',async()=>{
+  const {o,setOnline}=setup(async()=>null);setOnline(true);
+  o.save('/matches',[base]);o.enqueue(base,body);
+  await o.api('DELETE','/matches/match');assert.equal(o.cached('/matches/match'),undefined);
+  assert.equal(o.cached('/matches').length,0);assert.equal(o.read().queues.match,undefined);
+  assert.equal(o.read().archivedMatches[0].moves.length,1);
+});
+test('deleting an already missing owned match clears its cached ghost',async()=>{
+  const {o,setOnline}=setup(async()=>{throw Object.assign(new Error('not found'),{status:404});});setOnline(true);
+  o.save('/matches/match',{...base,owner_user_id:'alice'});
+  await o.api('DELETE','/matches/match');assert.equal(o.cached('/matches/match'),undefined);
+});
