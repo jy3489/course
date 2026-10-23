@@ -118,6 +118,21 @@ const Logic = {
   width: (cells) => Math.max(...cells.map((c) => c[1])) + 1,
   spawnCol: (cells) => Math.floor((Logic.COLS - Logic.width(cells)) / 2),
 
+  /** Where a new piece starts at the top: its first rotation, as near the center as it fits;
+   * if that rotation fits nowhere, the nearest spot in another rotation. null if nothing fits. */
+  spawnPos(board, piece) {
+    let best = null;
+    Logic.rotations(piece).forEach((cells, rot) => {
+      const center = Logic.spawnCol(cells);
+      for (let col = 0; col + Logic.width(cells) <= Logic.COLS; col++) {
+        if (!Logic.fits(board, cells, 0, col)) continue;
+        const cost = (rot === 0 ? 0 : 100) + Math.abs(col - center);
+        if (!best || cost < best.cost) best = { rot, col, cost };
+      }
+    });
+    return best && { rot: best.rot, col: best.col };
+  },
+
   randomPiece(random = Math.random) {
     const names = Object.keys(Logic.PIECES);
     return names[Math.floor(random() * names.length)];
@@ -172,8 +187,8 @@ const Logic = {
     const scores = Array.from({ length: Math.max(numPlayers, state.scores.length) }, (_, i) => state.scores[i] ?? 0);
     scores[seat] += cleared;
     const current = state.next;
-    const spawn = Logic.rotations(current)[0];
-    const over = !Logic.fits(board, spawn, 0, Logic.spawnCol(spawn));
+    // Over only when the next piece fits nowhere at the top (any column, any rotation).
+    const over = Logic.spawnPos(board, current) === null;
     const best = Math.max(...scores);
     const winners = over ? scores.map((s, i) => i).filter((i) => scores[i] === best) : null;
     return {
@@ -359,7 +374,7 @@ function render() {
     const names = winners.map(playerName);
     const title = names.length === 0 ? "The match is over"
       : names.length === 1 ? `${names[0]} wins!`
-      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} win!`;
+      : `Draw: ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} tie`; // the portal says "Draw"
     end.innerHTML = `<h2></h2><div class="pts"></div><div class="made">made with g<b>/</b>b</div>`;
     end.querySelector("h2").textContent = title;
     end.querySelector(".pts").textContent = winners.length
@@ -409,8 +424,7 @@ window.addEventListener("message", (event) => {
     const scheduledFor = latest;
     setTimeout(() => { if (latest === scheduledFor) dropNow(); }, 700);
   } else {
-    const spawn = Logic.rotations(state.current)[0];
-    pos = { rot: 0, col: Logic.spawnCol(spawn) };
+    pos = Logic.spawnPos(state.board, state.current);
   }
   render();
 });
