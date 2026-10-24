@@ -691,6 +691,7 @@ function updateMatchSetup() {
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
   $("practice").disabled = !me() || !game;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
+  $("speed-choice").hidden = solo;
   updateStakePreview();
   $("create").textContent = solo ? I18n.t("ui.portal.play_solo", {}, "Play solo ↗") : I18n.t("ui.portal.create_match", {}, "Create match ↗");
   $("selected-game-card").hidden = !game;
@@ -787,11 +788,15 @@ function renderMatch() {
     `${match.move_count} moves`,
     `created ${formatTime(match.created_at)}`,
   ];
+  if (match.turn_seconds)
+    meta.push(I18n.t("ui.speed.meta", {minutes: match.turn_seconds / 60}, `speed · ${match.turn_seconds / 60} min per move`));
   if (match.end_reason)
     meta.push(
       match.end_reason === "finished"
         ? "ended by the game"
-        : "ended because a player left",
+        : match.end_reason === "timed_out"
+          ? I18n.t("ui.speed.ended_meta", {}, "ended because time ran out")
+          : "ended because a player left",
     );
   if (game && game.deleted) meta.push("this game has been deleted");
   else if (game?.published === false) meta.push("unpublished · existing participants only");
@@ -1011,7 +1016,29 @@ function renderMatch() {
     }
   }
   $("game-box").hidden = waiting;
-  window.PortalMatchLayout?.update(match);
+  window.PortalSpeed?.observe(match);
+  updateSpeedClock();
+  const speedNotice = window.PortalSpeed?.notice(match, user?.id, nameOf);
+  window.PortalMatchLayout?.update(speedNotice ? {...match, speedNotice} : match);
+}
+
+/** The speed-match countdown in the toolbar (hidden in regular matches and replays).
+ * When the viewer's own time is up, asks the server right away, so the takeover (or
+ * the end) shows without waiting for the next poll. */
+function updateSpeedClock() {
+  const node = $("match-clock");
+  const match = state.match;
+  const speed = window.PortalSpeed;
+  const shown = speed && match && state.replay?.id !== match.id ? speed.clock(match, me()?.id, nameOf) : null;
+  node.hidden = !shown;
+  if (!shown) return;
+  if (node.textContent !== shown.text) node.textContent = shown.text;
+  node.classList.toggle("urgent", shown.urgent);
+  const key = `${match.id}@${match.turn_deadline}`;
+  if (speed.secondsLeft(match) === 0 && state.speedRefreshFor !== key) {
+    state.speedRefreshFor = key;
+    refresh();
+  }
 }
 
 function render() {
@@ -1097,7 +1124,9 @@ async function syncGame() {
     })),
     turn: view.turn_of_player_indices,
     status: view.status,
-    endReason: view.end_reason,
+    // The Game API only knows "finished" and "player_left"; a speed match that ran
+    // out of time is, for the game, ended by a player leaving.
+    endReason: view.end_reason === "timed_out" ? "player_left" : view.end_reason,
     moveCount: view.move_count,
     mySeat: mySeat ? mySeat.player_index : null,
     actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
@@ -1185,6 +1214,7 @@ async function createMatch() {
         game_id: $("new-game").value,
         num_computer_opponents: 0,
         bet_per_player: Number($("match-stake").value),
+        ...(window.PortalSpeed?.createFields($("match-speed").value) ?? {}),
       },
     });
     // Solo-only games have no lobby or second seat to wait for. Start the pinned
@@ -1346,6 +1376,7 @@ async function main() {
   setInterval(() => {
     if (!document.hidden && !state.moveInFlight) refresh();
   }, POLL_MS);
+  setInterval(updateSpeedClock, 250);
   if ("serviceWorker" in navigator && !document.querySelector('meta[name="local-preview"]'))
     navigator.serviceWorker
       .register("/static/portal-sw.js")

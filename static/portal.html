@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="/static/common.css?v=12" />
     <link rel="stylesheet" href="/static/portal.css?v=21" />
     <link rel="stylesheet" href="/static/portal-match-layout.css?v=1" />
+    <link rel="stylesheet" href="/static/portal-speed.css?v=1" />
   </head>
   <body>
     <header class="topbar">
@@ -91,6 +92,7 @@
             <div class="play-options">
               <section class="play-option" aria-labelledby="online-play-title">
                 <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">↗</span><div><h3 id="online-play-title" data-i18n="ui.mode.online">Online match</h3><p data-i18n="ui.portal.online_hint">Set up your opponents in the lobby.</p></div></div>
+                <label id="speed-choice" class="speed-choice" for="match-speed"><span data-i18n="ui.speed.label">Time per move</span><select id="match-speed"><option value="" data-i18n="ui.speed.regular">Regular · no limit</option><option value="60" data-i18n="ui.speed.one_minute">Speed · 1 min</option><option value="180" data-i18n="ui.speed.three_minutes">Speed · 3 min</option><option value="600" data-i18n="ui.speed.ten_minutes">Speed · 10 min</option></select></label>
                 <div class="token-stake-panel" id="token-stake-panel">
                    <div class="token-stake-heading"><span class="token-stake-icon" aria-hidden="true">✦</span><div><strong>Play for tokens</strong><span>Optional · Virtual currency only</span></div></div>
                    <label class="stake-select" for="match-stake">Entry per player <select id="match-stake"><option value="0">Free · 0 tokens</option><option value="1">1 token</option><option value="5">5 tokens</option><option value="10">10 tokens</option><option value="20">20 tokens</option></select></label>
@@ -119,6 +121,7 @@
           <div class="match-toolbar">
             <button id="match-back" type="button" aria-label="Back to games and matches" data-i18n="ui.portal.back">← Back</button>
             <h2 id="match-toolbar-title"></h2>
+            <span id="match-clock" class="match-clock" role="timer" hidden></span>
             <button id="match-focus-toggle" type="button" aria-pressed="false">Focus</button>
             <button id="match-controls-toggle" type="button" aria-expanded="false" aria-controls="match-tools">Controls</button>
           </div>
@@ -148,8 +151,9 @@
     <script src="/static/auth.js?v=4"></script>
     <script src="/static/portal-offline.js?v=3"></script>
     <script src="/static/portal-install.js?v=1"></script>
-    <script src="/static/portal-match-layout.js?v=2"></script>
+    <script src="/static/portal-match-layout.js?v=3"></script>
+    <script src="/static/portal-speed.js?v=1"></script>
     <script src="/static/push-notifications.js?v=1"></script>
-    <script src="/static/portal.js?v=39"></script>
+    <script src="/static/portal.js?v=40"></script>
   </body>
 </html>

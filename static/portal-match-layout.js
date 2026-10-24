@@ -34,6 +34,7 @@ window.PortalMatchLayout = (() => {
     else if (error) notices.push(error);
     if (match?.pending) notices.push(`${match.pending} move${match.pending === 1 ? "" : "s"} saved on this device · waiting to sync`);
     else if (active && !online) notices.push(match.localMode ? "Offline · playing on this device" : "Offline · moves save on this device");
+    if (match?.speedNotice) notices.push(match.speedNotice); // speed matches: time ran out
     if (match?.status === "over") notices.push($("match-result").textContent || "Match finished");
     $("match-play-notice").textContent = notices.join(" · ");
     $("match-play-notice").hidden = notices.length === 0;
