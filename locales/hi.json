@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "स्वामी ऐसा मैच नहीं छोड़ सकता जो शुरू नहीं हुआ है; उसके बजाय उसे हटाएँ",
   "error.delete_not_over": "केवल स्वामी ही ऐसा मैच हटा सकता है जो समाप्त नहीं हुआ है",
   "error.not_your_turn": "यह आपकी बारी नहीं है",
+  "error.turn_time_ran_out": "आपकी चाल का समय समाप्त हो गया",
+  "error.invalid_turn_seconds": "turn_seconds 60, 180 या 600 होना चाहिए (सामान्य मैच के लिए null)",
   "error.first_turn_empty": "पहली बारी में कम से कम एक खिलाड़ी का नाम होना चाहिए",
   "error.next_turn_empty": "अगली बारी में कम से कम एक खिलाड़ी का नाम होना चाहिए",
   "error.player_count_mismatch": "मैच में {players} खिलाड़ी हैं लेकिन गेम में {allowed} की अनुमति है",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name} आपके {game} मैच में शामिल हुए",
   "notify.player_left": "{name} ने {game} छोड़ दिया; कंप्यूटर संभाल लेगा",
   "notify.test": "गेम प्लेटफ़ॉर्म की परीक्षण सूचना",
+  "notify.timed_out": "{game} में समय समाप्त: कंप्यूटर ने आपकी जगह ले ली",
+  "notify.timed_out_over": "{game} समाप्त: समय खत्म हो गया",
 
   "ui.app_name": "गेम प्लेटफ़ॉर्म",
   "ui.nav.portal": "पोर्टल",

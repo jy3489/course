@@ -21,15 +21,16 @@ from game_platform.store import InMemoryStore, Snapshot
 logger = logging.getLogger(__name__)
 
 # Bump when the file layout changes incompatibly.
-FORMAT_VERSION: Final = 9
+FORMAT_VERSION: Final = 10
 # Version 1 stored each turn as a single player index; version 2 stores a set of
 # them. Version 3 adds private drafts; version 4 adds publication state; version
 # 5 adds recorded agent conversations; version 6 adds web push subscriptions;
 # version 7 adds invites, private matches, saved games and referrals; version 8 adds
-# rematch links. Version 9 retains match starting snapshots for replay.
+# rematch links. Version 9 retains match starting snapshots for replay. Version 10
+# adds speed matches (a per-move clock and the "timed_out" end reason).
 # Older servers must reject new formats rather than lose drafts, re-expose
 # unpublished games or private matches, or drop conversations, subscriptions or
-# invites. Versions 1 through 7 still load with all existing data unchanged.
+# invites. Versions 1 through 9 still load with all existing data unchanged.
 _V1_FORMAT_VERSION: Final = 1
 
 
@@ -109,7 +110,7 @@ def read_snapshot(path: Path) -> Snapshot:
             contents = _migrate_v1_to_v2(contents)
         except (KeyError, TypeError):
             pass  # fall through; validation below reports the real problem
-    elif format_version not in (2, 3, 4, 5, 6, 7, 8, FORMAT_VERSION):
+    elif format_version not in (2, 3, 4, 5, 6, 7, 8, 9, FORMAT_VERSION):
         raise ValueError(
             f"{path} has format version {format_version}, expected {FORMAT_VERSION}"
         )

@@ -31,6 +31,7 @@ from game_platform.models import (
     Match,
     MatchStatus,
     Move,
+    SeatTimeout,
     Seat,
     User,
     WebPushSubscription,
@@ -105,6 +106,10 @@ def _new_invite_token() -> str:
 def _new_verification_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
+
+# Speed matches: the allowed seconds per move (1, 3 or 10 minutes). None is a regular
+# match with no clock. Kept as a list so more choices can be added later.
+SPEED_TURN_SECONDS: Final = (60, 180, 600)
 
 # Referral codes: 5-digit numbers with no leading zero, so always 5 characters.
 REFERRAL_CODE_MIN: Final = 10_000
@@ -801,7 +806,7 @@ class GamePlatform:
         with self._lock:
             return [
                 match
-                for match in self._store.list_all_matches()
+                for match in map(self._enforce_clock, self._store.list_all_matches())
                 if not match.private
                 and (game := self._store.get_game(match.game_id)) is not None
                 and game.published and not game.deleted
@@ -1045,8 +1050,17 @@ class GamePlatform:
         num_computer_opponents: int,
         private: bool = False,
         bet_per_player: int = 0,
+        turn_seconds: int | None = None,
     ) -> Match:
+        """[turn_seconds] makes a speed match (see SPEED_TURN_SECONDS); None is a
+        regular match with no time limit."""
         with self._lock:
+            if turn_seconds is not None and (
+                type(turn_seconds) is not int or turn_seconds not in SPEED_TURN_SECONDS
+            ):
+                raise InvalidRequestError(
+                    "turn_seconds must be 60, 180 or 600 (or null for a regular match)"
+                )
             game = self._get_live_game(game_id)
             if not game.published:
                 raise NotFoundError("game not found")
@@ -1061,6 +1075,7 @@ class GamePlatform:
                 num_computer_opponents=num_computer_opponents,
                 private=private,
                 bet_per_player=bet_per_player,
+                turn_seconds=turn_seconds,
             )
 
     def _new_match(
@@ -1072,6 +1087,7 @@ class GamePlatform:
         private: bool = False,
         matchmaking_player_count: int | None = None,
         bet_per_player: int = 0,
+        turn_seconds: int | None = None,
     ) -> Match:
         """Stores a new waiting match of [game] owned (and first seated) by [caller_id].
         The caller holds the lock and has checked the game."""
@@ -1096,6 +1112,7 @@ class GamePlatform:
             private=private,
             matchmaking_player_count=matchmaking_player_count,
             bet_per_player=bet_per_player,
+            turn_seconds=turn_seconds,
         )
         self._store.put_match(match)
         return match
@@ -1120,7 +1137,9 @@ class GamePlatform:
         with self._lock:
             return [
                 match
-                for match in self._store.list_matches_involving(caller_id)
+                for match in map(
+                    self._enforce_clock, self._store.list_matches_involving(caller_id)
+                )
                 if caller_id not in match.hidden_for_user_ids
                 and (status is None or match.status == status)
                 and (game_id is None or match.game_id == game_id)
@@ -1168,8 +1187,13 @@ class GamePlatform:
             raise ConflictError("this game is no longer published")
         if match.status == "over":
             raise ConflictError("the match is over")
+        clock_restart = None
         if match.status == "ongoing":
             seats = self._take_seat_mid_match(match, user_id=caller_id)
+            # Taking a seat that has the turn gives its new player a full turn.
+            joined = next(seat for seat in seats if seat.user_id == caller_id)
+            if match.turn_seconds and joined.player_index in (match.turn_of_player_indices or ()):
+                clock_restart = self._clock()
         else:
             if len(match.seats) >= self._rules_of(match).max_players:
                 raise ConflictError("the match is full")
@@ -1177,7 +1201,9 @@ class GamePlatform:
                 human_user_ids=[*match.human_user_ids, caller_id],
                 num_computer_opponents=match.num_computer_opponents,
             )
-        saved = self._save(replace(match, seats=seats))
+        saved = self._save(
+            replace(match, seats=seats, turn_started_at=clock_restart or match.turn_started_at)
+        )
         joiner = self._store.get_user(caller_id)
         self._notify_match_event(
             "notify.player_joined",
@@ -1264,6 +1290,7 @@ class GamePlatform:
                 hidden_for_user_ids=frozenset(),
                 created_at=now,
                 updated_at=now,
+                turn_seconds=match.turn_seconds,
             )
             self._store.put_match(rematch)
             if solo_bot_rematch:
@@ -1332,6 +1359,7 @@ class GamePlatform:
                     initial_turn_player_indices=first_turn_player_indices,
                     turn_of_player_indices=first_turn_player_indices,
                     token_pot=match.bet_per_player * len(humans),
+                    turn_started_at=self._clock() if match.turn_seconds else None,
                 )
             )
 
@@ -1358,11 +1386,7 @@ class GamePlatform:
                     ),
                 )
             elif self._rules_of(match).allows_leave_mid_match:
-                # A computer takes over the seat, including its turn if it had it.
-                computer = Seat(
-                    player_index=seat.player_index, kind="computer", user_id=None
-                )
-                updated = replace(match, seats=_replace_seat(match.seats, computer))
+                updated = self._computer_takes_seat(match, seat)
                 if not updated.human_user_ids:
                     # Nobody is left to submit moves.
                     updated = self._ended_by_leaving(updated)
@@ -1410,7 +1434,12 @@ class GamePlatform:
         same move.
         """
         with self._lock:
+            # Reading the match applies any timeout first (see _enforce_clock).
             match = self._get_match(match_id)
+            if any(t.user_id == caller_id for t in match.timeouts) and (
+                match.seat_of(caller_id) is None or match.end_reason == "timed_out"
+            ):
+                raise ConflictError("your time to move ran out")
             seat = self._get_seat(match, caller_id)
             if match.status != "ongoing" or match.turn_of_player_indices is None:
                 raise ConflictError("the match is not ongoing")
@@ -1471,6 +1500,9 @@ class GamePlatform:
                     if next_turn_player_indices is not None
                     else "finished",
                     token_payouts=payout_player_indices if next_turn_player_indices is None else None,
+                    # Every accepted move restarts the clock, also when the same
+                    # player moves again (a raise and its answer, chained jumps).
+                    turn_started_at=now if match.turn_seconds else None,
                 )
             )
             if saved.status == "over":
@@ -2246,10 +2278,78 @@ class GamePlatform:
         return self._get_live_game(game_id)
 
     def _get_match(self, match_id: str) -> Match:
+        """The match, with any speed-match timeout applied. The caller holds the lock."""
         match = self._store.get_match(match_id)
         if match is None:
             raise NotFoundError("match not found")
-        return match
+        return self._enforce_clock(match)
+
+    def now(self) -> dt.datetime:
+        """The platform's current time (what speed-match deadlines are measured
+        against)."""
+        return self._clock()
+
+    def _enforce_clock(self, match: Match) -> Match:
+        """Speed matches: when the human seats with the turn ran out of time, a computer
+        takes each of them over if the game allows leaving mid-match and nothing is
+        bet; otherwise (or when no human is left) the match ends as "timed_out".
+        Checked lazily whenever a match is read, listed or moved in, so it works when
+        the slow player is gone; the caller holds the lock, so it happens once."""
+        deadline = match.turn_deadline
+        if deadline is None:
+            return match
+        now = self._clock()
+        if now < deadline:
+            return match
+        turn = match.turn_of_player_indices or frozenset()
+        late = [seat for seat in match.seats if seat.player_index in turn and seat.kind == "human"]
+        timeouts = tuple(
+            SeatTimeout(player_index=seat.player_index, user_id=seat.user_id, at=deadline)
+            for seat in late
+            if seat.user_id is not None
+        )
+        updated = replace(match, timeouts=(*match.timeouts, *timeouts))
+        if self._rules_of(match).allows_leave_mid_match and not match.bet_per_player:
+            for seat in late:
+                updated = self._computer_takes_seat(updated, seat)
+            updated = (
+                replace(updated, turn_started_at=now)
+                if updated.human_user_ids
+                # Nobody is left to submit the computers' moves.
+                else self._ended_by_timeout(updated)
+            )
+        else:
+            updated = self._ended_by_timeout(updated)
+        saved = self._save(updated)
+        timed_out_ids = [timeout.user_id for timeout in timeouts]
+        if saved.status == "over":
+            # Every human player: those still seated, and everyone who timed out
+            # (now or earlier in the match) and is watching.
+            self._notify_match_event(
+                "notify.timed_out_over",
+                match=saved,
+                recipient_ids=[*saved.human_user_ids, *(t.user_id for t in saved.timeouts)],
+                tag_suffix="timeout",
+            )
+        else:
+            self._notify_match_event(
+                "notify.timed_out",
+                match=saved,
+                recipient_ids=timed_out_ids,
+                tag_suffix="timeout",
+            )
+        return saved
+
+    def _computer_takes_seat(self, match: Match, seat: Seat) -> Match:
+        """[match] with a computer in [seat]'s place, including its turn if it had it
+        (a player leaving mid-match, or a speed-match timeout)."""
+        computer = Seat(player_index=seat.player_index, kind="computer", user_id=None)
+        return replace(match, seats=_replace_seat(match.seats, computer))
+
+    def _ended_by_timeout(self, match: Match) -> Match:
+        return replace(
+            match, status="over", turn_of_player_indices=None, end_reason="timed_out"
+        )
 
     def _get_owned_match(self, *, caller_id: str, match_id: str) -> Match:
         match = self._get_match(match_id)

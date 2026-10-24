@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "o dono não pode sair de uma partida que não começou; exclua-a em vez disso",
   "error.delete_not_over": "somente o dono pode excluir uma partida que não terminou",
   "error.not_your_turn": "não é a sua vez",
+  "error.turn_time_ran_out": "seu tempo para jogar acabou",
+  "error.invalid_turn_seconds": "turn_seconds deve ser 60, 180 ou 600 (ou null para uma partida normal)",
   "error.first_turn_empty": "a primeira vez deve indicar pelo menos um jogador",
   "error.next_turn_empty": "a próxima vez deve indicar pelo menos um jogador",
   "error.player_count_mismatch": "a partida tem {players} jogadores, mas o jogo permite {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name} entrou na sua partida em {game}",
   "notify.player_left": "{name} saiu de {game}; um computador assume",
   "notify.test": "Notificação de teste da plataforma de jogos",
+  "notify.timed_out": "O tempo acabou em {game}: um computador assumiu o seu lugar",
+  "notify.timed_out_over": "{game} terminou: o tempo acabou",
 
   "ui.app_name": "Plataforma de jogos",
   "ui.nav.portal": "Portal",

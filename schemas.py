@@ -513,6 +513,9 @@ class MatchCreate(_Request):
     # Private matches aren't listed as open and can only be joined with an invite.
     private: bool = False
     bet_per_player: Annotated[int, Field(ge=0, le=1000000)] = 0
+    # A speed match: the seconds each player has to move, 60, 180 or 600. Omit it
+    # (or send null) for a regular match with no time limit.
+    turn_seconds: int | None = None
 
 
 class QuickMatchRequest(_Request):
@@ -556,6 +559,14 @@ class MoveCreate(_Request):
     payout_player_indices: dict[int, Annotated[int, Field(ge=0)]] | None = None
 
 
+class SeatTimeoutOut(BaseModel):
+    """A seat whose time to move ran out in a speed match."""
+
+    player_index: int
+    user_id: str
+    at: dt.datetime
+
+
 class PlayerOut(BaseModel):
     player_index: int
     kind: SeatKind
@@ -586,10 +597,27 @@ class MatchOut(BaseModel):
     private: bool = False
     # Set on quick matches: how many players it waits for before starting itself.
     matchmaking_player_count: int | None = None
+    # Speed matches: seconds per move (None for a regular match); when the human
+    # seats with the turn run out of time (None when there's no running clock); and
+    # seats that ran out of time.
+    turn_seconds: int | None = None
+    turn_deadline: dt.datetime | None = None
+    timeouts: list[SeatTimeoutOut] = []
+    # The server's time when this response was made, so clients can show a
+    # countdown to [turn_deadline] even if the device's clock is off. (Left out of
+    # data dumps, which describe stored data rather than a moment.)
+    server_time: dt.datetime | None = None
 
     @classmethod
-    def of(cls, match: Match) -> "MatchOut":
+    def of(cls, match: Match, now: dt.datetime | None = None) -> "MatchOut":
         return cls(
+            turn_seconds=match.turn_seconds,
+            turn_deadline=match.turn_deadline,
+            timeouts=[
+                SeatTimeoutOut(player_index=t.player_index, user_id=t.user_id, at=t.at)
+                for t in match.timeouts
+            ],
+            server_time=now,
             id=match.id,
             game_id=match.game_id,
             game_version=match.game_version,

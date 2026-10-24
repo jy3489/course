@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "le propriétaire ne peut pas quitter une partie qui n'a pas commencé ; supprimez-la plutôt",
   "error.delete_not_over": "seul le propriétaire peut supprimer une partie qui n'est pas terminée",
   "error.not_your_turn": "ce n'est pas votre tour",
+  "error.turn_time_ran_out": "votre temps pour jouer est écoulé",
+  "error.invalid_turn_seconds": "turn_seconds doit valoir 60, 180 ou 600 (ou null pour une partie normale)",
   "error.first_turn_empty": "le premier tour doit désigner au moins un joueur",
   "error.next_turn_empty": "le tour suivant doit désigner au moins un joueur",
   "error.player_count_mismatch": "la partie compte {players} joueurs mais le jeu en accepte {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name} a rejoint votre partie dans {game}",
   "notify.player_left": "{name} a quitté {game} ; un ordinateur prend le relais",
   "notify.test": "Notification de test de la plateforme de jeux",
+  "notify.timed_out": "Temps écoulé dans {game} : un ordinateur a pris votre place",
+  "notify.timed_out_over": "{game} est terminé : temps écoulé",
 
   "ui.app_name": "Plateforme de jeux",
   "ui.nav.portal": "Portail",

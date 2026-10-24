@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
 
 from game_platform import i18n
-from game_platform.models import GameRules, MatchStatus
+from game_platform.models import GameRules, Match, MatchStatus
 from game_platform.schemas import (
     AgentChatRequest,
     AgentConversationOut,
@@ -149,6 +149,12 @@ def health(platform: Platform, request: Request, response: Response) -> HealthOu
         uptime_seconds=int(time.monotonic() - request.app.state.started_at),
         storage=error or "ok",
     )
+
+
+def _match_out(platform: GamePlatform, match: Match) -> MatchOut:
+    """A match for the API, stamped with the platform's time (for speed-match
+    countdowns)."""
+    return MatchOut.of(match, now=platform.now())
 
 
 # Users
@@ -541,8 +547,9 @@ def create_match(
         num_computer_opponents=body.num_computer_opponents,
         private=body.private,
         bet_per_player=body.bet_per_player,
+        turn_seconds=body.turn_seconds,
     )
-    return MatchOut.of(match)
+    return _match_out(platform, match)
 
 
 @router.post("/matchmaking/quick-match")
@@ -554,7 +561,7 @@ def quick_match(
     by itself once it has all its players; poll it (or wait for the push notification)
     until its status is "ongoing". Calling again while waiting returns the same match;
     the owner cancels by deleting it, anyone else by leaving."""
-    return MatchOut.of(
+    return _match_out(platform, 
         platform.quick_match(
             caller_id=caller_id, game_id=body.game_id, num_players=body.num_players
         )
@@ -569,19 +576,19 @@ def list_matches(
     game_id: str | None = None,
 ) -> list[MatchOut]:
     matches = platform.list_matches(caller_id=caller_id, status=status, game_id=game_id)
-    return [MatchOut.of(match) for match in matches]
+    return [_match_out(platform, match) for match in matches]
 
 
 @router.get("/matches/open")
 def list_open_matches(platform: Platform) -> list[MatchOut]:
     """Matches anyone may join: waiting for players, or ongoing with mid-match joins
     allowed. Public, like match details themselves."""
-    return [MatchOut.of(match) for match in platform.list_open_matches()]
+    return [_match_out(platform, match) for match in platform.list_open_matches()]
 
 
 @router.get("/matches/{match_id}")
 def get_match(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchOut:
-    return MatchOut.of(platform.get_match(match_id, caller_id=caller_id))
+    return _match_out(platform, platform.get_match(match_id, caller_id=caller_id))
 
 
 @router.patch("/matches/{match_id}")
@@ -593,7 +600,7 @@ def update_match(
         match_id=match_id,
         num_computer_opponents=body.num_computer_opponents,
     )
-    return MatchOut.of(match)
+    return _match_out(platform, match)
 
 
 @router.delete("/matches/{match_id}", status_code=HTTPStatus.NO_CONTENT)
@@ -603,7 +610,7 @@ def delete_match(platform: Platform, caller_id: CallerId, match_id: str) -> None
 
 @router.post("/matches/{match_id}/join")
 def join_match(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
-    return MatchOut.of(platform.join_match(caller_id=caller_id, match_id=match_id))
+    return _match_out(platform, platform.join_match(caller_id=caller_id, match_id=match_id))
 
 
 @router.post("/matches/{match_id}/rematch")
@@ -611,7 +618,7 @@ def request_rematch(
     platform: Platform, caller_id: CallerId, match_id: str
 ) -> MatchOut:
     match = platform.request_rematch(caller_id=caller_id, match_id=match_id)
-    return MatchOut.of(match)
+    return _match_out(platform, match)
 
 
 @router.post("/matches/{match_id}/start")
@@ -628,12 +635,12 @@ def start_match(
         first_turn_player_indices=frozenset(body.first_turn_player_indices),
         initial_state=body.initial_state,
     )
-    return MatchOut.of(match)
+    return _match_out(platform, match)
 
 
 @router.post("/matches/{match_id}/leave")
 def leave_match(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
-    return MatchOut.of(platform.leave_match(caller_id=caller_id, match_id=match_id))
+    return _match_out(platform, platform.leave_match(caller_id=caller_id, match_id=match_id))
 
 
 @router.post("/matches/{match_id}/moves", status_code=HTTPStatus.CREATED)
@@ -650,7 +657,7 @@ def make_move(
         expected_move_count=body.expected_move_count,
         payout_player_indices=body.payout_player_indices,
     )
-    return MatchOut.of(match)
+    return _match_out(platform, match)
 
 
 @router.get("/matches/{match_id}/history")
@@ -716,7 +723,7 @@ def view_invite(platform: Platform, request: Request, token: str) -> InviteViewO
         reason, code, _ = i18n.localize_error(view.problem, request.state.locale)
     return InviteViewOut(
         token=view.invite.token,
-        match=MatchOut.of(view.match),
+        match=_match_out(platform, view.match),
         game_name=view.game_name,
         created_by_user_id=view.inviter.id,
         created_by_display_name=view.inviter.display_name,
@@ -749,7 +756,7 @@ def invite_qr_code(platform: Platform, request: Request, token: str) -> Response
 def accept_invite(platform: Platform, caller_id: CallerId, token: str) -> MatchOut:
     """Takes a seat in the invite's match. New users can sign up with POST /users
     {invite_token} first, which credits the inviter with the referral."""
-    return MatchOut.of(platform.accept_invite(caller_id=caller_id, token=token))
+    return _match_out(platform, platform.accept_invite(caller_id=caller_id, token=token))
 
 
 @router.post("/invites/{token}/revoke")

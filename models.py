@@ -15,7 +15,8 @@ MAX_PLAYERS: Final = 10
 
 MatchStatus = Literal["waiting_for_players", "ongoing", "over"]
 SeatKind = Literal["human", "computer"]
-EndReason = Literal["finished", "player_left"]
+# "timed_out": a speed match ended because a player ran out of time to move.
+EndReason = Literal["finished", "player_left", "timed_out"]
 
 
 LinkedAccountKind = Literal["google", "phone", "email"]
@@ -179,6 +180,16 @@ class Move:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SeatTimeout:
+    """A human seat in a speed match whose time to move ran out; a computer took it
+    over (or the match ended)."""
+
+    player_index: int
+    user_id: str
+    at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
 class Match:
     id: str
     game_id: str
@@ -215,6 +226,33 @@ class Match:
     bet_per_player: int = 0
     token_pot: int = 0
     token_payouts: dict[int, int] | None = None
+    # Speed matches: the seconds each human seat with the turn has to move (60, 180
+    # or 600); None for a regular match, which has no clock. Defaults so older data
+    # files load.
+    turn_seconds: int | None = None
+    # When the current turn's clock started: the start, every accepted move, a
+    # timeout takeover, or a person taking a seat that has the turn. Only set in
+    # speed matches.
+    turn_started_at: dt.datetime | None = None
+    # Seats that ran out of time, oldest first; their people can still watch.
+    timeouts: tuple[SeatTimeout, ...] = ()
+
+    @property
+    def turn_deadline(self) -> dt.datetime | None:
+        """When the human seats with the turn run out of time: only in an ongoing speed
+        match where a human has the turn (computers never time out)."""
+        if (
+            self.turn_seconds is None
+            or self.turn_started_at is None
+            or self.status != "ongoing"
+            or self.turn_of_player_indices is None
+            or not any(
+                seat.kind == "human" and seat.player_index in self.turn_of_player_indices
+                for seat in self.seats
+            )
+        ):
+            return None
+        return self.turn_started_at + dt.timedelta(seconds=self.turn_seconds)
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)
@@ -228,7 +266,12 @@ class Match:
         return sum(1 for seat in self.seats if seat.kind == "computer")
 
     def involves(self, user_id: str) -> bool:
-        return user_id == self.owner_user_id or self.seat_of(user_id) is not None
+        # Someone whose seat a computer took over after a timeout stays a viewer.
+        return (
+            user_id == self.owner_user_id
+            or self.seat_of(user_id) is not None
+            or any(timeout.user_id == user_id for timeout in self.timeouts)
+        )
 
 
 @dataclass(frozen=True, kw_only=True)

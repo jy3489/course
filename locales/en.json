@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "the owner cannot leave a match that has not started; delete it instead",
   "error.delete_not_over": "only the owner can delete a match that is not over",
   "error.not_your_turn": "it is not your turn",
+  "error.turn_time_ran_out": "your time to move ran out",
+  "error.invalid_turn_seconds": "turn_seconds must be 60, 180 or 600 (or null for a regular match)",
   "error.first_turn_empty": "the first turn must name at least one player",
   "error.next_turn_empty": "the next turn must name at least one player",
   "error.player_count_mismatch": "the match has {players} players but the game allows {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name} joined your match in {game}",
   "notify.player_left": "{name} left {game}; a computer takes over",
   "notify.test": "Test notification from the game platform",
+  "notify.timed_out": "Time ran out in {game}: a computer took over your seat",
+  "notify.timed_out_over": "{game} ended: time ran out",
 
   "ui.app_name": "Game platform",
   "ui.nav.portal": "Portal",

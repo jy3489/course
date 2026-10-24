@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "创建者不能离开尚未开始的对局，请改为删除对局",
   "error.delete_not_over": "只有创建者可以删除未结束的对局",
   "error.not_your_turn": "还没轮到你",
+  "error.turn_time_ran_out": "你的走棋时间已用完",
+  "error.invalid_turn_seconds": "turn_seconds 必须是 60、180 或 600（普通对局为 null）",
   "error.first_turn_empty": "第一回合必须至少指定一名玩家",
   "error.next_turn_empty": "下一回合必须至少指定一名玩家",
   "error.player_count_mismatch": "对局有 {players} 名玩家，但游戏只允许 {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name}加入了你在{game}的对局",
   "notify.player_left": "{name}离开了{game}；由电脑接管",
   "notify.test": "来自游戏平台的测试通知",
+  "notify.timed_out": "{game} 中时间已用完：电脑接管了你的座位",
+  "notify.timed_out_over": "{game} 已结束：时间用完",
 
   "ui.app_name": "游戏平台",
   "ui.nav.portal": "游戏大厅",

@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "der Besitzer kann eine noch nicht begonnene Partie nicht verlassen; lösche sie stattdessen",
   "error.delete_not_over": "nur der Besitzer kann eine Partie löschen, die nicht beendet ist",
   "error.not_your_turn": "du bist nicht am Zug",
+  "error.turn_time_ran_out": "deine Zeit für den Zug ist abgelaufen",
+  "error.invalid_turn_seconds": "turn_seconds muss 60, 180 oder 600 sein (oder null für ein normales Spiel)",
   "error.first_turn_empty": "der erste Zug muss mindestens einen Spieler nennen",
   "error.next_turn_empty": "der nächste Zug muss mindestens einen Spieler nennen",
   "error.player_count_mismatch": "die Partie hat {players} Spieler, aber das Spiel erlaubt {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "{name} ist deiner Partie in {game} beigetreten",
   "notify.player_left": "{name} hat {game} verlassen; ein Computer übernimmt",
   "notify.test": "Testbenachrichtigung von der Spieleplattform",
+  "notify.timed_out": "Zeit abgelaufen in {game}: Ein Computer hat deinen Platz übernommen",
+  "notify.timed_out_over": "{game} beendet: Zeit abgelaufen",
 
   "ui.app_name": "Spieleplattform",
   "ui.nav.portal": "Portal",

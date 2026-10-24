@@ -276,9 +276,9 @@ without). On iOS, push works only when the portal is installed to the home scree
 | `GET /games/{id}/versions/{version}` |  | Get a specific version of a game |
 | `PATCH /games/{id}` | yes | Update some fields of a game, creating a new version (creator only) |
 | `DELETE /games/{id}` | yes | Delete a game (creator only) |
-| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents, private?}`; the caller is player 0 |
+| `POST /matches` | yes | Create a match `{game_id, num_computer_opponents, private?, turn_seconds?}` (`turn_seconds`: 60, 180 or 600 for a [speed match](#speed-matches)); the caller is player 0 |
 | `GET /matches?status=&game_id=` | yes | List the caller's matches (owned or seated, minus hidden ones) |
-| `GET /matches/{id}` |  | Get a match; anyone can view it, so it can be shared by URL |
+| `GET /matches/{id}` |  | Get a match; anyone can view it, so it can be shared by URL. Speed matches include `turn_deadline` and `server_time` |
 | `PATCH /matches/{id}` | yes | Set `num_computer_opponents` before the match starts (owner only) |
 | `POST /matches/{id}/join` | yes | Take a seat |
 | `POST /matches/{id}/start` | yes | Start `{first_turn_player_indices, initial_state}`, both optional (owner only) |
@@ -334,6 +334,37 @@ Game fields: `name`, `description`, `allowed_player_counts` (non-empty, distinct
   also ends if its last human leaves.
 - Joining an ongoing match requires `allows_join_mid_match`; the joiner takes over the
   first computer seat, or adds a seat if the game's maximum player count allows it.
+
+### Speed matches
+
+A match is *regular* (no time limit, the default) or a *speed* match, chosen when it's
+created with `turn_seconds`: 60, 180 or 600 seconds per move (other values get a 400).
+Rematches keep the setting; quick matches are always regular.
+
+- The clock starts when the match starts and restarts after every accepted move, also
+  when the same player moves again (a raise and its answer, chained jumps), and when a
+  person takes over a seat that has the turn. It doesn't run while the match waits for
+  players, once it's over, or while only computers have the turn: computer seats never
+  time out.
+- A human seat that has the turn and hasn't moved by the deadline times out (every such
+  seat, when several have the turn). If the game `allows_leave_mid_match` and nothing is
+  bet, a computer takes over the seat exactly as when a player leaves, the clock
+  restarts, and the person can keep watching the match. Otherwise, or when no human is
+  left to play the computers' moves, the match ends with `end_reason: "timed_out"`. Bets
+  aren't refunded, as when a paid match ends by a player leaving.
+- There's no background job: the server checks the clock whenever a speed match is read,
+  listed or moved in (so it also works when the slow player closed their browser), inside
+  the same lock as moves, so a timeout happens exactly once. A move after the deadline
+  is rejected with 409 `your time to move ran out` (code `turn_time_ran_out`), also when
+  it comes later from an offline queue.
+- Matches return `turn_seconds`, `turn_deadline` (when the human seats with the turn run
+  out of time, or `null`), `server_time` (to show a countdown even if the device's clock
+  is off) and `timeouts` (`[{player_index, user_id, at}]`, the seats that ran out of time).
+- Push notifications: the player who timed out gets "Time ran out in {game}: a computer
+  took over your seat"; when the match ends instead, every human player gets "{game}
+  ended: time ran out".
+- Games see a timed-out ending as `end_reason: "player_left"` in `state_changed` (see
+  [Game API](#game-api)), so the Game API is unchanged.
 
 ### Matchmaking, private matches and invites
 

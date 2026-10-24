@@ -49,6 +49,8 @@
   "error.owner_cannot_leave": "لا يمكن للمالك مغادرة مباراة لم تبدأ؛ احذفها بدلًا من ذلك",
   "error.delete_not_over": "المالك فقط يمكنه حذف مباراة لم تنتهِ",
   "error.not_your_turn": "ليس دورك",
+  "error.turn_time_ran_out": "انتهى وقتك للعب",
+  "error.invalid_turn_seconds": "يجب أن تكون قيمة turn_seconds هي 60 أو 180 أو 600 (أو null لمباراة عادية)",
   "error.first_turn_empty": "يجب أن يحدد الدور الأول لاعبًا واحدًا على الأقل",
   "error.next_turn_empty": "يجب أن يحدد الدور التالي لاعبًا واحدًا على الأقل",
   "error.player_count_mismatch": "المباراة فيها {players} لاعبين لكن اللعبة تسمح بـ {allowed}",
@@ -78,6 +80,8 @@
   "notify.player_joined": "انضم {name} إلى مباراتك في {game}",
   "notify.player_left": "غادر {name} مباراة {game}؛ يتولى الحاسوب اللعب",
   "notify.test": "إشعار تجريبي من منصة الألعاب",
+  "notify.timed_out": "انتهى الوقت في {game}: تولّى الكمبيوتر مكانك",
+  "notify.timed_out_over": "انتهت {game}: نفد الوقت",
 
   "ui.app_name": "منصة الألعاب",
   "ui.nav.portal": "البوابة",

@@ -36,6 +36,10 @@ def test_create_a_match_with_computer_opponents(api: Api) -> None:
         "updated_at": "2026-01-01T00:03:00Z",
         "private": False,
         "matchmaking_player_count": None,
+        "turn_seconds": None,
+        "turn_deadline": None,
+        "timeouts": [],
+        "server_time": "2026-01-01T00:04:00Z",
     }
 
 
@@ -324,7 +328,8 @@ def test_anyone_can_view_a_match(api: Api) -> None:
 
     as_stranger = api.ok("GET", f"/matches/{match_id}", as_user=bob)
     anonymous = api.ok("GET", f"/matches/{match_id}")
-    assert as_stranger == anonymous
+    # Each response carries its own server_time; everything else is the same.
+    assert {**as_stranger, "server_time": None} == {**anonymous, "server_time": None}
     assert api.summary(anonymous) == {
         "status": "ongoing",
         "players": ["alice", "computer"],
