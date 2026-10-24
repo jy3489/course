@@ -4,6 +4,21 @@ My native iOS game builder for Prof. Yoav Zibin's Multiplayer Games course (Colu
 It lives in `frontends/ios-game-builder-marcelle/` inside the shared class repo `yoav-zibin/course`.
 Explain things to me in simple language; I demo this in class and must understand what changed.
 
+## Current status (these facts take priority over older notes below)
+- **The iOS app is paused**: the professor moved everyone to web. The iOS-folder rules below
+  ("Hard rules", "Goals for the next demo", "Design", "Tech") apply only if I go back to the iOS app.
+- **This week I'm on the backend/backoffice team**: I may change the backend (`*.py`), `static/`,
+  `tests/`, `locales/` and the shared README for tasks the professor assigns me. Tell me when a
+  change touches someone else's area, so I can let them know.
+- **Pushing to main deploys automatically**: GitHub runs all the tests and deploys to
+  buildplay.fun when they pass (`.github/workflows/ci.yml`). Treat every push as going live.
+- **The builder is AI-only by design** (the professor confirmed): there's no code box, and games
+  on buildplay.fun can only be changed through the builder's AI assistant, then Publish.
+- **`sample-games/` are my reference copies**: the files in
+  `frontends/ios-game-builder-marcelle/sample-games/` don't change the live games. When I ask for
+  a game fix, give me short prompts to paste into the builder AI (one change at a time) rather than
+  editing the files, unless I ask for the file.
+
 ## Hard rules
 - Only create or change files inside `frontends/ios-game-builder-marcelle/`. Never edit the
   backend (`*.py`), `static/`, `games/`, `android/`, other students' folders, or the shared README.
