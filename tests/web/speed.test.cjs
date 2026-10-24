@@ -43,19 +43,100 @@ test('no countdown in regular matches, on a computer turn, or when the match is 
   assert.equal(speed.clock(speedMatch({status:'over'}),'ann',nameOf,T0),null);
 });
 
-test('the player whose turn it is sees their time, in red for the last 10 seconds',()=>{
+test('the player whose turn it is always sees "Your move", red for the last 10 seconds',()=>{
   const speed=loadSpeed();speed.observe(speedMatch(),T0);
-  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+5_000)},{text:'Your move: 0:55',urgent:false});
-  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+49_000)},{text:'Your move: 0:11',urgent:false});
-  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+50_000)},{text:'Your move: 10 s left',urgent:true});
-  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+59_500)},{text:'Your move: 1 s left',urgent:true});
+  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+5_000)},{text:'Your move: 0:55',urgent:false,mine:true});
+  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+49_000)},{text:'Your move: 0:11',urgent:false,mine:true});
+  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+50_000)},{text:'Your move: 0:10',urgent:true,mine:true});
+  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+51_000)},{text:'Your move: 0:09',urgent:true,mine:true});
+  assert.deepEqual({...speed.clock(speedMatch(),'ann',nameOf,T0+59_500)},{text:'Your move: 0:01',urgent:true,mine:true});
 });
 
-test('everyone else sees whose clock is running, never in red',()=>{
+test('everyone else sees whose clock is running, also red for the last 10 seconds',()=>{
   const speed=loadSpeed();speed.observe(speedMatch(),T0);
-  assert.deepEqual({...speed.clock(speedMatch(),'bob',nameOf,T0+55_000)},{text:'Ann: 0:05',urgent:false});
-  assert.deepEqual({...speed.clock(speedMatch(),null,nameOf,T0+18_000)},{text:'Ann: 0:42',urgent:false});
-  assert.deepEqual({...speed.clock(speedMatch({turn_of_player_indices:[0,1]}),'cy',nameOf,T0+45_000)},{text:'0:15',urgent:false});
+  assert.deepEqual({...speed.clock(speedMatch(),null,nameOf,T0+18_000)},{text:'Ann: 0:42',urgent:false,mine:false});
+  assert.deepEqual({...speed.clock(speedMatch(),'bob',nameOf,T0+49_000)},{text:'Ann: 0:11',urgent:false,mine:false});
+  assert.deepEqual({...speed.clock(speedMatch(),'bob',nameOf,T0+50_000)},{text:'Ann: 0:10',urgent:true,mine:false});
+  assert.deepEqual({...speed.clock(speedMatch(),'bob',nameOf,T0+51_000)},{text:'Ann: 0:09',urgent:true,mine:false});
+  assert.deepEqual({...speed.clock(speedMatch({turn_of_player_indices:[0,1]}),'cy',nameOf,T0+51_000)},{text:'0:09',urgent:true,mine:false});
+});
+
+/** A fake browser for the alert: records sounds, vibrations, notifications and titles. */
+function fakeBrowser({hidden=false,permission='granted',active=true}={}) {
+  const log={beeps:0,vibrations:[],notifications:[],titles:[]};
+  let titleNow='Stack Duel · Portal';const timers=new Map();let nextTimer=1;
+  const document={get title(){return titleNow;},set title(t){titleNow=t;log.titles.push(t);},hidden};
+  class AudioContext{constructor(){this.currentTime=0;this.destination={};}
+    createOscillator(){return {frequency:{},connect:x=>x,start(){log.beeps++;},stop(){}};}
+    createGain(){return {gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect:x=>x};}}
+  const env={document,window:{addEventListener(){}},AudioContext,
+    navigator:{userActivation:{hasBeenActive:active},vibrate:ms=>log.vibrations.push(ms),
+      serviceWorker:{ready:Promise.resolve({showNotification:(title,options)=>log.notifications.push([title,options.body])})}},
+    Notification:{permission},
+    setInterval:(f)=>{const id=nextTimer++;timers.set(id,f);return id;},clearInterval:id=>timers.delete(id)};
+  return {env,log,tick:()=>[...timers.values()].forEach(f=>f()),title:()=>titleNow,timers};
+}
+const flush=()=>new Promise(r=>setTimeout(r,0));
+
+test('the 10-second alert fires exactly once for the player to move',async()=>{
+  const speed=loadSpeed();speed.observe(speedMatch(),T0);
+  const b=fakeBrowser({hidden:true});const alerter=speed.createAlerter(b.env);
+  for(const t of [5_000,49_000,49_900]) alerter.update(speedMatch(),'ann','Stack Duel',T0+t);
+  assert.equal(b.log.beeps,0);
+  for(const t of [50_000,50_250,52_000,55_000,58_000]) alerter.update(speedMatch(),'ann','Stack Duel',T0+t);
+  await flush();
+  assert.equal(b.log.beeps,1);
+  assert.deepEqual(b.log.vibrations,[200]);
+  assert.deepEqual(b.log.notifications,[['Stack Duel','Your move in Stack Duel: 10 seconds left!']]);
+  assert.equal(b.title(),'⏰ 10 s left!');
+  b.tick();assert.equal(b.title(),'Stack Duel · Portal');b.tick();assert.equal(b.title(),'⏰ 10 s left!');
+  // Time's up: the title comes back.
+  alerter.update(speedMatch(),'ann','Stack Duel',T0+61_000);
+  assert.equal(b.title(),'Stack Duel · Portal');assert.equal(b.timers.size,0);
+});
+
+test('no alert for the waiting player',async()=>{
+  const speed=loadSpeed();speed.observe(speedMatch(),T0);
+  const b=fakeBrowser({hidden:true});const alerter=speed.createAlerter(b.env);
+  for(const t of [50_000,52_000,59_000]) alerter.update(speedMatch(),'bob','Stack Duel',T0+t);
+  await flush();
+  assert.deepEqual(b.log,{beeps:0,vibrations:[],notifications:[],titles:[]});
+});
+
+test('moving stops the alert, and the next turn alerts again only at its own 10 seconds',async()=>{
+  const speed=loadSpeed();speed.observe(speedMatch(),T0);
+  const b=fakeBrowser();const alerter=speed.createAlerter(b.env);
+  alerter.update(speedMatch(),'ann','Stack Duel',T0+50_000);
+  assert.equal(b.title(),'⏰ 10 s left!');
+  // Ann moved: it's Bob's turn with a new deadline.
+  const bobsTurn=speedMatch({turn_of_player_indices:[1],turn_deadline:'2026-01-01T00:01:55Z'});
+  alerter.update(bobsTurn,'ann','Stack Duel',T0+55_000);
+  assert.equal(b.title(),'Stack Duel · Portal');assert.equal(b.timers.size,0);
+  for(const t of [100_000,106_000]) alerter.update(bobsTurn,'ann','Stack Duel',T0+t);
+  assert.equal(b.log.beeps,1);
+  // Ann's next turn: one more alert at its own 10 seconds.
+  const annAgain=speedMatch({turn_deadline:'2026-01-01T00:03:00Z'});
+  alerter.update(annAgain,'ann','Stack Duel',T0+169_000);assert.equal(b.log.beeps,1);
+  alerter.update(annAgain,'ann','Stack Duel',T0+170_000);alerter.update(annAgain,'ann','Stack Duel',T0+171_000);
+  assert.equal(b.log.beeps,2);assert.deepEqual(b.log.vibrations,[200,200]);
+});
+
+test('no sound before any interaction, and no notification unless the page is hidden and permission was granted',async()=>{
+  const speed=loadSpeed();speed.observe(speedMatch(),T0);
+  for(const options of [{active:false,hidden:false},{hidden:true,permission:'default'},{hidden:true,permission:'denied'}]) {
+    const b=fakeBrowser(options);const alerter=speed.createAlerter(b.env);
+    alerter.update(speedMatch(),'ann','Stack Duel',T0+50_000);await flush();
+    assert.equal(b.log.notifications.length,0,JSON.stringify(options));
+    assert.equal(b.log.beeps,options.active===false?0:1);
+    assert.deepEqual(b.log.vibrations,[200]);
+  }
+});
+
+test('the service worker loads the page from the network first and reloads pages after an update',()=>{
+  const sw=read('portal-sw.js');
+  assert.match(sw,/url\.pathname === "\/static\/portal\.html"[\s\S]*fetch\(event\.request/);
+  assert.match(sw,/caches\.delete/);
+  assert.match(sw,/page\.navigate\(page\.url\)/);
 });
 
 test('the timed-out player gets their own message; the others see who was replaced',()=>{

@@ -1022,6 +1022,14 @@ function renderMatch() {
   window.PortalMatchLayout?.update(speedNotice ? {...match, speedNotice} : match);
 }
 
+// The 10-second alert for the player to move (sound, vibration, tab title, notification).
+const speedAlerter = window.PortalSpeed?.createAlerter({
+  window, document, navigator,
+  Notification: typeof Notification === "undefined" ? undefined : Notification,
+  AudioContext: window.AudioContext ?? window.webkitAudioContext,
+  setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t),
+});
+
 /** The speed-match countdown in the toolbar (hidden in regular matches and replays).
  * When the viewer's own time is up, asks the server right away, so the takeover (or
  * the end) shows without waiting for the next poll. */
@@ -1031,9 +1039,13 @@ function updateSpeedClock() {
   const speed = window.PortalSpeed;
   const shown = speed && match && state.replay?.id !== match.id ? speed.clock(match, me()?.id, nameOf) : null;
   node.hidden = !shown;
-  if (!shown) return;
+  if (!shown) {
+    speedAlerter?.stop();
+    return;
+  }
   if (node.textContent !== shown.text) node.textContent = shown.text;
   node.classList.toggle("urgent", shown.urgent);
+  speedAlerter?.update(match, me()?.id, gameOf(match.game_id, match.game_version)?.name ?? "");
   const key = `${match.id}@${match.turn_deadline}`;
   if (speed.secondsLeft(match) === 0 && state.speedRefreshFor !== key) {
     state.speedRefreshFor = key;

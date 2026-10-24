@@ -5,6 +5,8 @@
 .speed-choice select { min-height:44px; padding:8px 12px; max-width:100%; min-width:160px; }
 .match-clock { flex:none; padding:4px 10px; border-radius:999px; background:#232d1c; color:#d2e8ad; font:700 13px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .match-clock[hidden] { display:none; }
-.match-clock.urgent { background:#5c1f2d; color:#ffd2dc; }
+/* The last 10 seconds, for everyone: white on a strong red (about 5:1 contrast), with a
+   soft glow that pulses but never fades the text. */
+.match-clock.urgent { background:#c62a32; color:#fff; }
 @media (prefers-reduced-motion: no-preference) { .match-clock.urgent { animation:match-clock-pulse 1s ease-in-out infinite; } }
-@keyframes match-clock-pulse { 50% { opacity:.7; } }
+@keyframes match-clock-pulse { 0%, 100% { box-shadow:0 0 0 0 rgba(255,96,104,.55); } 50% { box-shadow:0 0 0 5px rgba(255,96,104,0); } }

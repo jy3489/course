@@ -1,6 +1,6 @@
 "use strict";
 // Scope deliberately stays /static/: no backend route or Service-Worker-Allowed change.
-const CACHE = "playroom-portal-shell-v53";
+const CACHE = "playroom-portal-shell-v54";
 const SHELL = [
   "/static/portal.html",
   "/static/common.css?v=12",
@@ -9,11 +9,11 @@ const SHELL = [
   "/static/i18n.js?v=2",
   "/static/auth.js?v=4",
   "/static/push-notifications.js?v=1",
-  "/static/portal.js?v=40",
+  "/static/portal.js?v=41",
   "/static/portal-match-layout.js?v=3",
-  "/static/portal-speed.js?v=1",
+  "/static/portal-speed.js?v=2",
   "/static/portal-match-layout.css?v=1",
-  "/static/portal-speed.css?v=1",
+  "/static/portal-speed.css?v=2",
   "/static/portal-offline.js?v=3",
   "/static/portal.webmanifest",
   "/static/portal-icon.svg",
@@ -30,8 +30,25 @@ self.addEventListener("install", (event) =>
       .then(() => self.skipWaiting()),
   ),
 );
+// An update: delete the older shells' caches, take over open portal pages and reload
+// them once, so nobody keeps running the old portal. (A first install reloads nothing.)
 self.addEventListener("activate", (event) =>
-  event.waitUntil(self.clients.claim()),
+  event.waitUntil(
+    (async () => {
+      const old = (await caches.keys()).filter(
+        (key) => key.startsWith("playroom-portal-shell-") && key !== CACHE,
+      );
+      await Promise.all(old.map((key) => caches.delete(key)));
+      await self.clients.claim();
+      if (!old.length) return;
+      const pages = await self.clients.matchAll({ type: "window" });
+      await Promise.all(
+        pages
+          .filter((page) => new URL(page.url).pathname === "/static/portal.html")
+          .map((page) => page.navigate(page.url).catch(() => {})),
+      );
+    })(),
+  ),
 );
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
@@ -42,6 +59,25 @@ self.addEventListener("fetch", (event) => {
     !SHELL.includes(url.pathname + url.search)
   )
     return;
+  // The page itself comes from the network when online, so a deploy shows up on the
+  // next load; the saved copy is the offline fallback. The other files are versioned
+  // (?v=N), so their saved copies never go stale.
+  if (url.pathname === "/static/portal.html") {
+    event.respondWith(
+      caches.open(CACHE).then(async (cache) => {
+        try {
+          const response = await fetch(event.request, { cache: "no-cache" });
+          if (response.ok) await cache.put(event.request, response.clone());
+          return response;
+        } catch (error) {
+          const saved = await cache.match(event.request);
+          if (saved) return saved;
+          throw error;
+        }
+      }),
+    );
+    return;
+  }
   event.respondWith(
     caches
       .open(CACHE)

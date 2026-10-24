@@ -37,10 +37,10 @@ test('a 1-minute speed match: the player who doesn\'t move times out and a compu
   await expect(a.clock).not.toHaveClass(/urgent/);
   await expect(b.clock).toHaveText(new RegExp(`^${alice.display_name}: 0:5\\d$`));
 
-  // In her last 10 seconds Alice's clock turns red; Bob's doesn't.
-  await expect(a.clock).toHaveText(/^Your move: \d+ s left$/, { timeout: 65_000 });
+  // In the last 10 seconds the clock turns red for both of them.
+  await expect(a.clock).toHaveText(/^Your move: 0:(0\d|10)$/, { timeout: 65_000 });
   await expect(a.clock).toHaveClass(/urgent/);
-  await expect(b.clock).not.toHaveClass(/urgent/);
+  await expect(b.clock).toHaveClass(/urgent/);
 
   // Time's up: Alice is told, and stays as a viewer; Bob sees who was replaced.
   await expect(a.notice).toContainText('You ran out of time. A computer is playing for you now.', { timeout: 20_000 });
