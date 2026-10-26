@@ -40,13 +40,22 @@ function play(state, seat, cell) {
   return { state: next, nextTurn: line || draw ? null : 1 - seat };
 }
 
-/** Perfect play by minimax (memoized — unmemoized it overruns the
- * platform's per-call time limit on an empty board); ties broken by [rng]. */
+/** Perfect play by minimax; ties broken by [rng]. The memo lives at
+ * module scope: the platform caches a game's QuickJS context, so the
+ * table survives between calls and only the first search pays full
+ * price — unmemoized (or memoized per call), an empty-board search can
+ * overrun the platform's per-call time limit on a loaded machine. The
+ * scores are a pure function of (board, player to move), so sharing
+ * the table changes nothing but speed. */
+const minimaxMemo = new Map();
+
 function computerCell(state, seat, rng) {
   const current = state ?? initialState();
-  const memo = new Map();
+  const memo = minimaxMemo;
   const score = (board, toMove) => {
-    const key = board.join(",") + "|" + toMove;
+    // The seat is part of the key: a terminal score is from [seat]'s
+    // perspective, and the shared table serves both seats.
+    const key = board.join(",") + "|" + toMove + "|" + seat;
     if (memo.has(key)) return memo.get(key);
     const line = winningLine(board);
     let value;

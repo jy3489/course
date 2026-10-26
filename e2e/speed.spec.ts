@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TICTACTOE, createUser, loginAs, uniqueName } from './helpers';
+import { TICTACTOE, TICTACTOE_SERVER, createUser, loginAs, uniqueName } from './helpers';
 
 // A real 1-minute speed match: Alice never moves, the server's clock runs out, and a
 // computer takes over her seat while Bob plays on. It waits the real 60 seconds (the
@@ -12,7 +12,7 @@ test('a 1-minute speed match: the player who doesn\'t move times out and a compu
   const auth = (u: typeof alice) => ({ 'X-User-Id': u.id, 'X-User-Password': u.password });
   const game = await request.post('/games', {
     headers: auth(alice),
-    data: { name: uniqueName('Speed duel'), description: 'UI test game', allowed_player_counts: [2], allows_leave_mid_match: true, code: TICTACTOE },
+    data: { name: uniqueName('Speed duel'), description: 'UI test game', allowed_player_counts: [2], allows_leave_mid_match: true, code: TICTACTOE, server_code: TICTACTOE_SERVER },
   });
   expect(game.ok(), await game.text()).toBeTruthy();
   const created = await request.post('/matches', { headers: auth(alice), data: { game_id: (await game.json()).id, turn_seconds: 60 } });
@@ -50,7 +50,7 @@ test('a 1-minute speed match: the player who doesn\'t move times out and a compu
   expect(after.timeouts.map((t: { user_id: string }) => t.user_id)).toEqual([alice.id]);
   expect(after.status).toBe('ongoing');
 
-  // The match goes on: Bob's browser plays the computer's move for seat 0.
+  // The match goes on: the server moves the computer that took over seat 0.
   await expect.poll(async () => (await (await request.get(`/matches/${match.id}`)).json()).move_count, { timeout: 20_000 }).toBeGreaterThan(0);
 
   await a.context.close();

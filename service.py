@@ -3498,6 +3498,11 @@ class GamePlatform:
                 recipient_ids=timed_out_ids,
                 tag_suffix="timeout",
             )
+        if saved.status == "ongoing":
+            # A computer may hold the turn now — it took over a timed-out
+            # seat. In a v2 match the server moves it; nobody else will,
+            # so without this the match stalls on the computer's turn.
+            self._schedule_computer_moves(saved)
         return saved
 
     def _computer_takes_seat(self, match: Match, seat: Seat) -> Match:

@@ -234,6 +234,59 @@ def test_a_computer_takes_over_when_leaving_is_allowed_and_the_match_goes_on() -
     assert world.get(match_id).turn_deadline == world.clock.now + dt.timedelta(seconds=60)
 
 
+def test_a_v2_computer_takeover_moves_itself() -> None:
+    """Regression (Phase 8): when a timed-out seat is taken over in a v2
+    match, the server must move the computer — in v1 a human's browser
+    did it, so the takeover path never scheduled a move and the match
+    stalled on the computer's turn (found by e2e/speed.spec.ts)."""
+    from pathlib import Path
+
+    from game_platform.store import InMemoryStore
+
+    games = Path(__file__).parent.parent / "games"
+    clock = ManualClock()
+    platform = GamePlatform(
+        store=InMemoryStore(), clock=clock, computer_move_delay_seconds=0
+    )
+    ann = platform.create_user(display_name="ann").id
+    bob = platform.create_user(display_name="bob").id
+    # The debug game, whose computer move (a pass) is instant: this test
+    # is about the scheduling, not about any game's thinking time.
+    game = platform.create_game(
+        caller_id=ann,
+        name="Debug",
+        description="",
+        rules=GameRules(
+            allowed_player_counts=(2, 3),
+            allows_leave_mid_match=True,
+            allows_join_mid_match=True,
+        ),
+        code=(games / "debug.html").read_text(),
+        server_code=(games / "debug.server.js").read_text(),
+    )
+    match = platform.create_match(
+        caller_id=ann, game_id=game.id, num_computer_opponents=0, turn_seconds=60
+    )
+    platform.join_match(caller_id=bob, match_id=match.id)
+    platform.start_match(
+        caller_id=ann,
+        match_id=match.id,
+        first_turn_player_indices=frozenset({0}),
+        initial_state=None,
+    )
+    clock.advance(61)
+    # This read applies the timeout: Ann's seat is taken over.
+    after = platform.get_match(match.id, caller_id=ann)
+    assert kinds(after) == ["computer", "human"]
+    # The takeover scheduled the computer's move (synchronously here,
+    # since the delay is 0); the next read shows it has already moved
+    # (a pass, in the debug game) and it is Bob's turn.
+    after = platform.get_match(match.id, caller_id=ann)
+    assert len(after.moves) == 1
+    assert after.turn_of_player_indices == frozenset({1})
+    assert after.state["passes"] == 1
+
+
 def test_every_human_with_the_turn_times_out() -> None:
     world = World()
     match_id = world.match(joiners=[world.bob, world.cy], first=[0, 1])

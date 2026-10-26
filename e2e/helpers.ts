@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
 export const TICTACTOE = fs.readFileSync(path.resolve(__dirname, '../games/tictactoe.html'), 'utf8');
+export const TICTACTOE_SERVER = fs.readFileSync(path.resolve(__dirname, '../games/tictactoe.server.js'), 'utf8');
 
 export interface Account { id: string; display_name: string; password: string }
 
@@ -13,11 +14,11 @@ export async function createUser(request: APIRequestContext, name: string): Prom
   return res.json();
 }
 
-/** Publishes a real tic-tac-toe game owned by [owner]. Returns its id. */
+/** Publishes the real (server-side) tic-tac-toe game owned by [owner]. Returns its id. */
 export async function createGame(request: APIRequestContext, owner: Account, name: string): Promise<string> {
   const res = await request.post('/games', {
     headers: { 'X-User-Id': owner.id, 'X-User-Password': owner.password },
-    data: { name, description: 'UI test game', allowed_player_counts: [2], code: TICTACTOE },
+    data: { name, description: 'UI test game', allowed_player_counts: [2], code: TICTACTOE, server_code: TICTACTOE_SERVER },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
   return (await res.json()).id;
