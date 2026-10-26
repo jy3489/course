@@ -8,6 +8,9 @@ openai>=1.0,<2
 # and the EC key handling behind it.
 pywebpush>=1.9,<3
 cryptography>=42
+# Needed to run games' server-side logic (game_logic.py): QuickJS bindings with
+# per-context time and memory limits.
+quickjs>=1.19,<2
 # Draws invite links as QR codes (api.py). Pure Python, no dependencies.
 segno>=1.6,<2
 # Saves the data in Firestore when firestore.enabled is set (firestore_store.py).
