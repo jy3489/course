@@ -6,6 +6,7 @@ matters, and raises a subclass of [PlatformError] when a request can't be honore
 
 import collections
 import datetime as dt
+import hashlib
 import hmac
 import re
 import secrets
@@ -110,6 +111,10 @@ def _new_verification_code() -> str:
 # Speed matches: the allowed seconds per move (1, 3 or 10 minutes). None is a regular
 # match with no clock. Kept as a list so more choices can be added later.
 SPEED_TURN_SECONDS: Final = (60, 180, 600)
+
+# "Leave this field unchanged" for update calls, for fields where None is a
+# real value of its own (a game whose server code was removed has none).
+UNSET: Final = object()
 
 # Referral codes: 5-digit numbers with no leading zero, so always 5 characters.
 REFERRAL_CODE_MIN: Final = 10_000
@@ -836,6 +841,7 @@ class GamePlatform:
         self, *, caller_id: str, draft_id: str | None, name: str,
         description: str, rules: GameRules, code: str,
         expected_revision: int | None,
+        server_code: str | None = None,
     ) -> GameDraft:
         with self._lock:
             existing = self._store.get_game_draft(draft_id) if draft_id else None
@@ -853,6 +859,7 @@ class GamePlatform:
             draft = GameDraft(
                 id=draft_id or self._new_id(), owner_user_id=caller_id,
                 name=name, description=description, rules=rules, code=code,
+                server_code=server_code,
                 created_at=existing.created_at if existing else now, updated_at=now,
                 base_version=existing.base_version if existing else game.version if game else 0,
                 revision=existing.revision + 1 if existing else 1,
@@ -882,6 +889,7 @@ class GamePlatform:
                     id=draft.id, version=1, owner_user_id=caller_id,
                     name=draft.name.strip(), description=draft.description,
                     rules=draft.rules, code=draft.code,
+                    server_code=draft.server_code,
                     created_at=self._clock(), updated_at=self._clock(),
                 )
                 self._store.add_game_version(game)
@@ -893,6 +901,7 @@ class GamePlatform:
                 game = self.update_game(
                     caller_id=caller_id, game_id=draft_id, name=draft.name.strip(),
                     description=draft.description, code=draft.code,
+                    server_code=draft.server_code,
                     allowed_player_counts=draft.rules.allowed_player_counts,
                     allows_leave_mid_match=draft.rules.allows_leave_mid_match,
                     allows_join_mid_match=draft.rules.allows_join_mid_match,
@@ -914,6 +923,7 @@ class GamePlatform:
         description: str,
         rules: GameRules,
         code: str,
+        server_code: str | None = None,
     ) -> Game:
         with self._lock:
             now = self._clock()
@@ -925,6 +935,7 @@ class GamePlatform:
                 description=description,
                 rules=rules,
                 code=code,
+                server_code=server_code,
                 created_at=now,
                 updated_at=now,
             )
@@ -966,6 +977,7 @@ class GamePlatform:
                 self.save_game_draft(
                     caller_id=caller_id, draft_id=game_id, name=game.name,
                     description=game.description, code=game.code,
+                    server_code=game.server_code,
                     rules=game.rules, expected_revision=None,
                 )
             self._store.set_game_published(game_id, False)
@@ -996,11 +1008,14 @@ class GamePlatform:
         allows_leave_mid_match: bool | None = None,
         allows_join_mid_match: bool | None = None,
         code: str | None = None,
+        server_code: str | None | object = UNSET,
         _publishing: bool = False,
     ) -> Game:
         """Creates a new version of the game, unless nothing changes.
 
-        Fields left as [None] are unchanged.
+        Fields left as [None] are unchanged, except [server_code]: it is
+        unchanged unless a value (including None, which removes the game's
+        server code) is passed explicitly.
         """
         with self._lock:
             game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
@@ -1025,6 +1040,9 @@ class GamePlatform:
                     else rules.allows_join_mid_match,
                 ),
                 code=code if code is not None else game.code,
+                server_code=game.server_code
+                if server_code is UNSET
+                else server_code,
             )
             if updated == game:
                 return game
@@ -1092,8 +1110,9 @@ class GamePlatform:
         """Stores a new waiting match of [game] owned (and first seated) by [caller_id].
         The caller holds the lock and has checked the game."""
         now = self._clock()
+        match_id = self._new_id()
         match = Match(
-            id=self._new_id(),
+            id=match_id,
             game_id=game.id,
             owner_user_id=caller_id,
             game_version=game.version,
@@ -1113,6 +1132,12 @@ class GamePlatform:
             matchmaking_player_count=matchmaking_player_count,
             bet_per_player=bet_per_player,
             turn_seconds=turn_seconds,
+            # Derived from the match id, so the seed is stable for a given
+            # match (replays reproduce it exactly) and unrelated across
+            # matches (ids are random).
+            seed=int.from_bytes(
+                hashlib.sha256(match_id.encode()).digest()[:4], "big"
+            ),
         )
         self._store.put_match(match)
         return match

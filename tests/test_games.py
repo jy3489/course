@@ -30,6 +30,8 @@ def test_create_and_get_a_game(api: Api) -> None:
         "allows_leave_mid_match": True,
         "allows_join_mid_match": False,
         "code": "<div id='table'></div>",
+        "client_code": "<div id='table'></div>",
+        "server_code": None,
         "created_at": "2026-01-01T00:02:00Z",
         "updated_at": "2026-01-01T00:02:00Z",
         "deleted": False,
@@ -275,5 +277,9 @@ def test_the_game_list_can_leave_out_the_code(api: Api) -> None:
     (full,) = api.ok("GET", "/games")
     (summary,) = api.ok("GET", "/games", params={"include_code": "false"})
     assert full["code"] == "<div>poker</div>"
-    assert summary == {key: value for key, value in full.items() if key != "code"}
+    assert summary == {
+        key: value
+        for key, value in full.items()
+        if key not in ("code", "client_code", "server_code")
+    }
     assert summary["id"] == game_id

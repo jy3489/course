@@ -111,6 +111,11 @@ class Game:
     # The game's client code (the innerHTML of its sandboxed iframe). The server never
     # executes it.
     code: str
+    # The game's server code (v2 Game API, docs/server-side-game-api.md): plain
+    # JavaScript the server runs in QuickJS to decide states, moves and payouts.
+    # None means a v1 game: the client computes everything and the server only
+    # stores the state. Defaults to None so older data files load.
+    server_code: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
     # Applies to the whole game, so it is set on every version read back from the store
@@ -130,6 +135,8 @@ class GameDraft:
     description: str
     rules: GameRules
     code: str
+    # The draft's server code (v2 Game API); see [Game.server_code].
+    server_code: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
     base_version: int = 0
@@ -177,6 +184,12 @@ class Move:
     new_state: JsonValue
     # The seats that may make the next move; [None] ends the match.
     next_turn_player_indices: frozenset[int] | None
+    # v2 matches only: the game-defined move the player sent (the server computed
+    # [new_state] from it by running the game's server code), and the id of the
+    # player who moved ("computer-1", a user id, ...). Both default to None so
+    # v1 moves and older data files load unchanged.
+    move: JsonValue = None
+    player_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -236,6 +249,16 @@ class Match:
     turn_started_at: dt.datetime | None = None
     # Seats that ran out of time, oldest first; their people can still watch.
     timeouts: tuple[SeatTimeout, ...] = ()
+    # v2 matches: the seed the server's per-call random seeds are derived from
+    # (together with the move number), so a match can be replayed exactly.
+    # 0 on v1 matches and older data files.
+    seed: int = 0
+    # v2 matches: a pending leave-with-tokens preview (the playerLeft result
+    # stored by POST /matches/{id}/maybeLeave): a JSON object with the leaving
+    # player's id, their payout, and the state that leaving would produce.
+    # Cleared by any move; applied by POST /matches/{id}/playerLeft.
+    # The state inside is server-only and is never sent to clients.
+    pending_leave: JsonValue = None
 
     @property
     def turn_deadline(self) -> dt.datetime | None:
@@ -256,6 +279,22 @@ class Match:
 
     def seat_of(self, user_id: str) -> Seat | None:
         return next((seat for seat in self.seats if seat.user_id == user_id), None)
+
+    def player_id_of(self, seat: Seat) -> str:
+        """The v2 player id of a seat: a human's user id, or "computer-N" for
+        the Nth computer seat (counting from 1, in seat order)."""
+        if seat.kind == "human":
+            assert seat.user_id is not None
+            return seat.user_id
+        computers = [s for s in self.seats if s.kind == "computer"]
+        return f"computer-{computers.index(seat) + 1}"
+
+    def seat_of_player_id(self, player_id: str) -> Seat | None:
+        """The seat with the given v2 player id (see [player_id_of])."""
+        return next(
+            (seat for seat in self.seats if self.player_id_of(seat) == player_id),
+            None,
+        )
 
     @property
     def human_user_ids(self) -> tuple[str, ...]:

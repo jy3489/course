@@ -69,6 +69,7 @@ from game_platform.schemas import (
     VerifyCode,
 )
 from game_platform.service import (
+    UNSET,
     VERIFICATION_TTL_SECONDS,
     ConflictError,
     ForbiddenError,
@@ -424,7 +425,9 @@ def get_game_draft(platform: Platform, caller_id: CallerId, draft_id: str) -> Ga
 def _save_draft(platform: GamePlatform, caller_id: str, draft_id: str | None, body: GameDraftSave) -> GameDraftOut:
     return GameDraftOut.of(platform.save_game_draft(
         caller_id=caller_id, draft_id=draft_id, name=body.name,
-        description=body.description, code=body.code, expected_revision=body.expected_revision,
+        description=body.description, code=body.code,
+        server_code=body.server_code,
+        expected_revision=body.expected_revision,
         rules=GameRules(
             allowed_player_counts=tuple(body.allowed_player_counts),
             allows_leave_mid_match=body.allows_leave_mid_match,
@@ -470,6 +473,7 @@ def create_game(platform: Platform, caller_id: CallerId, body: GameCreate) -> Ga
             allows_join_mid_match=body.allows_join_mid_match,
         ),
         code=body.code,
+        server_code=body.server_code,
     )
     return GameOut.of(game)
 
@@ -524,7 +528,10 @@ def update_game(
         else tuple(body.allowed_player_counts),
         allows_leave_mid_match=body.allows_leave_mid_match,
         allows_join_mid_match=body.allows_join_mid_match,
-        code=body.code,
+        code=body.client_code if body.client_code is not None else body.code,
+        server_code=body.server_code
+        if "server_code" in body.model_fields_set
+        else UNSET,
     )
     return GameOut.of(game)
 
@@ -546,7 +553,7 @@ def create_match(
         game_id=body.game_id,
         num_computer_opponents=body.num_computer_opponents,
         private=body.private,
-        bet_per_player=body.bet_per_player,
+        bet_per_player=body.effective_bet_per_player,
         turn_seconds=body.turn_seconds,
     )
     return _match_out(platform, match)

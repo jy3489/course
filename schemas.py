@@ -2,7 +2,7 @@
 
 import base64
 import datetime as dt
-from typing import Annotated, Final, Literal
+from typing import Annotated, Any, Final, Literal
 from urllib.parse import urlsplit
 
 from pydantic import (
@@ -401,7 +401,20 @@ class GameCreate(_Request):
     allowed_player_counts: PlayerCounts
     allows_leave_mid_match: bool = False
     allows_join_mid_match: bool = False
+    # The client code. In the v2 Game API this is also called [client_code];
+    # send either name (client_code wins if both are sent).
     code: str
+    client_code: str | None = None
+    # The server code (v2 Game API, docs/server-side-game-api.md). Omit it (or
+    # send null) for a v1 game whose client computes everything.
+    server_code: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _client_code_is_code(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("client_code") is not None:
+            return {**data, "code": data["client_code"]}
+        return data
 
 
 class GameUpdate(_Request):
@@ -415,6 +428,9 @@ class GameUpdate(_Request):
     allows_leave_mid_match: bool | None = None
     allows_join_mid_match: bool | None = None
     code: str | None = None
+    # The v2 names for the two parts of a game; see [GameCreate].
+    client_code: str | None = None
+    server_code: str | None = None
 
     @model_validator(mode="after")
     def _reject_explicit_nulls(self) -> "GameUpdate":
@@ -460,10 +476,19 @@ class GameSummaryOut(BaseModel):
 
 class GameOut(GameSummaryOut):
     code: str
+    # The v2 names for the two parts of a game: [client_code] is the same code
+    # as [code]; [server_code] is None for a v1 game.
+    client_code: str
+    server_code: str | None = None
 
     @classmethod
     def of(cls, game: Game) -> "GameOut":
-        return cls(**GameSummaryOut.of(game).model_dump(), code=game.code)
+        return cls(
+            **GameSummaryOut.of(game).model_dump(),
+            code=game.code,
+            client_code=game.code,
+            server_code=game.server_code,
+        )
 
 
 class GameDraftContent(_Request):
@@ -474,6 +499,8 @@ class GameDraftContent(_Request):
     allows_leave_mid_match: bool = False
     allows_join_mid_match: bool = False
     code: str
+    # The draft's server code (v2 Game API); None while the draft is a v1 game.
+    server_code: str | None = None
 
 
 class GameDraftSave(GameDraftContent):
@@ -497,6 +524,7 @@ class GameDraftOut(GameDraftContent):
         return cls(
             id=draft.id, owner_user_id=draft.owner_user_id,
             name=draft.name, description=draft.description, code=draft.code,
+            server_code=draft.server_code,
             allowed_player_counts=list(draft.rules.allowed_player_counts),
             allows_leave_mid_match=draft.rules.allows_leave_mid_match,
             allows_join_mid_match=draft.rules.allows_join_mid_match,
@@ -513,6 +541,14 @@ class MatchCreate(_Request):
     # Private matches aren't listed as open and can only be joined with an invite.
     private: bool = False
     bet_per_player: Annotated[int, Field(ge=0, le=1000000)] = 0
+    # The v2 name for [bet_per_player]: the most tokens each human can lose in
+    # the match, staked into the pot when they join. Wins over bet_per_player
+    # when both are sent.
+    max_loss: Annotated[int, Field(ge=0, le=1000000)] | None = None
+
+    @property
+    def effective_bet_per_player(self) -> int:
+        return self.max_loss if self.max_loss is not None else self.bet_per_player
     # A speed match: the seconds each player has to move, 60, 180 or 600. Omit it
     # (or send null) for a regular match with no time limit.
     turn_seconds: int | None = None
@@ -550,6 +586,11 @@ class MoveCreate(_Request):
     )
 
     new_state: JsonValue
+    # v2 matches only: the game-defined move, from which the server computes
+    # the new state by running the game's server code. Ignored on v1 matches
+    # (which send [new_state] as before); Phase 3 makes it the only field a
+    # v2 client sends.
+    move: JsonValue = None
     # The seats that may move next; [None] ends the match.
     next_turn_player_indices: PlayerIndices | None
     # If given, the move is rejected unless the match has exactly this many moves.
@@ -571,10 +612,16 @@ class PlayerOut(BaseModel):
     player_index: int
     kind: SeatKind
     user_id: str | None
+    # The v2 player id: the human's user id, or "computer-N" (see
+    # [Match.player_id_of]). Empty only for a seat-less construction.
+    id: str = ""
 
     @classmethod
-    def of(cls, seat: Seat) -> "PlayerOut":
-        return cls(player_index=seat.player_index, kind=seat.kind, user_id=seat.user_id)
+    def of(cls, seat: Seat, player_id: str = "") -> "PlayerOut":
+        return cls(
+            player_index=seat.player_index, kind=seat.kind,
+            user_id=seat.user_id, id=player_id,
+        )
 
 
 class MatchOut(BaseModel):
@@ -589,8 +636,17 @@ class MatchOut(BaseModel):
     state: JsonValue
     move_count: int
     bet_per_player: int = 0
+    # The v2 name for [bet_per_player]: the stake each human put in the pot.
+    max_loss: int = 0
     token_pot: int = 0
     token_payouts: dict[int, int] | None = None
+    # v2 matches: the seed the server's random seeds derive from (0 on v1
+    # matches), and the pending leave preview's public parts — who would
+    # leave and what they would be paid. The preview's resulting state is
+    # server-only and is never in a response.
+    seed: int = 0
+    pending_leave_player_id: str | None = None
+    pending_leave_payout: int | None = None
     rematch_match_id: str | None
     created_at: dt.datetime
     updated_at: dt.datetime
@@ -624,13 +680,28 @@ class MatchOut(BaseModel):
             owner_user_id=match.owner_user_id,
             status=match.status,
             end_reason=match.end_reason,
-            players=[PlayerOut.of(seat) for seat in match.seats],
+            players=[
+                PlayerOut.of(seat, player_id=match.player_id_of(seat))
+                for seat in match.seats
+            ],
             turn_of_player_indices=None
             if match.turn_of_player_indices is None
             else sorted(match.turn_of_player_indices),
             state=match.state,
             move_count=len(match.moves),
             bet_per_player=match.bet_per_player,
+            max_loss=match.bet_per_player,
+            seed=match.seed,
+            pending_leave_player_id=(
+                match.pending_leave.get("player_id")
+                if isinstance(match.pending_leave, dict)
+                else None
+            ),
+            pending_leave_payout=(
+                match.pending_leave.get("payout")
+                if isinstance(match.pending_leave, dict)
+                else None
+            ),
             token_pot=match.token_pot,
             token_payouts=match.token_payouts,
             rematch_match_id=match.rematch_match_id,
@@ -648,6 +719,10 @@ class MoveOut(BaseModel):
     created_at: dt.datetime
     new_state: JsonValue
     next_turn_player_indices: list[int] | None
+    # v2 matches only: the move the player sent and their player id (see
+    # [Move.move] / [Move.player_id]); both null on v1 moves.
+    move: JsonValue = None
+    player_id: str | None = None
 
     @classmethod
     def of(cls, move: Move) -> "MoveOut":
@@ -657,6 +732,8 @@ class MoveOut(BaseModel):
             made_by_user_id=move.made_by_user_id,
             created_at=move.created_at,
             new_state=move.new_state,
+            move=move.move,
+            player_id=move.player_id,
             next_turn_player_indices=None
             if move.next_turn_player_indices is None
             else sorted(move.next_turn_player_indices),

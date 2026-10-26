@@ -221,6 +221,8 @@ def test_full_move_history_is_recorded(api: Api) -> None:
             "created_at": moves[0]["created_at"],
             "new_state": {"pot": 10},
             "next_turn_player_indices": [1],
+            "move": None,
+            "player_id": None,
         },
         {
             "move_number": 2,
@@ -229,6 +231,8 @@ def test_full_move_history_is_recorded(api: Api) -> None:
             "created_at": moves[1]["created_at"],
             "new_state": {"winner": 1},
             "next_turn_player_indices": None,
+            "move": None,
+            "player_id": None,
         },
     ]
     assert moves[0]["created_at"] < moves[1]["created_at"]
