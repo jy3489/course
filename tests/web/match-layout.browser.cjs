@@ -9,8 +9,8 @@ const {chromium} = require('playwright');
 const root = path.resolve(__dirname,'../..');
 const screenshots = process.env.MATCH_SCREENSHOTS;
 const user = {id:'layout-user',display_name:'Layout tester',password:'fixture-only',linked:[],picture_url:''};
-const game = {id:'layout-game',name:'Tic-Tac-Toe',version:1,description:'Layout fixture',allowed_player_counts:[2],published:true,code:fs.readFileSync(path.join(root,'games/tictactoe.html'),'utf8')};
-const fresh = (status='ongoing') => ({id:'layout-match',game_id:game.id,game_version:1,owner_user_id:user.id,status,move_count:0,state:null,turn_of_player_indices:[0],created_at:'2026-10-22T12:00:00Z',players:[{player_index:0,kind:'human',user_id:user.id},{player_index:1,kind:'human',user_id:'friend'}]});
+const game = {id:'layout-game',name:'Tic-Tac-Toe',version:1,description:'Layout fixture',allowed_player_counts:[2],published:true,code:fs.readFileSync(path.join(root,'games/tictactoe.html'),'utf8'),server_code:fs.readFileSync(path.join(root,'games/tictactoe.server.js'),'utf8')};
+const fresh = (status='ongoing') => ({id:'layout-match',game_id:game.id,game_version:1,owner_user_id:user.id,status,move_count:0,state:{board:['','','','','','','','',''],winner:null,draw:false},turn_of_player_indices:[0],created_at:'2026-10-22T12:00:00Z',players:[{player_index:0,kind:'human',user_id:user.id},{player_index:1,kind:'human',user_id:'friend'}]});
 let match = fresh(), writes=0;
 const server = http.createServer(async(req,res)=>{
  const url = new URL(req.url,'http://localhost');
@@ -22,9 +22,12 @@ const server = http.createServer(async(req,res)=>{
   res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream'});res.end(fs.readFileSync(file));return;
  }
  if(req.method==='POST'&&url.pathname==='/matches/layout-match/moves'){
-  let text='';for await(const chunk of req)text+=chunk;const move=JSON.parse(text);
-  if(move.expected_move_count!==match.move_count)return json({detail:'stale'},409);
-  writes++;match={...match,state:move.new_state,turn_of_player_indices:move.next_turn_player_indices,move_count:match.move_count+1,status:move.next_turn_player_indices===null?'over':'ongoing'};
+  let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);
+  if(body.expected_move_count!==match.move_count)return json({detail:'stale'},409);
+  // The v2 protocol: the client sends only its move ({cell}); the fixture,
+  // standing in for the server, applies it as seat 0's X.
+  writes++;const board=[...match.state.board];board[body.move.cell]='X';
+  match={...match,state:{board,winner:null,draw:false},turn_of_player_indices:[1],move_count:match.move_count+1,status:'ongoing'};
   return json(match);
  }
  const responses={'/games':[game],'/matches':[match],'/matches/open':[], '/matches/layout-match':match,'/games/layout-game/versions/1':game,'/users/layout-user':{display_name:user.display_name},'/users/friend':{display_name:'Friend'},'/auth/config':{},'/push/config':{enabled:false}};
@@ -81,6 +84,9 @@ const server = http.createServer(async(req,res)=>{
     assert.equal(await page.getByRole('button',{name:'Request rematch',exact:true}).isVisible(),true);
    }
    await page.locator('#match-back').click();await page.waitForFunction(()=>!document.body.classList.contains('match-page'));
+   // The sidebar is a drawer (common.js setUpSidebarDrawer): closed after
+   // navigation until the user opens it from the top bar.
+   await page.locator('.topbar .sidebar-toggle').click();
    assert.equal(await page.locator('.portal-sidebar').isVisible(),true);
    assert.equal(await page.locator('#match-creator').isVisible(),true);
    await context.close();console.log('PASS',name);
