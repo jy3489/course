@@ -40,37 +40,67 @@ function play(state, seat, cell) {
   return { state: next, nextTurn: line || draw ? null : 1 - seat };
 }
 
-/** Perfect play by minimax; ties broken by [rng]. The memo lives at
- * module scope: the platform caches a game's QuickJS context, so the
- * table survives between calls and only the first search pays full
- * price — unmemoized (or memoized per call), an empty-board search can
- * overrun the platform's per-call time limit on a loaded machine. The
- * scores are a pure function of (board, player to move), so sharing
- * the table changes nothing but speed. */
+/** Perfect play by minimax with alpha-beta pruning; ties broken by
+ * [rng]. Pruning matters: a plain search of the empty board can
+ * overrun the platform's 100 ms per-call limit in QuickJS on a loaded
+ * machine (the publish gate's random walks found this on the live
+ * server). The memo lives at module scope — the platform caches a
+ * game's QuickJS context, so the table survives between calls; the
+ * seat is part of the key because a terminal score is from [seat]'s
+ * perspective and the shared table serves both seats. Only results
+ * proven inside the search window are cached: a pruned node returns
+ * a bound, not the exact score, and caching a bound would corrupt
+ * later lookups. */
 const minimaxMemo = new Map();
 
 function computerCell(state, seat, rng) {
   const current = state ?? initialState();
+  // Opening book: the first two plies are known theory, and searching
+  // them is the expensive case (a fresh board is the largest search).
+  // Every move below achieves the position's game-theoretic value —
+  // tic-tac-toe is a draw under perfect play, and these are exactly
+  // the drawing replies; the search decides everything after.
+  const marks = current.board.filter((mark) => mark !== "").length;
+  if (marks === 0) {
+    const openings = [0, 2, 4, 6, 8]; // center and corners draw; edges lose
+    return openings[Math.floor(rng() * openings.length)];
+  }
+  if (marks === 1) {
+    if (current.board[4] === "") return 4; // answer a corner/edge with the center
+    const corners = [0, 2, 6, 8]; // answer the center with a corner
+    return corners[Math.floor(rng() * corners.length)];
+  }
   const memo = minimaxMemo;
-  const score = (board, toMove) => {
-    // The seat is part of the key: a terminal score is from [seat]'s
-    // perspective, and the shared table serves both seats.
+  const score = (board, toMove, alpha = -Infinity, beta = Infinity) => {
     const key = board.join(",") + "|" + toMove + "|" + seat;
     if (memo.has(key)) return memo.get(key);
+    const alphaIn = alpha, betaIn = beta;
     const line = winningLine(board);
     let value;
     if (line) value = board[line[0]] === MARKS[seat] ? 1 : -1;
     else if (board.every((mark) => mark !== "")) value = 0;
-    else {
-      const scores = board.flatMap((mark, cell) => {
-        if (mark) return [];
+    else if (toMove === seat) {
+      value = -Infinity;
+      for (let cell = 0; cell < 9; cell++) {
+        if (board[cell]) continue;
         const next = [...board];
         next[cell] = MARKS[toMove];
-        return [score(next, 1 - toMove)];
-      });
-      value = toMove === seat ? Math.max(...scores) : Math.min(...scores);
+        value = Math.max(value, score(next, 1 - toMove, alpha, beta));
+        alpha = Math.max(alpha, value);
+        if (alpha >= beta) break;
+      }
+    } else {
+      value = Infinity;
+      for (let cell = 0; cell < 9; cell++) {
+        if (board[cell]) continue;
+        const next = [...board];
+        next[cell] = MARKS[toMove];
+        value = Math.min(value, score(next, 1 - toMove, alpha, beta));
+        beta = Math.min(beta, value);
+        if (alpha >= beta) break;
+      }
     }
-    memo.set(key, value);
+    if (value > alphaIn && value < betaIn) memo.set(key, value);
     return value;
   };
   const options = current.board.flatMap((mark, cell) => {
