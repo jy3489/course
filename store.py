@@ -13,6 +13,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    GameTestSeeds,
     GameVersionError,
     Invite,
     Match,
@@ -116,6 +117,14 @@ class Store(Protocol):
         """The recorded server-code failures of one game version, oldest first."""
         ...
 
+    def put_game_test_seeds(self, record: GameTestSeeds) -> None:
+        """Stores the failed random-walk test seeds of a game (or draft)."""
+        ...
+
+    def get_game_test_seeds(self, game_id: str) -> GameTestSeeds | None: ...
+
+    def list_game_test_seeds(self) -> list[GameTestSeeds]: ...
+
     def put_invite(self, invite: Invite) -> None: ...
 
     def get_invite(self, token: str) -> Invite | None: ...
@@ -152,6 +161,9 @@ class Snapshot:
     # Optional so existing data files load without a migration. Server-code
     # failures recorded on game versions (v2 Game API).
     game_version_errors: tuple[GameVersionError, ...] = ()
+    # Optional so existing data files load without a migration. Failed
+    # random-walk test seeds per game, replayed as regression seeds.
+    game_test_seeds: tuple[GameTestSeeds, ...] = ()
 
 
 class InMemoryStore:
@@ -172,6 +184,7 @@ class InMemoryStore:
         self._push_subscription_ids_by_endpoint: dict[str, str] = {}
         self._invites: dict[str, Invite] = {}
         self._game_version_errors: list[GameVersionError] = []
+        self._game_test_seeds: dict[str, GameTestSeeds] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -193,6 +206,8 @@ class InMemoryStore:
         for invite in snapshot.invites:
             store.put_invite(invite)
         store._game_version_errors.extend(snapshot.game_version_errors)
+        for record in snapshot.game_test_seeds:
+            store.put_game_test_seeds(record)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -213,6 +228,7 @@ class InMemoryStore:
             push_subscriptions=tuple(self._push_subscriptions.values()),
             invites=tuple(self._invites.values()),
             game_version_errors=tuple(self._game_version_errors),
+            game_test_seeds=tuple(self._game_test_seeds.values()),
         )
 
     def put_user(self, user: User) -> None:
@@ -337,6 +353,15 @@ class InMemoryStore:
             for error in self._game_version_errors
             if error.game_id == game_id and error.game_version == version
         ]
+
+    def put_game_test_seeds(self, record: GameTestSeeds) -> None:
+        self._game_test_seeds[record.game_id] = record
+
+    def get_game_test_seeds(self, game_id: str) -> GameTestSeeds | None:
+        return self._game_test_seeds.get(game_id)
+
+    def list_game_test_seeds(self) -> list[GameTestSeeds]:
+        return list(self._game_test_seeds.values())
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:
         old = self._push_subscriptions.get(subscription.id)

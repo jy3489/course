@@ -15,6 +15,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    GameTestSeeds,
     GameVersionError,
     Invite,
     Match,
@@ -229,6 +230,19 @@ class SavingStore:
             return self._inner.list_game_version_errors(
                 game_id=game_id, version=version
             )
+
+    def put_game_test_seeds(self, record: GameTestSeeds) -> None:
+        with self._lock:
+            self._inner.put_game_test_seeds(record)
+            self._set_dirty()
+
+    def get_game_test_seeds(self, game_id: str) -> GameTestSeeds | None:
+        with self._lock:
+            return self._inner.get_game_test_seeds(game_id)
+
+    def list_game_test_seeds(self) -> list[GameTestSeeds]:
+        with self._lock:
+            return self._inner.list_game_test_seeds()
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:
         with self._lock:

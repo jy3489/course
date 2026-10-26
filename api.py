@@ -41,6 +41,8 @@ from game_platform.schemas import (
     GameDraftOut,
     GameOut,
     GameSummaryOut,
+    GameTestOut,
+    GameTestRequest,
     GameUpdate,
     GoogleLogin,
     HealthOut,
@@ -483,6 +485,25 @@ def create_game(platform: Platform, caller_id: CallerId, body: GameCreate) -> Ga
         server_code=body.server_code,
     )
     return GameOut.of(game)
+
+
+@router.post("/games/test")
+def test_game(
+    platform: Platform, caller_id: CallerId, body: GameTestRequest
+) -> GameTestOut:
+    """Random-walk tests of server code that may not be saved yet
+    (docs/server-side-game-api.md): the builder and the AI fix loop run
+    this before publishing, which is gated on the same tests."""
+    report = platform.test_game_code(
+        server_code=body.server_code,
+        rules=GameRules(
+            allowed_player_counts=tuple(body.allowed_player_counts),
+            allows_leave_mid_match=body.allows_leave_mid_match,
+            allows_join_mid_match=body.allows_join_mid_match,
+        ),
+        game_id=body.game_id,
+    )
+    return GameTestOut.of(report)
 
 
 @router.get("/games")

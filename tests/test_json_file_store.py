@@ -113,6 +113,7 @@ def test_a_missing_file_starts_empty_and_is_created_on_the_first_change(
         "matches": [],
         "agent_conversations": [],
         "game_version_errors": [],
+        "game_test_seeds": [],
     }
     assert not path.exists()
 

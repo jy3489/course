@@ -174,6 +174,16 @@ class GameVersionError:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GameTestSeeds:
+    """The random-walk test seeds that failed for a game (or a draft with
+    the same id), replayed first on the next test run as regression seeds
+    (v2 Game API, see game_testing.py)."""
+
+    game_id: str
+    seeds: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class AgentConversation:
     """The whole recorded agent conversation for one game (or draft), oldest
     first. Admin-only: it is never part of a game or draft API response."""

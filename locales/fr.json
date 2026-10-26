@@ -36,6 +36,7 @@
   "error.leave_preview_v2_only": "seul un jeu côté serveur (v2) a un aperçu de départ",
   "error.no_leave_to_confirm": "vous n'avez aucun départ à confirmer ; prévisualisez-le d'abord avec maybeLeave",
   "error.leave_preview_stale": "la partie a changé depuis l'aperçu de ce départ",
+  "error.server_code_failed_tests": "le code serveur du jeu a échoué à ses tests : {failure} (graine {seed}) ; lancez POST /games/test pour le rapport complet",
   "error.match_not_ongoing": "la partie n'est pas en cours",
   "error.match_already_started": "la partie a déjà commencé",
   "error.match_full": "la partie est complète",

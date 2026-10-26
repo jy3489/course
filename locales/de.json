@@ -36,6 +36,7 @@
   "error.leave_preview_v2_only": "nur ein serverseitiges Spiel (v2) hat eine Vorschau für das Verlassen",
   "error.no_leave_to_confirm": "Sie haben kein Verlassen zu bestätigen; sehen Sie es zuerst mit maybeLeave in der Vorschau an",
   "error.leave_preview_stale": "die Partie hat sich seit der Vorschau dieses Verlassens geändert",
+  "error.server_code_failed_tests": "der Servercode des Spiels hat seine Tests nicht bestanden: {failure} (Seed {seed}); führen Sie POST /games/test für den vollständigen Bericht aus",
   "error.match_not_ongoing": "die Partie läuft nicht",
   "error.match_already_started": "die Partie hat bereits begonnen",
   "error.match_full": "die Partie ist voll",

@@ -151,8 +151,8 @@ client-computed `new_state` / `next_turn_player_indices`, and
 
 | Endpoint | v1 | v2 (phase) |
 |---|---|---|
-| `POST /games`, `PATCH /games/{id}`, drafts, publishing | `code` | Also `server_code` (as `client_code` + `server_code`). Publishing runs the tests first and is refused if they fail (Phase 5) |
-| `POST /games/test` | — | Runs the random-walk/fuzz tests on unsaved code, for the builder and the AI fix loop (Phase 5) |
+| `POST /games`, `PATCH /games/{id}`, drafts, publishing | `code` | Also `server_code` (as `client_code` + `server_code`). Draft publishing and `PATCH` updates that change the server code (or its rules) run the tests first and are refused if they fail |
+| `POST /games/test` | — | Runs the random-walk/fuzz tests on unsaved code, for the builder and the AI fix loop |
 | `POST /matches` | `{game_id, num_computer_opponents, private?}` | Also `max_loss` (Phase 3) |
 | `POST /matches/{id}/join`, `POST /invites/{token}/accept` | Take a seat | Also deduct `max_loss` (409 if the balance is too low); mid-match the server calls `playerJoined` (Phase 3/4) |
 | `POST /matches/{id}/leave` | A computer takes over the seat, or the match ends | Before the start, a refund; mid-match, `playerLeft` |
@@ -189,20 +189,27 @@ on the game version.
 - QuickJS has no file, network or process access unless the host adds it;
   we add none.
 
-## Testing before publishing (Phase 5)
+## Testing before publishing (Phase 5 — `game_platform/game_testing.py`)
 
 Whenever `server_code` changes, the server tests it in QuickJS; only a
-passing version can be published. The tests take at most 1 second: up to
+passing version can be published (draft publishing and `PATCH /games/{id}`
+run the gate; `POST /games/test` runs the same tests on unsaved code).
+The tests take at most 1 second: up to
 1000 random walks of up to 1000 moves each, stopping at whichever limit
 comes first. Each walk uses a random player count, a random human/computer
 mix, random `max_loss` values and a random seed; moves come from
 `computerMove`/`randomMove`; `viewFor` is called for every player and a
-spectator after each move; joins/leaves happen occasionally if allowed;
-malformed moves are fuzzed into `applyMove`. Every result is validated
-(turn, pot, payouts, determinism). A failure report records the error and
-stack, the function and its exact arguments, the walk's seed, player count
-and move number, and the last few moves; failed seeds are replayed first on
-the next version's run. The builder's AI fix loop consumes the same report
+spectator after each move; joins/leaves happen occasionally if allowed
+(the platform's pot settlement when at most one human remains is modeled,
+so a game never owes payouts for a pot the platform settled); malformed
+moves are fuzzed into `applyMove`. Every result is validated
+(turn, pot, payouts), and selected calls are run twice with identical
+arguments and seed to verify determinism. If not even one walk finishes in
+the budget, the game is reported as too slow. A failure report records the
+error and stack, the function and its exact arguments, the walk's seed,
+player count and move number, and the last few moves; failed seeds are
+stored on the game and replayed first on the next run. The builder's AI
+fix loop consumes the same report
 (up to `ai_max_fix_attempts`, default 3).
 
 ## Updating the existing games (Phase 7)

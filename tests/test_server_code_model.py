@@ -14,7 +14,39 @@ from pathlib import Path
 from game_platform.json_file_store import JsonFileStore
 from game_platform.tests.helpers import Api
 
-SERVER_CODE = "const game = { newMatch(ctx) { return {state: {}, turn: []}; } };"
+def _server_code(moves_to_end: int) -> str:
+    """A small valid v2 game (Phase 5: only passing server code can be
+    published, so the model's test games must pass the random walks)."""
+    return (
+        "const game = {\n"
+        "  newMatch(ctx) { return {state: 0, turn: [ctx.players[0].id]}; },\n"
+        "  applyMove(state, playerId, move, ctx) {\n"
+        "    if (typeof move !== 'object' || move === null || move.add !== 1)\n"
+        "      throw new InvalidMove('send {add: 1}');\n"
+        "    const count = state + 1;\n"
+        f"    const over = count >= {moves_to_end};\n"
+        "    const ids = ctx.players.map(p => p.id);\n"
+        "    const result = {state: count, turn: over ? null\n"
+        "      : [ids[(ids.indexOf(playerId) + 1) % ids.length]]};\n"
+        "    if (over) {\n"
+        "      const humans = ctx.players.filter(p => p.kind === 'human');\n"
+        "      const share = Math.floor(ctx.pot / humans.length);\n"
+        "      result.payouts = {};\n"
+        "      humans.forEach((p, i) => {\n"
+        "        result.payouts[p.id] = share + (i < ctx.pot - share * humans.length ? 1 : 0);\n"
+        "      });\n"
+        "    }\n"
+        "    return result;\n"
+        "  },\n"
+        "  computerMove(state, playerId, ctx) { return {add: 1}; },\n"
+        "  randomMove(state, playerId, ctx) { return {add: 1}; },\n"
+        "  viewFor(state, playerId, ctx) { return state; },\n"
+        "};"
+    )
+
+
+SERVER_CODE = _server_code(2)
+SERVER_CODE_V2 = _server_code(3)
 CLIENT_CODE = "<div>client</div>"
 
 
@@ -65,10 +97,10 @@ def test_patch_server_code_and_client_code(api: Api):
 
     changed = api.ok(
         "PATCH", f"/games/{game['id']}", as_user=owner,
-        json={"server_code": "const game = {};"},
+        json={"server_code": SERVER_CODE_V2},
     )
     assert changed["version"] == 2
-    assert changed["server_code"] == "const game = {};"
+    assert changed["server_code"] == SERVER_CODE_V2
 
     # A patch that doesn't mention server_code leaves it alone.
     redescribed = api.ok(
@@ -76,7 +108,7 @@ def test_patch_server_code_and_client_code(api: Api):
         json={"description": "A new description"},
     )
     assert redescribed["version"] == 3
-    assert redescribed["server_code"] == "const game = {};"
+    assert redescribed["server_code"] == SERVER_CODE_V2
 
     new_client = api.ok(
         "PATCH", f"/games/{game['id']}", as_user=owner,
@@ -85,7 +117,7 @@ def test_patch_server_code_and_client_code(api: Api):
     assert new_client["version"] == 4
     assert new_client["code"] == "<div>new</div>"
     assert new_client["client_code"] == "<div>new</div>"
-    assert new_client["server_code"] == "const game = {};"
+    assert new_client["server_code"] == SERVER_CODE_V2
 
 
 def test_draft_publish_carries_server_code(api: Api):
@@ -105,7 +137,7 @@ def test_draft_publish_carries_server_code(api: Api):
     revised = api.ok(
         "PUT", f"/game-drafts/{draft['id']}", as_user=owner,
         json={"name": "Drafted", "allowed_player_counts": [2],
-              "code": CLIENT_CODE, "server_code": "const game = {v: 2};",
+              "code": CLIENT_CODE, "server_code": SERVER_CODE_V2,
               "expected_revision": draft["revision"]},
     )
     republished = api.ok(
@@ -113,7 +145,7 @@ def test_draft_publish_carries_server_code(api: Api):
         json={"expected_revision": revised["revision"]},
     )
     assert republished["version"] == 2
-    assert republished["server_code"] == "const game = {v: 2};"
+    assert republished["server_code"] == SERVER_CODE_V2
 
 
 def test_match_max_loss_seed_and_player_ids(api: Api):

@@ -24,6 +24,7 @@ from game_platform.models import (
     EndReason,
     Game,
     GameDraft,
+    GameTestSeeds,
     GameVersionError,
     Invite,
     InviteAcceptance,
@@ -36,6 +37,7 @@ from game_platform.models import (
     User,
     WebPushSubscription,
 )
+from game_platform.game_testing import GameTestReport, TestFailure
 from game_platform.i18n import LOCALE_CODES, Locale, normalize_locale
 from game_platform.service import AllData
 
@@ -492,6 +494,64 @@ class GameOut(GameSummaryOut):
         )
 
 
+class GameTestRequest(_Request):
+    """Random-walk tests of server code that may not be saved yet
+    (POST /games/test, v2 Game API). [game_id] optionally names the game
+    or draft the code belongs to, so its failed seeds are replayed first
+    and this run's failures are stored back on it."""
+
+    server_code: str
+    allowed_player_counts: PlayerCounts
+    allows_leave_mid_match: bool = False
+    allows_join_mid_match: bool = False
+    game_id: str | None = None
+
+
+class GameTestFailureOut(BaseModel):
+    function: str
+    message: str
+    # The seed of the walk that failed; replaying it reproduces the walk.
+    seed: int
+    player_count: int
+    move_number: int
+    state: JsonValue = None
+    player_id: str | None = None
+    move: JsonValue = None
+    last_moves: list[JsonValue] = []
+
+    @classmethod
+    def of(cls, failure: TestFailure) -> "GameTestFailureOut":
+        return cls(
+            function=failure.function,
+            message=failure.message,
+            seed=failure.seed,
+            player_count=failure.player_count,
+            move_number=failure.move_number,
+            state=failure.state,
+            player_id=failure.player_id,
+            move=failure.move,
+            last_moves=list(failure.last_moves),
+        )
+
+
+class GameTestOut(BaseModel):
+    passed: bool
+    walks_completed: int
+    moves_made: int
+    too_slow: bool
+    failures: list[GameTestFailureOut] = []
+
+    @classmethod
+    def of(cls, report: GameTestReport) -> "GameTestOut":
+        return cls(
+            passed=report.passed,
+            walks_completed=report.walks_completed,
+            moves_made=report.moves_made,
+            too_slow=report.too_slow,
+            failures=[GameTestFailureOut.of(f) for f in report.failures],
+        )
+
+
 class GameDraftContent(_Request):
     # Incomplete working copies can be saved; publication validates completeness.
     name: Annotated[str, StringConstraints(max_length=200)] = ""
@@ -832,6 +892,17 @@ class GameVersionErrorOut(BaseModel):
         )
 
 
+class GameTestSeedsOut(BaseModel):
+    """The failed random-walk test seeds stored on a game (v2 Game API)."""
+
+    game_id: str
+    seeds: list[int] = []
+
+    @classmethod
+    def of(cls, record: GameTestSeeds) -> "GameTestSeedsOut":
+        return cls(game_id=record.game_id, seeds=list(record.seeds))
+
+
 class AllDataOut(BaseModel):
     users: list[UserWithPasswordOut]
     # Every version of every game, including deleted games.
@@ -839,6 +910,7 @@ class AllDataOut(BaseModel):
     matches: list[MatchDetailOut]
     agent_conversations: list[AgentConversationOut] = []
     game_version_errors: list[GameVersionErrorOut] = []
+    game_test_seeds: list[GameTestSeedsOut] = []
 
     @classmethod
     def of(cls, data: AllData) -> "AllDataOut":
@@ -852,6 +924,9 @@ class AllDataOut(BaseModel):
             ],
             game_version_errors=[
                 GameVersionErrorOut.of(error) for error in data.game_version_errors
+            ],
+            game_test_seeds=[
+                GameTestSeedsOut.of(record) for record in data.game_test_seeds
             ],
         )
 

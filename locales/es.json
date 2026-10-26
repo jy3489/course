@@ -36,6 +36,7 @@
   "error.leave_preview_v2_only": "solo un juego del lado del servidor (v2) tiene una vista previa de salida",
   "error.no_leave_to_confirm": "no tienes ninguna salida que confirmar; previsualízala primero con maybeLeave",
   "error.leave_preview_stale": "la partida cambió desde que se previsualizó esta salida",
+  "error.server_code_failed_tests": "el código del servidor del juego no pasó sus pruebas: {failure} (semilla {seed}); ejecuta POST /games/test para ver el informe completo",
   "error.match_not_ongoing": "la partida no está en curso",
   "error.match_already_started": "la partida ya ha comenzado",
   "error.match_full": "la partida está llena",

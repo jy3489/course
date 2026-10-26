@@ -25,6 +25,7 @@ from game_platform.models import (
     Game,
     GameDraft,
     GameRules,
+    GameTestSeeds,
     GameVersionError,
     Invite,
     InviteAcceptance,
@@ -39,6 +40,7 @@ from game_platform.models import (
     WebPushSubscription,
 )
 from game_platform.game_logic import GameLogic, GameLogicError, InvalidMoveError
+from game_platform.game_testing import GameTestReport, test_server_code
 from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
 
@@ -65,6 +67,8 @@ class AllData:
     agent_conversations: list[AgentConversation] = ()
     # Server-code failures recorded on game versions (v2 Game API), admin-only.
     game_version_errors: list[GameVersionError] = ()
+    # Failed random-walk test seeds per game (v2 Game API), admin-only.
+    game_test_seeds: list[GameTestSeeds] = ()
 
 
 class PlatformError(Exception):
@@ -120,6 +124,10 @@ SPEED_TURN_SECONDS: Final = (60, 180, 600)
 # a playerLeft may price its payout with ctx.estimateWinChance, whose
 # Monte-Carlo walks take about a second.
 PLAYER_LEFT_TIME_LIMIT_SECONDS: Final = 2.0
+
+# How many failed random-walk test seeds are kept per game and replayed
+# first on the next test run (regression seeds, Phase 5).
+MAX_STORED_TEST_SEEDS: Final = 20
 
 # "Leave this field unchanged" for update calls, for fields where None is a
 # real value of its own (a game whose server code was removed has none).
@@ -902,6 +910,10 @@ class GamePlatform:
             if current is None:
                 if draft.base_version != 0:
                     raise ConflictError("published game is no longer available")
+                if draft.server_code:
+                    # A new game's server code must pass its tests before
+                    # its first version can be published (Phase 5 gate).
+                    self._gate_server_code(draft.id, draft.server_code, draft.rules)
                 game = Game(
                     id=draft.id, version=1, owner_user_id=caller_id,
                     name=draft.name.strip(), description=draft.description,
@@ -1063,6 +1075,13 @@ class GamePlatform:
             )
             if updated == game:
                 return game
+            if updated.server_code and (
+                updated.server_code != game.server_code
+                or updated.rules != game.rules
+            ):
+                # New or re-ruled server code must pass its tests before
+                # the new version is published (Phase 5 gate).
+                self._gate_server_code(game_id, updated.server_code, updated.rules)
             updated = replace(
                 updated, version=game.version + 1, updated_at=self._clock()
             )
@@ -1448,6 +1467,60 @@ class GamePlatform:
 
     # Server-side game logic (v2 Game API, docs/server-side-game-api.md).
     # Everything in this section runs with the platform lock held.
+
+    def test_game_code(
+        self,
+        *,
+        server_code: str,
+        rules: GameRules,
+        game_id: str | None = None,
+    ) -> GameTestReport:
+        """Runs the random-walk tester on server code that may not be
+        saved yet (POST /games/test: the builder and the AI fix loop).
+        When [game_id] names a game or draft, its stored failed seeds are
+        replayed first and the run's failed seeds replace them."""
+        with self._lock:
+            return self._run_game_tests(
+                server_code=server_code, rules=rules, game_id=game_id
+            )
+
+    def _run_game_tests(
+        self, *, server_code: str, rules: GameRules, game_id: str | None
+    ) -> GameTestReport:
+        stored = (
+            self._store.get_game_test_seeds(game_id) if game_id else None
+        )
+        report = test_server_code(
+            server_code,
+            rules=rules,
+            regression_seeds=stored.seeds if stored else (),
+        )
+        if game_id:
+            self._store.put_game_test_seeds(
+                GameTestSeeds(
+                    game_id=game_id,
+                    seeds=report.failed_seeds[:MAX_STORED_TEST_SEEDS],
+                )
+            )
+        return report
+
+    def _gate_server_code(
+        self, game_id: str, server_code: str, rules: GameRules
+    ) -> None:
+        """The publish gate (Phase 5): server code about to be published
+        must pass the random-walk tests, or publishing is refused and the
+        version stays a draft the author can keep fixing."""
+        report = self._run_game_tests(
+            server_code=server_code, rules=rules, game_id=game_id
+        )
+        if report.passed:
+            return
+        first = report.failures[0]
+        summary = f"{first.function}: {first.message.splitlines()[0][:160]}"
+        raise InvalidRequestError(
+            f"the game's server code failed its tests: {summary} "
+            f"(seed {first.seed}); run POST /games/test for the full report"
+        )
 
     def _logic_for(self, game: Game) -> GameLogic:
         key = (game.id, game.version)
@@ -2879,6 +2952,7 @@ class GamePlatform:
                         game_id=game.id, version=game.version
                     )
                 ],
+                game_test_seeds=self._store.list_game_test_seeds(),
             )
 
     def stats(self) -> dict[str, JsonValue]:
