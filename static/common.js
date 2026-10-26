@@ -212,7 +212,9 @@ function fitGameViewport() {
 }
 
 class GameFrame {
-  /** [onMakeMove({new_state, next_turn_player_indices})] is called for valid make_move messages. */
+  /** [onMakeMove] is called for valid make_move messages: ({new_state,
+   * next_turn_player_indices}) for a v1 game, ({move}) for a v2 game whose
+   * server code validates and applies the move. */
   constructor(container, onMakeMove, onBadMessage) {
     this.container = container;
     this.onMakeMove = onMakeMove;
@@ -328,6 +330,11 @@ class GameFrame {
       this.onBadMessage(`ignored a message that isn't make_move: ${JSON.stringify(message)}`);
       return;
     }
+    // A v2 game sends only its move; the server validates and applies it.
+    if ("move" in message) {
+      this.onMakeMove({ move: message.move });
+      return;
+    }
     let next = message.next_turn_player_indices;
     // Games written before turn sets send a single index; wrap it into a set.
     if (next === undefined && Number.isInteger(message.next_turn_player_index)) {
@@ -345,9 +352,13 @@ class GameFrame {
   }
 }
 
-/** The state_changed message for a viewer; see README.md for each field. */
-function stateChangedMessage({ state, players, turn, status, endReason, moveCount, mySeat, actingFor }) {
-  return {
+/** The state_changed message for a viewer; see README.md for each field.
+ * For a v2 game, [view] is the viewer's viewFor view of the match; the
+ * client renders it instead of [state] (which then carries the same view
+ * for portal matches, and the full state only in the builder's emulator,
+ * where the author may see everything). */
+function stateChangedMessage({ state, players, turn, status, endReason, moveCount, mySeat, actingFor, view }) {
+  const message = {
     type: "state_changed",
     state,
     players,
@@ -360,6 +371,8 @@ function stateChangedMessage({ state, players, turn, status, endReason, moveCoun
     my_player_index: mySeat,
     acting_for_player_index: actingFor,
   };
+  if (view !== undefined) message.view = view;
+  return message;
 }
 
 function statusClass(status) {

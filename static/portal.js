@@ -826,7 +826,9 @@ function renderMatch() {
     else if (match.resumeTurn) actions.push(actionButton("Resume practice",async()=>{offline.resumePractice(match.id);state.lastSent=null;}));
     secondaryActions.push(actionButton("Remove practice from list",async()=>{await portalRequest("DELETE",`/matches/${match.id}`);selectMatch(null);},{danger:true,confirm:"Archive this practice and remove it from your list?"}));
   }
-  if (game?.code)
+  // Practice plays locally in the browser, which a v2 game can't do: its
+  // logic runs on the server. The button is only offered for v1 games.
+  if (game?.code && !game.server_code)
     secondaryActions.push(
       actionButton("Start a new practice", async () => {
         const practiceMatch = offline.practice(game, $("practice-mode").value);
@@ -1145,10 +1147,18 @@ async function syncGame() {
         : null;
   const replay = state.replay?.id === match.id ? state.replay : null;
   const view = replay ? {...match, state: replay.move.new_state, turn_of_player_indices: replay.move.next_turn_player_indices, move_count: replay.index, status: replay.move.next_turn_player_indices === null ? "over" : "ongoing", end_reason: replay.move.next_turn_player_indices === null ? "finished" : null} : match;
+  const currentGame = gameOf(match.game_id, match.game_version);
   const message = stateChangedMessage({
     state: view.state,
+    // A v2 client renders its viewFor view, which is what [state] holds
+    // for a participant; spectators get no view.
+    view:
+      currentGame && currentGame.server_code
+        ? (view.state ?? null)
+        : undefined,
     players: match.players.map((player) => ({
       player_index: player.player_index,
+      player_id: player.id,
       kind: player.kind,
       name: playerName(player),
     })),
@@ -1179,6 +1189,19 @@ async function onMakeMove(move) {
       const match = state.match,
         user = me();
       if (match?.id !== receivedFor.id) return;
+      if ("move" in move) {
+        // A v2 game sent only its move: the server validates and applies
+        // it, so the client checks nothing but whose turn it is.
+        if (!match || !user || actingFor(match, user.id) === null)
+          throw new Error("It isn't your turn.");
+        state.match = offline.enqueue(match, {
+          move: move.move,
+          expected_move_count: match.move_count,
+        });
+        state.lastSent = null;
+        await offline.sync();
+        return;
+      }
       const next = move.next_turn_player_indices;
       const seats = new Set(match.players.map(player=>player.player_index));
       if (!(next === null || (Array.isArray(next) && next.length && new Set(next).size === next.length && next.every(seat=>Number.isInteger(seat)&&seats.has(seat)))))
@@ -1208,6 +1231,11 @@ async function practice() {
       "GET",
       `/games/${game.id}/versions/${game.version}`,
     );
+    if (full.server_code) {
+      $("create-message").textContent =
+        "Practice isn't available for server-side games: their logic runs on the server. Create a match instead.";
+      return;
+    }
     const match = offline.practice(full, $("practice-mode").value);
     state.gameCache.set(`${full.id}@${full.version}`, full);
     selectMatch(match.id);

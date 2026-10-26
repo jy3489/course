@@ -129,6 +129,41 @@ PLAYER_LEFT_TIME_LIMIT_SECONDS: Final = 2.0
 # first on the next test run (regression seeds, Phase 5).
 MAX_STORED_TEST_SEEDS: Final = 20
 
+
+def _emulator_roster(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The players of an emulated match, with the ids real matches use:
+    human-1, human-2, ... and computer-1, ... in seat order."""
+    roster: list[dict[str, Any]] = []
+    humans = 0
+    computers = 0
+    for player in players:
+        if player.get("kind") == "computer":
+            computers += 1
+            player_id = f"computer-{computers}"
+        else:
+            humans += 1
+            player_id = f"human-{humans}"
+        roster.append(
+            {
+                "id": player_id,
+                "kind": player.get("kind", "human"),
+                "display_name": player.get("name", ""),
+                "picture_url": "",
+                "max_loss": int(player.get("max_loss", 0)),
+            }
+        )
+    return roster
+
+
+def _emulator_ctx(
+    roster: list[dict[str, Any]], pot: int, move_count: int
+) -> dict[str, Any]:
+    return {
+        "players": [dict(player) for player in roster],
+        "pot": pot,
+        "move_count": move_count,
+    }
+
 # "Leave this field unchanged" for update calls, for fields where None is a
 # real value of its own (a game whose server code was removed has none).
 UNSET: Final = object()
@@ -1521,6 +1556,189 @@ class GamePlatform:
             f"the game's server code failed its tests: {summary} "
             f"(seed {first.seed}); run POST /games/test for the full report"
         )
+
+    # The builder's emulator (Phase 6): plays unsaved server code the way
+    # a match would — newMatch, the human's moves, computer moves in
+    # between — without storing anything. Game errors come back in the
+    # result's "error" field, verbatim, never as an exception.
+
+    def emulator_reset(
+        self, *, server_code: str, players: list[dict[str, Any]], seed: int
+    ) -> dict[str, Any]:
+        with self._lock:
+            logic = GameLogic(server_code)
+            roster = _emulator_roster(players)
+            pot = sum(player["max_loss"] for player in roster)
+            try:
+                result = logic.call(
+                    "newMatch",
+                    ctx=_emulator_ctx(roster, pot, 0),
+                    seed=seed % (2**32),
+                    now=self._clock(),
+                )
+            except (GameLogicError, InvalidMoveError) as error:
+                return self._emulator_out(
+                    roster, pot=pot, state=None, turn=None, move_count=0,
+                    error=str(error),
+                )
+            return self._emulator_advance(
+                logic, roster=roster, pot=pot, state=result.get("state"),
+                turn=result.get("turn"), move_count=0, seed=seed,
+            )
+
+    def emulator_act(
+        self,
+        *,
+        server_code: str,
+        players: list[dict[str, Any]],
+        seed: int,
+        state: Any,
+        turn: list[str] | None,
+        move_count: int,
+        player_id: str,
+        move: Any,
+    ) -> dict[str, Any]:
+        with self._lock:
+            logic = GameLogic(server_code)
+            roster = _emulator_roster(players)
+            pot = sum(player["max_loss"] for player in roster)
+            if turn is None:
+                return self._emulator_out(
+                    roster, pot=pot, state=state, turn=None,
+                    move_count=move_count, error="the match is over",
+                )
+            if player_id not in turn:
+                return self._emulator_out(
+                    roster, pot=pot, state=state, turn=turn,
+                    move_count=move_count,
+                    error=f"it is not {player_id}'s turn",
+                )
+            try:
+                result = logic.call(
+                    "applyMove",
+                    state,
+                    player_id,
+                    move,
+                    ctx=_emulator_ctx(roster, pot, move_count),
+                    seed=(seed + move_count) % (2**32),
+                    now=self._clock(),
+                )
+            except (GameLogicError, InvalidMoveError) as error:
+                return self._emulator_out(
+                    roster, pot=pot, state=state, turn=turn,
+                    move_count=move_count, error=str(error),
+                )
+            move_count += 1
+            if result.get("turn") is None:
+                return self._emulator_advance(
+                    logic, roster=roster, pot=pot, state=result.get("state"),
+                    turn=None, move_count=move_count, seed=seed,
+                    payouts=result.get("payouts"),
+                )
+            return self._emulator_advance(
+                logic, roster=roster, pot=pot, state=result.get("state"),
+                turn=result.get("turn"), move_count=move_count, seed=seed,
+            )
+
+    def _emulator_advance(
+        self,
+        logic: GameLogic,
+        *,
+        roster: list[dict[str, Any]],
+        pot: int,
+        state: Any,
+        turn: list[str] | None,
+        move_count: int,
+        seed: int,
+        payouts: Any = None,
+    ) -> dict[str, Any]:
+        """Moves computer players until a human is to move (or the match
+        ends), then computes every player's view."""
+        error: str | None = None
+        iterations = 0
+        while turn:
+            mover = next((p for p in roster if p["id"] == turn[0]), None)
+            if mover is None or mover["kind"] != "computer":
+                break
+            iterations += 1
+            if iterations > 1000:
+                error = "the computer players did not stop moving (1000 moves)"
+                break
+            try:
+                move = logic.call(
+                    "computerMove",
+                    state,
+                    mover["id"],
+                    ctx=_emulator_ctx(roster, pot, move_count),
+                    seed=(seed + move_count) % (2**32),
+                    now=self._clock(),
+                )
+                result = logic.call(
+                    "applyMove",
+                    state,
+                    mover["id"],
+                    move,
+                    ctx=_emulator_ctx(roster, pot, move_count),
+                    seed=(seed + move_count) % (2**32),
+                    now=self._clock(),
+                )
+            except (GameLogicError, InvalidMoveError) as exc:
+                error = str(exc)
+                break
+            state, turn = result.get("state"), result.get("turn")
+            move_count += 1
+            if turn is None:
+                payouts = result.get("payouts")
+        views: dict[str, Any] = {}
+        if state is not None and error is None:
+            try:
+                for player in roster:
+                    views[player["id"]] = logic.call(
+                        "viewFor",
+                        state,
+                        player["id"],
+                        ctx=_emulator_ctx(roster, pot, move_count),
+                        seed=(seed + move_count) % (2**32),
+                        now=self._clock(),
+                    )
+            except (GameLogicError, InvalidMoveError) as exc:
+                error = str(exc)
+        return self._emulator_out(
+            roster, pot=pot, state=state, turn=turn, move_count=move_count,
+            payouts=payouts, views=views, error=error,
+        )
+
+    def _emulator_out(
+        self,
+        roster: list[dict[str, Any]],
+        *,
+        pot: int,
+        state: Any,
+        turn: list[str] | None,
+        move_count: int,
+        payouts: Any = None,
+        views: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "state": state,
+            "views": views or {},
+            "players": [
+                {
+                    "id": player["id"],
+                    "kind": player["kind"],
+                    "name": player["display_name"],
+                    "max_loss": player["max_loss"],
+                }
+                for player in roster
+            ],
+            "turn": turn,
+            "status": "over" if turn is None else "ongoing",
+            "move_count": move_count,
+            "pot": pot,
+            "payouts": payouts,
+            "error": error,
+        }
 
     def _logic_for(self, game: Game) -> GameLogic:
         key = (game.id, game.version)

@@ -136,6 +136,7 @@ def main() -> None:
             email_sender=make_email_sender(config.auth.email),
             cors_allow_origins=config.server.cors_allow_origins,
             public_base_url=config.server.public_base_url,
+            ai_max_fix_attempts=config.ai_max_fix_attempts,
         )
         uvicorn.run(
             app,

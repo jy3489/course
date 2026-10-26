@@ -139,6 +139,10 @@ class Config(_Section):
     # (server-side game API), so humans can watch the game unfold. 0 moves
     # immediately.
     computer_move_delay_seconds: float = 0.6
+    # How many times the game-building agent may regenerate a game's server
+    # code after it fails its random-walk tests, feeding each failure report
+    # back to the model (server-side game API). 0 disables the fix loop.
+    ai_max_fix_attempts: Annotated[int, Field(ge=0)] = 3
 
     @model_validator(mode="after")
     def _require_master_password_for_hostnames(self) -> "Config":

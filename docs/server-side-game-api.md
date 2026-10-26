@@ -153,6 +153,7 @@ client-computed `new_state` / `next_turn_player_indices`, and
 |---|---|---|
 | `POST /games`, `PATCH /games/{id}`, drafts, publishing | `code` | Also `server_code` (as `client_code` + `server_code`). Draft publishing and `PATCH` updates that change the server code (or its rules) run the tests first and are refused if they fail |
 | `POST /games/test` | — | Runs the random-walk/fuzz tests on unsaved code, for the builder and the AI fix loop |
+| `POST /emulator/reset`, `POST /emulator/act` | — | Play unsaved server code the way a match would (the builder's test play): reset runs `newMatch`, act applies one human move; both advance computer players and return the full state, every player's view, and any game error verbatim |
 | `POST /matches` | `{game_id, num_computer_opponents, private?}` | Also `max_loss` (Phase 3) |
 | `POST /matches/{id}/join`, `POST /invites/{token}/accept` | Take a seat | Also deduct `max_loss` (409 if the balance is too low); mid-match the server calls `playerJoined` (Phase 3/4) |
 | `POST /matches/{id}/leave` | A computer takes over the seat, or the match ends | Before the start, a refund; mid-match, `playerLeft` |
@@ -211,6 +212,35 @@ player count and move number, and the last few moves; failed seeds are
 stored on the game and replayed first on the next run. The builder's AI
 fix loop consumes the same report
 (up to `ai_max_fix_attempts`, default 3).
+
+## The builder, the emulator, and the client protocol (Phase 6)
+
+The building agent writes both parts of a game: its reply JSON gains a
+`server_code` field next to `code`, and its prompt teaches the contract
+above. After a reply with server code, the server runs the random-walk
+tests on it; a failure report (function, error, exact arguments, seed) is
+fed back and the model regenerates, up to `ai_max_fix_attempts` times
+(default 3, in the server config). The response reports
+`server_test_passed`; code that still fails is returned with the failure
+noted, and publishing refuses it (Phase 5). Replies without `server_code`
+still parse, as client-only changes.
+
+The builder's test play runs v2 games through the emulator endpoints
+above: the client iframe receives `state_changed` with the viewer's
+`view`, and its moves go back as moves only — the same protocol the
+portal speaks for v2 matches:
+
+- `state_changed` (platform -> game) gains `view`: the viewer's `viewFor`
+  view (`null` for spectators). `players` entries gain `player_id`. A v2
+  client renders `view` and keeps no state of its own;
+  `acting_for_player_index` is only ever the viewer's own seat — the
+  server moves computers, never the client.
+- `make_move` (game -> platform) for a v2 game is `{"type": "make_move",
+  "move": ...}` — no `new_state`, no next turn; the server validates and
+  applies it.
+
+Portal practice (local, offline play) is not offered for v2 games: their
+logic runs on the server. v1 games keep the old protocol unchanged.
 
 ## Updating the existing games (Phase 7)
 

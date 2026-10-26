@@ -55,6 +55,11 @@ class PortalOffline {
     };
   }
   apply(match, body) {
+    // A v2 move ({move}) carries no resulting state: the server computes
+    // it. The optimistic copy keeps the current view until the sync lands.
+    if (!("new_state" in body)) {
+      return { ...match, move_count: body.expected_move_count + 1 };
+    }
     return {
       ...match,
       state: body.new_state,
@@ -231,11 +236,13 @@ class PortalOffline {
             const previous = history[body.expected_move_count];
             accepted =
               previous?.made_by_user_id === account.id &&
-              PortalOffline.equal(previous.new_state, body.new_state) &&
-              PortalOffline.equal(
-                previous.next_turn_player_indices,
-                body.next_turn_player_indices,
-              );
+              ("move" in body
+                ? PortalOffline.equal(previous.move, body.move)
+                : PortalOffline.equal(previous.new_state, body.new_state) &&
+                  PortalOffline.equal(
+                    previous.next_turn_player_indices,
+                    body.next_turn_player_indices,
+                  ));
             if (!accepted) {
               this.conflict(
                 id,

@@ -1,7 +1,7 @@
 // A playable workspace with automatic working-copy saves and public version releases.
 "use strict";
 const $ = id => document.getElementById(id);
-const EMPTY = {name:"",description:"",code:"",allowed_player_counts:[2],allows_leave_mid_match:false,allows_join_mid_match:false};
+const EMPTY = {name:"",description:"",code:"",server_code:"",allowed_player_counts:[2],allows_leave_mid_match:false,allows_join_mid_match:false};
 const content = value => Object.fromEntries(Object.keys(EMPTY).map(key => [key, value[key] ?? EMPTY[key]]));
 const copy = value => JSON.parse(JSON.stringify(value));
 const state = {games:[],drafts:[],starters:[],starterLoading:false,starterRequest:0,selectedId:null,editor:copy(EMPTY),baseline:null,session:0,
@@ -188,6 +188,8 @@ function renderStatus() {
   $("agent-stop").hidden=!state.agentSending;
   renderStarters();
   $("game-summary").textContent=state.editor.description;
+  $("server-code-box").hidden=!state.editor.server_code;
+  $("server-code").textContent=state.editor.server_code || "";
   $("game-version").textContent=game ? "v"+game.version:"First version";
   $("play-game").hidden=!game || game.published===false;
   if (game) $("play-game").href="/portal#game="+encodeURIComponent(game.id);
@@ -242,13 +244,53 @@ function startTest() {
   const [countText,mode]=$("play-mode").value.split(":");const count=Number(countText);
   if (!state.editor.allowed_player_counts.includes(count)) return;
   const players=Array.from({length:count},(_,seat)=>({player_index:seat,kind:mode==="computer"&&seat>0?"computer":"human",name:mode==="computer"&&seat>0?"Computer "+seat:"Player "+(seat+1)}));
+  // A game with server code is test-played through the emulator: the
+  // server runs its logic (see /emulator/reset and /emulator/act).
+  if (state.editor.server_code) { startEmulatorTest(players, mode); return; }
   state.test={code:state.editor.code,players,moves:[],state:null,turn:[0],status:"ongoing",awaiting:false,paused:false,redo:[]};
   frame.load(state.editor.code);sendTestState();
+}
+
+async function startEmulatorTest(players, mode) {
+  const test={v2:true,code:state.editor.code,serverCode:state.editor.server_code,mode,players,moves:[],redo:[],status:"ongoing",awaiting:false,paused:false,stepping:false,
+    seed:Math.floor(Math.random()*2**31),state:null,turnIds:[],views:{},moveCount:0,payouts:null};
+  state.test=test;
+  frame.load(state.editor.code);
+  try {
+    const reply=await apiRequest("POST","/emulator/reset",{user:me(),body:{
+      server_code:test.serverCode,
+      players:players.map(p=>({kind:p.kind,name:p.name,max_loss:0})),
+      seed:test.seed,
+    }});
+    if (state.test!==test) return;
+    // The server assigned the player ids (human-1..., computer-1...).
+    test.players=reply.players.map((p,seat)=>({player_index:seat,player_id:p.id,kind:p.kind,name:p.name}));
+    applyEmulatorReply(test,reply);
+    if (reply.error) testLog(`newMatch failed: ${reply.error}`,true);
+  } catch (error) {
+    if (state.test===test) testLog(`couldn't start the test: ${error.message}`,true);
+  }
+  sendTestState();
+}
+
+function applyEmulatorReply(test, reply) {
+  test.state=reply.state; test.turnIds=reply.turn; test.views=reply.views;
+  test.moveCount=reply.move_count; test.status=reply.status; test.payouts=reply.payouts;
+}
+
+function emulatorSnapshot(test) {
+  return {state:test.state,turnIds:test.turnIds,views:test.views,moveCount:test.moveCount,status:test.status,payouts:test.payouts};
+}
+
+function restoreEmulatorSnapshot(test, snapshot) {
+  test.state=snapshot.state; test.turnIds=snapshot.turnIds; test.views=snapshot.views;
+  test.moveCount=snapshot.moveCount; test.status=snapshot.status; test.payouts=snapshot.payouts;
 }
 function stopTest(){state.test=null;frame.unload();$("test-status").textContent="";}
 function setMessage(id,text,kind="") {$(id).textContent=text;$(id).className="message "+kind;}
 function sendTestState() {
   const test = state.test;
+  if (test?.v2) { sendEmulatorState(); return; }
   const firstTurn = test.turn === null ? null : test.turn[0];
   const turnSeat = firstTurn === null ? null : test.players[firstTurn];
   const message = stateChangedMessage({
@@ -277,8 +319,76 @@ function sendTestState() {
   testLog(`sent state_changed: move_count=${test.moves.length} turn=${JSON.stringify(test.turn)} status=${test.status}`);
 }
 
+function sendEmulatorState() {
+  const test = state.test;
+  const turnSeats = test.turnIds === null ? [] : test.turnIds.map(id => test.players.find(p => p.player_id === id)).filter(Boolean);
+  // The person at the screen: seat 0 against computers; in pass-and-play,
+  // whichever human is to move.
+  const viewer = test.mode === "computer" ? test.players[0] : (turnSeats.find(p => p.kind === "human") ?? test.players[0]);
+  const actingFor = test.status === "ongoing" && !test.paused && viewer && test.turnIds !== null && test.turnIds.includes(viewer.player_id)
+    ? viewer.player_index : null;
+  const message = stateChangedMessage({
+    state: test.state,
+    view: viewer ? (test.views[viewer.player_id] ?? null) : null,
+    players: test.players,
+    turn: test.turnIds === null ? null : turnSeats.map(p => p.player_index),
+    status: test.status,
+    endReason: test.status === "over" ? "finished" : null,
+    moveCount: test.moveCount,
+    mySeat: viewer ? viewer.player_index : null,
+    actingFor,
+  });
+  message.token_pot = 0;
+  test.awaiting = actingFor !== null;
+  $("pause-test").textContent = test.paused ? I18n.t("ui.builder.resume", {}, "Resume") : I18n.t("ui.builder.pause", {}, "Pause");
+  $("step-test").disabled = !test.paused || test.status === "over";
+  $("undo-move").disabled = !test.moves.length;
+  $("redo-move").disabled = !test.redo?.length;
+  $("test-state").textContent = JSON.stringify(test.state, null, 2);
+  frame.send(message);
+  setMessage("test-status",
+    test.status === "over"
+      ? `The game ended after ${test.moveCount} moves.`
+      : `${test.paused ? "Paused · " : ""}Move ${test.moveCount + 1}: ${turnSeats.map(p => p.name).join(", ")}'s turn.`,
+    test.status === "over" ? "ok" : "");
+  testLog(`sent state_changed (emulator): move_count=${test.moveCount} turn=${JSON.stringify(test.turnIds)} status=${test.status}`);
+}
+
+async function onEmulatorMove(move) {
+  const test = state.test;
+  if (!test || !test.awaiting) {
+    testLog("ignored make_move: no move is expected now (the game already moved, or it's over)", true);
+    return;
+  }
+  const viewer = test.mode === "computer" ? test.players[0] : test.players.find(p => p.player_id === test.turnIds[0]);
+  test.awaiting = false;
+  try {
+    const reply = await apiRequest("POST", "/emulator/act", {user: me(), body: {
+      server_code: test.serverCode,
+      players: test.players.map(p => ({kind: p.kind, name: p.name, max_loss: 0})),
+      seed: test.seed, state: test.state, turn: test.turnIds, move_count: test.moveCount,
+      player_id: viewer.player_id, move: move.move,
+    }});
+    if (state.test !== test) return;
+    if (reply.error) {
+      testLog(`move rejected: ${reply.error}`, true);
+      sendTestState();
+      return;
+    }
+    test.moves.push(emulatorSnapshot(test));
+    test.redo = [];
+    applyEmulatorReply(test, reply);
+    if (test.stepping) { test.paused = true; test.stepping = false; }
+    testLog(`applied move by ${viewer.name}: move_count=${test.moveCount}`);
+  } catch (error) {
+    if (state.test === test) testLog(`couldn't apply the move: ${error.message}`, true);
+  }
+  sendTestState();
+}
+
 function onTestMove(move) {
   const test = state.test;
+  if (test?.v2) { onEmulatorMove(move); return; }
   if (!test || !test.awaiting) {
     testLog("ignored make_move: no move is expected now (the game already moved, or it's over)", true);
     return;
@@ -306,6 +416,15 @@ function onTestMove(move) {
 function undoTestMove() {
   const test = state.test;
   if (!test || test.moves.length === 0) return;
+  if (test.v2) {
+    // Emulator snapshots carry the whole match, so undo is a restore.
+    test.redo.push(emulatorSnapshot(test));
+    restoreEmulatorSnapshot(test, test.moves.pop());
+    test.paused = true;
+    testLog("undid the last move");
+    sendTestState();
+    return;
+  }
   (test.redo ||= []).push(test.moves.pop());
   test.paused = true;
   const last = test.moves[test.moves.length - 1];
@@ -320,6 +439,13 @@ function undoTestMove() {
 function redoTestMove() {
   const test = state.test;
   if (!test?.redo?.length) return;
+  if (test.v2) {
+    test.moves.push(emulatorSnapshot(test));
+    restoreEmulatorSnapshot(test, test.redo.pop());
+    test.paused = true;
+    sendTestState();
+    return;
+  }
   const move = test.redo.pop();test.moves.push(move);
   test.state = move.new_state;test.turn = move.next;
   test.status = move.next === null ? "over" : "ongoing";test.paused = true;
@@ -410,10 +536,11 @@ async function sendAgentMessage() {
     const reply=await requestAgentReply(user,{game_name:values.name,game_description:values.description,
       allowed_player_counts:values.allowed_player_counts,player_count_mode:"auto",
       allows_leave_mid_match:values.allows_leave_mid_match,allows_join_mid_match:values.allows_join_mid_match,
-      code:values.code,messages,game_id:gameId},isCurrent,request);
+      code:values.code,server_code:values.server_code,messages,game_id:gameId},isCurrent,request);
     if (!isCurrent()||request.cancelled) return;
     state.messages=[...messages,{role:"assistant",content:reply.message}];
     agentLog("assistant",reply.message);
+    if (reply.server_test_passed === false) agentLog("system","The AI's server code still fails its random-walk tests, so it can't be published yet. Ask the AI to fix the tests.");
     if (reply.code) {
       const counts=reply.allowed_player_counts;
       if (!Array.isArray(counts)||!counts.length||new Set(counts).size!==counts.length||counts.some(n=>!Number.isInteger(n)||n<1||n>10)) throw new Error("The AI did not return valid player counts. Please ask it to try again.");
@@ -422,7 +549,7 @@ async function sendAgentMessage() {
         agentLog("system","The game changed while the AI was working, so this update wasn't applied. Ask again using the latest game.");
       } else {
         state.undo.push(editorValues());state.undo=state.undo.slice(-8);
-        state.editor={...state.editor,code:reply.code,allowed_player_counts:counts,
+        state.editor={...state.editor,code:reply.code,server_code:reply.server_code ?? state.editor.server_code,allowed_player_counts:counts,
           allows_leave_mid_match:reply.allows_leave_mid_match ?? state.editor.allows_leave_mid_match,
           allows_join_mid_match:reply.allows_join_mid_match ?? state.editor.allows_join_mid_match,
           name:reply.name || state.editor.name || input.split("\n")[0].slice(0,80),description:reply.description ?? state.editor.description};

@@ -552,6 +552,60 @@ class GameTestOut(BaseModel):
         )
 
 
+class EmulatorPlayerIn(_Request):
+    """One seat of an emulated match (the builder's test play). Ids are
+    assigned by the server: human-1, human-2, ... and computer-1, ... in
+    seat order, as in real matches."""
+
+    kind: Literal["human", "computer"]
+    name: str = ""
+    max_loss: int = 0
+
+
+class EmulatorPlayerOut(BaseModel):
+    id: str
+    kind: str
+    name: str
+    max_loss: int
+
+
+class EmulatorResetRequest(_Request):
+    """Starts an emulated match on unsaved server code (POST /emulator/reset)."""
+
+    server_code: str
+    players: Annotated[list[EmulatorPlayerIn], Field(min_length=1, max_length=10)]
+    seed: int = 0
+
+
+class EmulatorActRequest(EmulatorResetRequest):
+    """Applies one human move in an emulated match (POST /emulator/act),
+    then advances computer players until a human's turn or the end. The
+    [state], [turn] and [move_count] come from the previous emulator
+    response: the emulator itself keeps nothing."""
+
+    state: JsonValue = None
+    turn: list[str] | None = None
+    move_count: int = 0
+    player_id: str
+    move: JsonValue = None
+
+
+class EmulatorOut(BaseModel):
+    state: JsonValue = None
+    # Each player's viewFor view of [state], keyed by player id.
+    views: dict[str, JsonValue] = {}
+    players: list[EmulatorPlayerOut] = []
+    # Player ids that may move next; null when the match is over.
+    turn: list[str] | None = None
+    status: Literal["ongoing", "over"]
+    move_count: int = 0
+    pot: int = 0
+    payouts: dict[str, int] | None = None
+    # A game error (or an illegal move), shown verbatim; the state is the
+    # one from before the failed call. Null when everything worked.
+    error: str | None = None
+
+
 class GameDraftContent(_Request):
     # Incomplete working copies can be saved; publication validates completeness.
     name: Annotated[str, StringConstraints(max_length=200)] = ""
@@ -952,6 +1006,8 @@ class AgentChatRequest(_Request):
     allows_leave_mid_match: StrictBool = False
     allows_join_mid_match: StrictBool = False
     code: str = ""
+    # The game's server code (v2 Game API); "" while the game has none.
+    server_code: str = ""
     messages: Annotated[list[AgentMessage], Field(min_length=1, max_length=50)]
     # The draft (or game) being edited, when the client knows it. The exchange
     # is recorded against this id so admins can review the conversation later;
@@ -963,6 +1019,12 @@ class AgentChatResponse(BaseModel):
     message: str
     # The complete updated HTML document, or null when the code is unchanged.
     code: str | None = None
+    # The complete updated server code (v2 Game API), or null when unchanged.
+    server_code: str | None = None
+    # Whether the returned server code passed its random-walk tests (the
+    # agent retries with the failure report before giving up); null when no
+    # server code was tested this turn.
+    server_test_passed: bool | None = None
     name: str | None = None
     description: str | None = None
     # Applied with the proposed code, so solo code cannot retain a default two seats.

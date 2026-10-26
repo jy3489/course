@@ -54,5 +54,6 @@
     "ttl_seconds": 86400,
     "max_subscriptions_per_user": 10
   },
-  "computer_move_delay_seconds": 0.6
+  "computer_move_delay_seconds": 0.6,
+  "ai_max_fix_attempts": 3
 }

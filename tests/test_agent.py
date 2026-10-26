@@ -266,7 +266,7 @@ def test_chat_endpoint_uses_configured_client(
 
     seen: dict = {}
 
-    def fake_chat(client: ModelApiClient, request: AgentChatRequest):  # type: ignore[no-untyped-def]
+    def fake_chat(client: ModelApiClient, request: AgentChatRequest, **kwargs):  # type: ignore[no-untyped-def]
         seen["model"] = client.model
         assert client.enabled
         return agent_module._parse_reply(
@@ -284,6 +284,8 @@ def test_chat_endpoint_uses_configured_client(
     assert response.json() == {
         "message": "ok",
         "code": None,
+        "server_code": None,
+        "server_test_passed": None,
         "name": None,
         "description": None,
         "allowed_player_counts": None,
@@ -520,7 +522,7 @@ def test_real_endpoint_deadline_does_not_wait_for_a_blocked_model(api, monkeypat
     release = threading.Event()
     calls = []
 
-    def blocked_model(*args):
+    def blocked_model(*args, **kwargs):
         calls.append(1)
         release.wait(timeout=3)
         return routes.AgentChatResponse(message='late response')
@@ -546,7 +548,7 @@ def _use_fake_agent(api: Api, monkeypatch: pytest.MonkeyPatch, message: str = "D
     from game_platform import agent as agent_module
     from game_platform import api as api_module
 
-    def fake_chat(client: ModelApiClient, request: AgentChatRequest):  # type: ignore[no-untyped-def]
+    def fake_chat(client: ModelApiClient, request: AgentChatRequest, **kwargs):  # type: ignore[no-untyped-def]
         return agent_module._parse_reply(json.dumps({"message": message, "code": None}))
 
     monkeypatch.setattr(api_module, "chat_with_agent", fake_chat)

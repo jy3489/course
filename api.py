@@ -39,6 +39,9 @@ from game_platform.schemas import (
     GameDraftSave,
     GameDraftPublish,
     GameDraftOut,
+    EmulatorActRequest,
+    EmulatorOut,
+    EmulatorResetRequest,
     GameOut,
     GameSummaryOut,
     GameTestOut,
@@ -504,6 +507,42 @@ def test_game(
         game_id=body.game_id,
     )
     return GameTestOut.of(report)
+
+
+@router.post("/emulator/reset")
+def emulator_reset(
+    platform: Platform, caller_id: CallerId, body: EmulatorResetRequest
+) -> EmulatorOut:
+    """Starts an emulated match on unsaved server code (the builder's test
+    play): runs newMatch and advances any computer players."""
+    return EmulatorOut.model_validate(
+        platform.emulator_reset(
+            server_code=body.server_code,
+            players=[player.model_dump() for player in body.players],
+            seed=body.seed,
+        )
+    )
+
+
+@router.post("/emulator/act")
+def emulator_act(
+    platform: Platform, caller_id: CallerId, body: EmulatorActRequest
+) -> EmulatorOut:
+    """Applies one human move in an emulated match, then advances computer
+    players until a human's turn or the end. Game errors come back in the
+    response's error field, never as an HTTP error."""
+    return EmulatorOut.model_validate(
+        platform.emulator_act(
+            server_code=body.server_code,
+            players=[player.model_dump() for player in body.players],
+            seed=body.seed,
+            state=body.state,
+            turn=body.turn,
+            move_count=body.move_count,
+            player_id=body.player_id,
+            move=body.move,
+        )
+    )
 
 
 @router.get("/games")
@@ -1111,9 +1150,36 @@ async def agent_chat(
             detail="The game-building agent is not set up: no Model API key is "
             "configured on the server.",
         )
+
+    def server_tester(
+        server_code: str,
+        allowed_player_counts: list[int],
+        allows_leave_mid_match: bool,
+        allows_join_mid_match: bool,
+    ):
+        """The agent's fix loop tests generated server code with the
+        platform's random-walk tester (Phase 5), keyed to the game being
+        built so its failed seeds are replayed first."""
+        return platform.test_game_code(
+            server_code=server_code,
+            rules=GameRules(
+                allowed_player_counts=tuple(allowed_player_counts),
+                allows_leave_mid_match=allows_leave_mid_match,
+                allows_join_mid_match=allows_join_mid_match,
+            ),
+            game_id=body.game_id,
+        )
+
     try:
         response = await asyncio.wait_for(
-            run_in_threadpool(chat_with_agent, client, body), timeout=GENERATION_BUDGET_SECONDS
+            run_in_threadpool(
+                chat_with_agent,
+                client,
+                body,
+                server_tester=server_tester,
+                max_fix_attempts=request.app.state.ai_max_fix_attempts,
+            ),
+            timeout=GENERATION_BUDGET_SECONDS,
         )
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Muse did not finish within two minutes. Try a smaller game or change.") from exc
@@ -1225,6 +1291,7 @@ def create_app(
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
     public_base_url: str = "",
+    ai_max_fix_attempts: int = 3,
 ) -> FastAPI:
     """[debug_tools] adds the web pages (/portal, /builder, /admin, /console, /browse)
     and /debug/all-data, which exposes everything (including users' passwords),
@@ -1257,6 +1324,7 @@ def create_app(
     app.state.model_api_config = (
         model_api_config if model_api_config is not None else ModelApiConfig()
     )
+    app.state.ai_max_fix_attempts = ai_max_fix_attempts
     app.state.auth_config = auth_config if auth_config is not None else AuthConfig()
     app.state.push_config = push_config if push_config is not None else PushConfig()
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()
