@@ -13,6 +13,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    GameVersionError,
     Invite,
     Match,
     User,
@@ -105,6 +106,16 @@ class Store(Protocol):
 
     def delete_push_subscription_by_endpoint(self, endpoint: str) -> None: ...
 
+    def add_game_version_error(self, error: GameVersionError) -> None:
+        """Records a server-code failure on a game version (v2 Game API)."""
+        ...
+
+    def list_game_version_errors(
+        self, *, game_id: str, version: int
+    ) -> list[GameVersionError]:
+        """The recorded server-code failures of one game version, oldest first."""
+        ...
+
     def put_invite(self, invite: Invite) -> None: ...
 
     def get_invite(self, token: str) -> Invite | None: ...
@@ -138,6 +149,9 @@ class Snapshot:
     # Optional so existing data files load without a migration. Match invite links,
     # with who used them (referrals).
     invites: tuple[Invite, ...] = ()
+    # Optional so existing data files load without a migration. Server-code
+    # failures recorded on game versions (v2 Game API).
+    game_version_errors: tuple[GameVersionError, ...] = ()
 
 
 class InMemoryStore:
@@ -157,6 +171,7 @@ class InMemoryStore:
         # Secondary index, endpoint -> subscription id; endpoints are unique.
         self._push_subscription_ids_by_endpoint: dict[str, str] = {}
         self._invites: dict[str, Invite] = {}
+        self._game_version_errors: list[GameVersionError] = []
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -177,6 +192,7 @@ class InMemoryStore:
             store.put_push_subscription(subscription)
         for invite in snapshot.invites:
             store.put_invite(invite)
+        store._game_version_errors.extend(snapshot.game_version_errors)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -196,6 +212,7 @@ class InMemoryStore:
             ),
             push_subscriptions=tuple(self._push_subscriptions.values()),
             invites=tuple(self._invites.values()),
+            game_version_errors=tuple(self._game_version_errors),
         )
 
     def put_user(self, user: User) -> None:
@@ -307,6 +324,18 @@ class InMemoryStore:
         return [
             AgentConversation(game_id=game_id, entries=tuple(entries))
             for game_id, entries in self._agent_conversations.items()
+        ]
+
+    def add_game_version_error(self, error: GameVersionError) -> None:
+        self._game_version_errors.append(error)
+
+    def list_game_version_errors(
+        self, *, game_id: str, version: int
+    ) -> list[GameVersionError]:
+        return [
+            error
+            for error in self._game_version_errors
+            if error.game_id == game_id and error.game_version == version
         ]
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:

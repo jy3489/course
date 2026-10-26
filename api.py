@@ -5,6 +5,7 @@ import mimetypes
 import secrets
 import asyncio
 import time
+from dataclasses import replace
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -152,10 +153,16 @@ def health(platform: Platform, request: Request, response: Response) -> HealthOu
     )
 
 
-def _match_out(platform: GamePlatform, match: Match) -> MatchOut:
+def _match_out(
+    platform: GamePlatform, match: Match, caller_id: str | None = None
+) -> MatchOut:
     """A match for the API, stamped with the platform's time (for speed-match
-    countdowns)."""
-    return MatchOut.of(match, now=platform.now())
+    countdowns). For a v2 game the state is the caller's own view of it (see
+    [GamePlatform.view_state]): the full state never leaves the server."""
+    return MatchOut.of(
+        replace(match, state=platform.view_state(match, caller_id)),
+        now=platform.now(),
+    )
 
 
 # Users
@@ -556,7 +563,7 @@ def create_match(
         bet_per_player=body.effective_bet_per_player,
         turn_seconds=body.turn_seconds,
     )
-    return _match_out(platform, match)
+    return _match_out(platform, match, caller_id=caller_id)
 
 
 @router.post("/matchmaking/quick-match")
@@ -568,10 +575,12 @@ def quick_match(
     by itself once it has all its players; poll it (or wait for the push notification)
     until its status is "ongoing". Calling again while waiting returns the same match;
     the owner cancels by deleting it, anyone else by leaving."""
-    return _match_out(platform, 
+    return _match_out(
+        platform,
         platform.quick_match(
             caller_id=caller_id, game_id=body.game_id, num_players=body.num_players
-        )
+        ),
+        caller_id=caller_id,
     )
 
 
@@ -583,7 +592,7 @@ def list_matches(
     game_id: str | None = None,
 ) -> list[MatchOut]:
     matches = platform.list_matches(caller_id=caller_id, status=status, game_id=game_id)
-    return [_match_out(platform, match) for match in matches]
+    return [_match_out(platform, match, caller_id=caller_id) for match in matches]
 
 
 @router.get("/matches/open")
@@ -595,7 +604,10 @@ def list_open_matches(platform: Platform) -> list[MatchOut]:
 
 @router.get("/matches/{match_id}")
 def get_match(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchOut:
-    return _match_out(platform, platform.get_match(match_id, caller_id=caller_id))
+    return _match_out(
+        platform, platform.get_match(match_id, caller_id=caller_id),
+        caller_id=caller_id,
+    )
 
 
 @router.patch("/matches/{match_id}")
@@ -607,7 +619,7 @@ def update_match(
         match_id=match_id,
         num_computer_opponents=body.num_computer_opponents,
     )
-    return _match_out(platform, match)
+    return _match_out(platform, match, caller_id=caller_id)
 
 
 @router.delete("/matches/{match_id}", status_code=HTTPStatus.NO_CONTENT)
@@ -617,7 +629,10 @@ def delete_match(platform: Platform, caller_id: CallerId, match_id: str) -> None
 
 @router.post("/matches/{match_id}/join")
 def join_match(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
-    return _match_out(platform, platform.join_match(caller_id=caller_id, match_id=match_id))
+    return _match_out(
+        platform, platform.join_match(caller_id=caller_id, match_id=match_id),
+        caller_id=caller_id,
+    )
 
 
 @router.post("/matches/{match_id}/rematch")
@@ -625,7 +640,7 @@ def request_rematch(
     platform: Platform, caller_id: CallerId, match_id: str
 ) -> MatchOut:
     match = platform.request_rematch(caller_id=caller_id, match_id=match_id)
-    return _match_out(platform, match)
+    return _match_out(platform, match, caller_id=caller_id)
 
 
 @router.post("/matches/{match_id}/start")
@@ -642,12 +657,15 @@ def start_match(
         first_turn_player_indices=frozenset(body.first_turn_player_indices),
         initial_state=body.initial_state,
     )
-    return _match_out(platform, match)
+    return _match_out(platform, match, caller_id=caller_id)
 
 
 @router.post("/matches/{match_id}/leave")
 def leave_match(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
-    return _match_out(platform, platform.leave_match(caller_id=caller_id, match_id=match_id))
+    return _match_out(
+        platform, platform.leave_match(caller_id=caller_id, match_id=match_id),
+        caller_id=caller_id,
+    )
 
 
 @router.post("/matches/{match_id}/moves", status_code=HTTPStatus.CREATED)
@@ -663,8 +681,9 @@ def make_move(
         else frozenset(body.next_turn_player_indices),
         expected_move_count=body.expected_move_count,
         payout_player_indices=body.payout_player_indices,
+        move=body.move,
     )
-    return _match_out(platform, match)
+    return _match_out(platform, match, caller_id=caller_id)
 
 
 @router.get("/matches/{match_id}/history")
@@ -763,7 +782,10 @@ def invite_qr_code(platform: Platform, request: Request, token: str) -> Response
 def accept_invite(platform: Platform, caller_id: CallerId, token: str) -> MatchOut:
     """Takes a seat in the invite's match. New users can sign up with POST /users
     {invite_token} first, which credits the inviter with the referral."""
-    return _match_out(platform, platform.accept_invite(caller_id=caller_id, token=token))
+    return _match_out(
+        platform, platform.accept_invite(caller_id=caller_id, token=token),
+        caller_id=caller_id,
+    )
 
 
 @router.post("/invites/{token}/revoke")

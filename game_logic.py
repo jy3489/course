@@ -206,6 +206,17 @@ class GameLogic:
     def _drop_context(self) -> None:
         self._context = None
 
+    def has(self, function: str) -> bool:
+        """Whether the game defines [function] (some functions are optional)."""
+        try:
+            context = self._context()
+        except GameLogicError:
+            return False
+        try:
+            return bool(context.eval(f"typeof game.{function} === 'function'"))
+        except Exception:
+            return False
+
     def call(
         self,
         function: str,

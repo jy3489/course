@@ -15,6 +15,7 @@ from game_platform.models import (
     AgentConversationEntry,
     Game,
     GameDraft,
+    GameVersionError,
     Invite,
     Match,
     User,
@@ -215,6 +216,19 @@ class SavingStore:
     def list_agent_conversations(self) -> list[AgentConversation]:
         with self._lock:
             return self._inner.list_agent_conversations()
+
+    def add_game_version_error(self, error: GameVersionError) -> None:
+        with self._lock:
+            self._inner.add_game_version_error(error)
+            self._set_dirty()
+
+    def list_game_version_errors(
+        self, *, game_id: str, version: int
+    ) -> list[GameVersionError]:
+        with self._lock:
+            return self._inner.list_game_version_errors(
+                game_id=game_id, version=version
+            )
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:
         with self._lock:

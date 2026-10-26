@@ -245,7 +245,9 @@ function seatOf(match, userId) {
   return match.players.find((player) => player.user_id === userId) ?? null;
 }
 
-/** The seat this viewer moves for now: their own turn, or a computer's turn if they play. */
+/** The seat this viewer moves for now: their own turn, or — in a v1 game — a
+ * computer's turn, which the viewer's browser plays. In a v2 game computers
+ * move on the server, so a viewer only ever acts for their own seat. */
 function actingFor(match, userId) {
   if (
     match.status !== "ongoing" ||
@@ -258,6 +260,8 @@ function actingFor(match, userId) {
   if (!seat) return null;
   const turn = match.turn_of_player_indices;
   if (turn.includes(seat.player_index)) return seat.player_index;
+  const game = gameOf(match.game_id, match.game_version);
+  if (game && game.server_code) return null;
   const computer = turn
     .map((index) => match.players[index])
     .find((player) => player && player.kind === "computer");

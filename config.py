@@ -135,6 +135,10 @@ class Config(_Section):
     model_api: ModelApiConfig = ModelApiConfig()
     auth: AuthConfig = AuthConfig()
     push: PushConfig = PushConfig()
+    # Seconds the server waits before a computer opponent moves in a v2 match
+    # (server-side game API), so humans can watch the game unfold. 0 moves
+    # immediately.
+    computer_move_delay_seconds: float = 0.6
 
     @model_validator(mode="after")
     def _require_master_password_for_hostnames(self) -> "Config":

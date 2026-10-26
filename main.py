@@ -119,6 +119,7 @@ def main() -> None:
             store=store,
             push_notifier=push_notifier,
             max_push_subscriptions_per_user=push_config.max_subscriptions_per_user,
+            computer_move_delay_seconds=config.computer_move_delay_seconds,
         )
         if args.purge_example_data:
             purge_example_data(platform)

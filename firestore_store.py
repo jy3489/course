@@ -84,6 +84,7 @@ _KINDS: Final = (
     ),
     _Kind(field="push_subscriptions", key=lambda subscription: subscription.id),
     _Kind(field="invites", key=lambda invite: invite.token),
+    _Kind(field="game_version_errors", key=lambda error: error.id),
 )
 assert {kind.field for kind in _KINDS} == {
     field.name for field in dataclasses.fields(Snapshot)

@@ -14,7 +14,7 @@ import threading
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Any, Final
 
 from pydantic import JsonValue
 
@@ -25,6 +25,7 @@ from game_platform.models import (
     Game,
     GameDraft,
     GameRules,
+    GameVersionError,
     Invite,
     InviteAcceptance,
     LinkedAccount,
@@ -37,6 +38,7 @@ from game_platform.models import (
     User,
     WebPushSubscription,
 )
+from game_platform.game_logic import GameLogic, GameLogicError, InvalidMoveError
 from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
 
@@ -61,6 +63,8 @@ class AllData:
     matches: list[Match]
     # Recorded conversations with the game-building agent, admin-only.
     agent_conversations: list[AgentConversation] = ()
+    # Server-code failures recorded on game versions (v2 Game API), admin-only.
+    game_version_errors: list[GameVersionError] = ()
 
 
 class PlatformError(Exception):
@@ -247,6 +251,7 @@ class GamePlatform:
         new_referral_code: Callable[[], str] = _new_referral_code,
         push_notifier: PushNotifier | None = None,
         max_push_subscriptions_per_user: int = 10,
+        computer_move_delay_seconds: float = 0.6,
     ) -> None:
         self._store: Store = store if store is not None else InMemoryStore()
         self._clock = clock
@@ -259,6 +264,13 @@ class GamePlatform:
             push_notifier if push_notifier is not None else LogPushNotifier()
         )
         self._max_push_subscriptions_per_user = max_push_subscriptions_per_user
+        # How long the server waits before a computer opponent moves in a v2
+        # match, so humans can watch the game unfold. Zero moves immediately
+        # (tests use zero: no timers, fully deterministic).
+        self._computer_move_delay_seconds = computer_move_delay_seconds
+        # One QuickJS runner per game version; versions are immutable, so a
+        # cached runner's code can never go stale.
+        self._logic_cache: dict[tuple[str, int], GameLogic] = {}
         self._verifications: dict[str, _Verification] = {}
         self._verification_starts: dict[str, list[dt.datetime]] = {}
         # Each public method is a read-modify-write on the store; the server handles
@@ -1229,6 +1241,25 @@ class GamePlatform:
         saved = self._save(
             replace(match, seats=seats, turn_started_at=clock_restart or match.turn_started_at)
         )
+        if match.status == "ongoing":
+            game = self._store.get_game_version(saved.game_id, saved.game_version)
+            if (
+                game is not None
+                and game.server_code
+                and self._logic_for(game).has("playerJoined")
+            ):
+                # The game decides what a mid-match join does to its state
+                # (deal the new player in, spectate until the next round...).
+                result = self._call_logic(
+                    game, saved, "playerJoined", saved.state, caller_id
+                )
+                saved = self._save(
+                    replace(
+                        saved,
+                        state=result.get("state"),
+                        turn_of_player_indices=self._turn_indices(saved, result),
+                    )
+                )
         joiner = self._store.get_user(caller_id)
         self._notify_match_event(
             "notify.player_joined",
@@ -1245,6 +1276,10 @@ class GamePlatform:
             and saved.status == "waiting_for_players"
             and len(saved.seats) >= target
         ):
+            game = self._store.get_game_version(saved.game_id, saved.game_version)
+            if game is not None and game.server_code:
+                # A v2 quick match starts by running the game's newMatch.
+                return self._begin_v2_match(saved, game)
             # Like the portal's Start button: seat 0 moves first, and the game
             # creates its own initial state.
             humans = self._fund_match_tokens(saved)
@@ -1350,6 +1385,352 @@ class GamePlatform:
             self._store.put_user(user)
         return humans
 
+    # Server-side game logic (v2 Game API, docs/server-side-game-api.md).
+    # Everything in this section runs with the platform lock held.
+
+    def _logic_for(self, game: Game) -> GameLogic:
+        key = (game.id, game.version)
+        logic = self._logic_cache.get(key)
+        if logic is None:
+            logic = GameLogic(game.server_code or "")
+            self._logic_cache[key] = logic
+        return logic
+
+    def _game_ctx(self, match: Match, *, pot: int | None = None) -> dict[str, Any]:
+        """The ctx every game function receives: who is playing (by player
+        id), the pot, and how many moves have been made."""
+        players: list[dict[str, Any]] = []
+        for seat in match.seats:
+            player_id = match.player_id_of(seat)
+            if seat.kind == "human":
+                user = self._store.get_user(seat.user_id or "")
+                players.append(
+                    {
+                        "id": player_id,
+                        "kind": "human",
+                        "display_name": user.display_name if user else "",
+                        "picture_url": user.picture_url if user else "",
+                        "max_loss": match.bet_per_player,
+                    }
+                )
+            else:
+                number = player_id.rsplit("-", 1)[-1]
+                players.append(
+                    {
+                        "id": player_id,
+                        "kind": "computer",
+                        "display_name": f"Computer {number}",
+                        "picture_url": "",
+                        "max_loss": 0,
+                    }
+                )
+        return {
+            "players": players,
+            "pot": match.token_pot if pot is None else pot,
+            "move_count": len(match.moves),
+        }
+
+    def _call_seed(self, match: Match) -> int:
+        """The seed for the next logic call: the match's seed advanced by the
+        move number, so calls differ within a match but a replay of the match
+        reproduces every call exactly."""
+        return (match.seed + len(match.moves)) % (2**32)
+
+    def _call_logic(
+        self, game: Game, match: Match, function: str, *args: Any
+    ) -> Any:
+        """Runs one game function; records bug-level failures on the game
+        version and raises a PlatformError for them. InvalidMove passes
+        through: it is the player's fault, not a bug."""
+        try:
+            return self._logic_for(game).call(
+                function,
+                *args,
+                ctx=self._game_ctx(match),
+                seed=self._call_seed(match),
+                now=self._clock(),
+            )
+        except InvalidMoveError:
+            raise
+        except GameLogicError as error:
+            self._record_logic_error(game, function, error)
+            raise PlatformError(
+                f"the game's server code failed in {function}: {error}"
+            ) from error
+
+    def _record_logic_error(
+        self, game: Game, function: str, error: Exception
+    ) -> None:
+        self._store.add_game_version_error(
+            GameVersionError(
+                id=self._new_id(),
+                game_id=game.id,
+                game_version=game.version,
+                function=function,
+                message=str(error)[:2000],
+                created_at=self._clock(),
+            )
+        )
+
+    def _turn_indices(
+        self, match: Match, result: Any
+    ) -> frozenset[int] | None:
+        """A logic result's turn (player ids) as seat indices; None ends the
+        match. The runner has already checked the ids are players."""
+        turn = result.get("turn")
+        if turn is None:
+            return None
+        return frozenset(
+            match.seat_of_player_id(player_id).player_index for player_id in turn
+        )
+
+    def _apply_logic_result(
+        self,
+        match: Match,
+        *,
+        result: Any,
+        mover_seat: Seat,
+        move: JsonValue,
+        made_by_user_id: str,
+    ) -> Match:
+        """Saves the match a logic result describes: the new state, the move
+        that produced it, the next turn, and — when the match ends — the
+        token payouts the game returned, credited to the human players."""
+        turn_indices = self._turn_indices(match, result)
+        payouts_by_index: dict[int, int] | None = None
+        if turn_indices is None:
+            raw_payouts = result.get("payouts")
+            if match.token_pot and not raw_payouts:
+                raise PlatformError(
+                    "the game's server code ended the match without saying "
+                    "how the token pot is paid out"
+                )
+            if raw_payouts:
+                payouts_by_index = {
+                    match.seat_of_player_id(player_id).player_index: amount
+                    for player_id, amount in raw_payouts.items()
+                }
+                for index, amount in payouts_by_index.items():
+                    seat = match.seats[index]
+                    user = self._store.get_user(seat.user_id or "")
+                    if user is not None:
+                        self._store.put_user(
+                            replace(
+                                user,
+                                token_balance=user.token_balance + amount,
+                            )
+                        )
+        now = self._clock()
+        record = Move(
+            move_number=len(match.moves) + 1,
+            player_index=mover_seat.player_index,
+            made_by_user_id=made_by_user_id,
+            created_at=now,
+            new_state=result.get("state"),
+            next_turn_player_indices=turn_indices,
+            move=move,
+            player_id=match.player_id_of(mover_seat),
+        )
+        return self._save(
+            replace(
+                match,
+                state=result.get("state"),
+                moves=(*match.moves, record),
+                turn_of_player_indices=turn_indices,
+                status="ongoing" if turn_indices is not None else "over",
+                end_reason=None if turn_indices is not None else "finished",
+                token_payouts=payouts_by_index
+                if turn_indices is None
+                else match.token_payouts,
+                pending_leave=None,
+                turn_started_at=now if match.turn_seconds else None,
+            )
+        )
+
+    def _notify_after_move(
+        self, *, before: Match, saved: Match, mover_user_id: str
+    ) -> None:
+        """The notifications a move causes (the same ones a v1 move causes)."""
+        if saved.status == "over":
+            self._notify_match_event(
+                "notify.match_over",
+                match=saved,
+                recipient_ids=[
+                    user_id
+                    for user_id in saved.human_user_ids
+                    if user_id != mover_user_id
+                ],
+                tag_suffix="over",
+            )
+        else:
+            gained = (saved.turn_of_player_indices or frozenset()) - (
+                before.turn_of_player_indices or frozenset()
+            )
+            self._notify_match_event(
+                "notify.turn",
+                match=saved,
+                recipient_ids=[
+                    seat.user_id
+                    for seat in saved.seats
+                    if seat.player_index in gained
+                    and seat.user_id is not None
+                    and seat.user_id != mover_user_id
+                ],
+                tag_suffix="turn",
+            )
+
+    def _begin_v2_match(self, match: Match, game: Game) -> Match:
+        """Starts a v2 match: stakes the tokens, runs newMatch, saves the
+        result, and lets any computer with the first turn move."""
+        humans = [seat for seat in match.seats if seat.kind == "human"]
+        pot = match.bet_per_player * len(humans)
+        funded_view = replace(match, token_pot=pot)
+        try:
+            result = self._logic_for(game).call(
+                "newMatch",
+                ctx=self._game_ctx(funded_view),
+                seed=self._call_seed(match),
+                now=self._clock(),
+            )
+        except GameLogicError as error:
+            self._record_logic_error(game, "newMatch", error)
+            raise PlatformError(
+                f"the game's server code failed in newMatch: {error}"
+            ) from error
+        self._fund_match_tokens(match)
+        turn_indices = self._turn_indices(match, result)
+        saved = self._save(
+            replace(
+                match,
+                status="ongoing" if turn_indices is not None else "over",
+                end_reason=None if turn_indices is not None else "finished",
+                state=result.get("state"),
+                initial_state=result.get("state"),
+                initial_turn_player_indices=turn_indices,
+                turn_of_player_indices=turn_indices,
+                token_pot=pot,
+                turn_started_at=self._clock() if match.turn_seconds else None,
+            )
+        )
+        self._schedule_computer_moves(saved)
+        return self._store.get_match(match.id) or saved
+
+    def _schedule_computer_moves(self, match: Match) -> None:
+        """Arranges for the computer seats holding the turn of a v2 match to
+        move: immediately when the configured delay is zero, otherwise on a
+        timer, so the moves happen even if no human is online to watch."""
+        game = self._store.get_game_version(match.game_id, match.game_version)
+        if (
+            game is None
+            or not game.server_code
+            or match.status != "ongoing"
+            or not match.turn_of_player_indices
+            or not any(
+                match.seats[index].kind == "computer"
+                for index in match.turn_of_player_indices
+            )
+        ):
+            return
+        if self._computer_move_delay_seconds <= 0:
+            self._run_computer_moves(match.id)
+            return
+        timer = threading.Timer(
+            self._computer_move_delay_seconds,
+            self._run_computer_moves,
+            args=(match.id,),
+        )
+        timer.daemon = True
+        timer.start()
+
+    def _run_computer_moves(self, match_id: str) -> None:
+        """Moves every computer seat that holds the turn, one after another,
+        until a human is to move or the match ends. A game whose computer
+        logic fails is recorded and the match is left as it was."""
+        with self._lock:
+            match = self._store.get_match(match_id)
+            if match is None or match.status != "ongoing":
+                return
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            if game is None or not game.server_code:
+                return
+            current = match
+            # Games could in principle pass the turn between computers
+            # forever; the cap keeps a broken game from wedging the server.
+            for _ in range(1000):
+                if (
+                    current.status != "ongoing"
+                    or not current.turn_of_player_indices
+                ):
+                    return
+                computer_seats = [
+                    seat
+                    for seat in current.seats
+                    if seat.player_index in current.turn_of_player_indices
+                    and seat.kind == "computer"
+                ]
+                if not computer_seats:
+                    return
+                seat = computer_seats[0]
+                player_id = current.player_id_of(seat)
+                try:
+                    move = self._call_logic(
+                        game, current, "computerMove", current.state, player_id
+                    )
+                    result = self._call_logic(
+                        game,
+                        current,
+                        "applyMove",
+                        current.state,
+                        player_id,
+                        move,
+                    )
+                except InvalidMoveError as error:
+                    # A computer move the game itself rejects is a game bug.
+                    self._record_logic_error(game, "applyMove", error)
+                    return
+                except PlatformError:
+                    # Already recorded by _call_logic; leave the match as is.
+                    return
+                before = current
+                current = self._apply_logic_result(
+                    current,
+                    result=result,
+                    mover_seat=seat,
+                    move=move,
+                    made_by_user_id="",
+                )
+                self._notify_after_move(
+                    before=before, saved=current, mover_user_id=""
+                )
+
+    def view_state(self, match: Match, caller_id: str | None) -> JsonValue:
+        """The state a caller may see of a match: for a v2 game, the game's
+        own viewFor for that caller, so private information (another
+        player's cards) never leaves the server. The game owner sees the
+        full state (it is their game to debug); anyone without a seat in an
+        ongoing v2 match sees no state. A failing viewFor is recorded and
+        shows no state rather than leaking the full one."""
+        game = self._store.get_game_version(match.game_id, match.game_version)
+        if game is None or not game.server_code or match.state is None:
+            return match.state
+        seat = match.seat_of(caller_id) if caller_id else None
+        if seat is None:
+            # The game owner (when not playing) sees the full state: it is
+            # their game to debug. Anyone else without a seat sees nothing.
+            return match.state if caller_id == game.owner_user_id else None
+        try:
+            return self._logic_for(game).call(
+                "viewFor",
+                match.state,
+                match.player_id_of(seat),
+                ctx=self._game_ctx(match),
+                seed=self._call_seed(match),
+                now=self._clock(),
+            )
+        except GameLogicError as error:
+            self._record_logic_error(game, "viewFor", error)
+            return None
+
     def start_match(
         self,
         *,
@@ -1369,6 +1750,12 @@ class GamePlatform:
                     f"the match has {num_players} players but the game allows "
                     f"{list(allowed_player_counts)}"
                 )
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            if game is not None and game.server_code:
+                # A v2 match starts itself: the game's newMatch decides the
+                # state and the first turn; the client's start values (kept
+                # for v1 games) are ignored.
+                return self._begin_v2_match(match, game)
             if not first_turn_player_indices:
                 raise InvalidRequestError(
                     "the first turn must name at least one player"
@@ -1449,6 +1836,7 @@ class GamePlatform:
         next_turn_player_indices: frozenset[int] | None,
         expected_move_count: int | None,
         payout_player_indices: dict[int, int] | None = None,
+        move: JsonValue = None,
     ) -> Match:
         """Records a move by one of the players whose turn it is.
 
@@ -1474,6 +1862,11 @@ class GamePlatform:
                 raise ConflictError(
                     f"expected {expected_move_count} moves but the match has "
                     f"{len(match.moves)}"
+                )
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            if game is not None and game.server_code:
+                return self._make_move_v2(
+                    match, game, seat=seat, caller_id=caller_id, move=move
                 )
             mover_seat = self._mover_seat(match, seat)
             if next_turn_player_indices is not None:
@@ -1560,6 +1953,39 @@ class GamePlatform:
                     tag_suffix="turn",
                 )
             return saved
+
+    def _make_move_v2(
+        self,
+        match: Match,
+        game: Game,
+        *,
+        seat: Seat,
+        caller_id: str,
+        move: JsonValue,
+    ) -> Match:
+        """A move in a v2 match: the server runs the game's applyMove and
+        stores the state it computes. The caller holds the lock; the match
+        is ongoing and [seat] is the caller's seat. A player may only move
+        on their own turn — nobody acts on behalf of another seat, because
+        computer opponents move on the server."""
+        if seat.player_index not in (match.turn_of_player_indices or frozenset()):
+            raise ForbiddenError("it is not your turn")
+        try:
+            result = self._call_logic(
+                game, match, "applyMove", match.state, caller_id, move
+            )
+        except InvalidMoveError as error:
+            raise InvalidRequestError(error.message) from error
+        saved = self._apply_logic_result(
+            match,
+            result=result,
+            mover_seat=seat,
+            move=move,
+            made_by_user_id=caller_id,
+        )
+        self._notify_after_move(before=match, saved=saved, mover_user_id=caller_id)
+        self._schedule_computer_moves(saved)
+        return self._store.get_match(match.id) or saved
 
     def delete_match(self, *, caller_id: str, match_id: str) -> None:
         """The owner deletes the match; other players can only hide an ended match."""
@@ -2039,6 +2465,13 @@ class GamePlatform:
                 game_versions=self._store.list_all_game_versions(),
                 matches=self._store.list_all_matches(),
                 agent_conversations=self._store.list_agent_conversations(),
+                game_version_errors=[
+                    error
+                    for game in self._store.list_all_game_versions()
+                    for error in self._store.list_game_version_errors(
+                        game_id=game.id, version=game.version
+                    )
+                ],
             )
 
     def stats(self) -> dict[str, JsonValue]:

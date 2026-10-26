@@ -37,12 +37,14 @@ class Api:
         push_notifier: PushNotifier | None = None,
         push_config: PushConfig | None = None,
         max_push_subscriptions_per_user: int = 10,
+        computer_move_delay_seconds: float = 0,
     ) -> None:
         platform = GamePlatform(
             store=store,
             clock=FakeClock(),
             push_notifier=push_notifier,
             max_push_subscriptions_per_user=max_push_subscriptions_per_user,
+            computer_move_delay_seconds=computer_move_delay_seconds,
         )
         self.client = TestClient(
             create_app(

@@ -24,6 +24,7 @@ from game_platform.models import (
     EndReason,
     Game,
     GameDraft,
+    GameVersionError,
     Invite,
     InviteAcceptance,
     LinkedAccount,
@@ -585,14 +586,24 @@ class MoveCreate(_Request):
         }
     )
 
-    new_state: JsonValue
+    # A v1 client sends the state it computed; a v2 client sends only [move]
+    # and the server computes the state, so [new_state] is required exactly
+    # when [move] is absent.
+    new_state: JsonValue = None
     # v2 matches only: the game-defined move, from which the server computes
-    # the new state by running the game's server code. Ignored on v1 matches
-    # (which send [new_state] as before); Phase 3 makes it the only field a
-    # v2 client sends.
+    # the new state by running the game's server code.
     move: JsonValue = None
     # The seats that may move next; [None] ends the match.
-    next_turn_player_indices: PlayerIndices | None
+    next_turn_player_indices: PlayerIndices | None = None
+
+    @model_validator(mode="after")
+    def _new_state_unless_move(self) -> "MoveCreate":
+        if self.move is None:
+            if "new_state" not in self.model_fields_set:
+                raise ValueError("new_state is required")
+            if "next_turn_player_indices" not in self.model_fields_set:
+                raise ValueError("next_turn_player_indices is required")
+        return self
     # If given, the move is rejected unless the match has exactly this many moves.
     expected_move_count: int | None = None
     # Amount of token pot paid to each human seat (integer keys encoded as strings).
@@ -802,12 +813,32 @@ class AgentConversationOut(BaseModel):
         )
 
 
+class GameVersionErrorOut(BaseModel):
+    """A server-code failure recorded on a game version (v2 Game API)."""
+
+    id: str
+    game_id: str
+    game_version: int
+    function: str
+    message: str
+    created_at: dt.datetime
+
+    @classmethod
+    def of(cls, error: GameVersionError) -> "GameVersionErrorOut":
+        return cls(
+            id=error.id, game_id=error.game_id, game_version=error.game_version,
+            function=error.function, message=error.message,
+            created_at=error.created_at,
+        )
+
+
 class AllDataOut(BaseModel):
     users: list[UserWithPasswordOut]
     # Every version of every game, including deleted games.
     game_versions: list[GameOut]
     matches: list[MatchDetailOut]
     agent_conversations: list[AgentConversationOut] = []
+    game_version_errors: list[GameVersionErrorOut] = []
 
     @classmethod
     def of(cls, data: AllData) -> "AllDataOut":
@@ -818,6 +849,9 @@ class AllDataOut(BaseModel):
             agent_conversations=[
                 AgentConversationOut.of(conversation)
                 for conversation in data.agent_conversations
+            ],
+            game_version_errors=[
+                GameVersionErrorOut.of(error) for error in data.game_version_errors
             ],
         )
 

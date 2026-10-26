@@ -159,6 +159,21 @@ class AgentConversationEntry:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GameVersionError:
+    """A failure of a game's server code (v2 Game API), recorded on the game
+    version whose code failed so its author can find and fix it. Illegal moves
+    (InvalidMove) are not recorded: they are the player's fault, not a bug."""
+
+    id: str
+    game_id: str
+    game_version: int
+    # The game function that was running ("newMatch", "applyMove", ...).
+    function: str
+    message: str
+    created_at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
 class AgentConversation:
     """The whole recorded agent conversation for one game (or draft), oldest
     first. Admin-only: it is never part of a game or draft API response."""
