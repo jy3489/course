@@ -266,5 +266,24 @@ v2 flow, or the migrated games uses it.
   showdown; `playerJoined` plays from the next hand; `playerLeft` pays in
   proportion to chip share; `payouts` the rest to the best-placed human.
 - **Debug:** applies any move `{new_state, next_turn, payouts?}` as-is with
-  validation; `computerMove`/`randomMove` pass the turn, ending the match
-  with probability 1/50.
+  validation; `computerMove`/`randomMove` pass the turn, and the passes
+  are counted in `state.passes` — at 20 the match ends, so all-computer
+  walks terminate.
+
+## Determinism, verified end to end (Phase 8 — landed)
+
+Determinism is checked at three levels: per call, the QuickJS runner
+and the random-walk tester run selected calls twice with identical
+arguments and seed and compare the JSON; per match,
+`tests/test_determinism.py` plays scripted matches (tic-tac-toe
+against a server computer, a poker hand) on a fresh platform with the
+same ids — hence the same match seed — and asserts every intermediate
+state is identical, and that the emulator answers identical requests
+identically; and failed test seeds stored for a game are replayed
+first on the next `POST /games/test`, so a fix is verified against the
+exact walk that found the bug. One platform fix landed with this
+phase: when a speed-match timeout hands a seat to a computer, the
+takeover now schedules the computer's moves like every other path —
+in v1 a human's browser submitted them, so the takeover path never
+did, and a v2 match stalled on the computer's turn (found by the
+Playwright speed test when the UI suite was migrated to v2 games).
