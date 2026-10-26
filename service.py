@@ -2524,8 +2524,11 @@ class GamePlatform:
         """Records a move by one of the players whose turn it is.
 
         Any player in the turn set may move; the move is recorded for that player's
-        seat. When a computer seat has the turn, any human player may submit the move
-        on its behalf. [next_turn_player_indices = None] ends the match.
+        seat. In a v2 game (server code) [move] is all that is sent and only the
+        seat's own player may move — the server moves computer seats itself. The
+        on-behalf path below (a human submitting a computer seat's move in a v1
+        game, whose client computes the move) remains only for games without
+        server code. [next_turn_player_indices = None] ends the match.
         [expected_move_count], if given, guards against two clients submitting the
         same move.
         """

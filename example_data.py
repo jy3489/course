@@ -66,6 +66,9 @@ def build(operations: Iterable[Mapping[str, Any]]) -> Snapshot:
         new_id=ids,
         new_password=passwords,
         new_referral_code=lambda: next(codes),
+        # Computer opponents move synchronously, so the generated file is
+        # the same on every run (no timers racing the operations).
+        computer_move_delay_seconds=0,
     )
     for number, operation in enumerate(operations, start=1):
         try:
@@ -101,6 +104,11 @@ def _apply(
                 allows_join_mid_match=operation["allows_join_mid_match"],
             ),
             code=(GAMES_DIR / operation["code_file"]).read_text(),
+            server_code=(
+                (GAMES_DIR / operation["server_code_file"]).read_text()
+                if operation.get("server_code_file")
+                else None
+            ),
         )
     elif kind == "update_game":
         platform.update_game(
@@ -131,6 +139,17 @@ def _apply(
             initial_state=None,
         )
     elif kind == "move":
+        if "move" in operation:
+            # A v2 move: the game's server code computes the new state.
+            platform.make_move(
+                caller_id=operation["as"],
+                match_id=operation["match"],
+                new_state=None,
+                next_turn_player_indices=None,
+                expected_move_count=None,
+                move=operation["move"],
+            )
+            return
         next_turn = operation["next_turn_player_indices"]
         platform.make_move(
             caller_id=operation["as"],

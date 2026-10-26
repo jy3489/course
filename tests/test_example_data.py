@@ -52,7 +52,7 @@ def test_the_example_data_covers_many_match_states() -> None:
     assert overview == [
         ("ttt-ongoing", "ongoing", None, [1], "user1 user2"),
         ("ttt-vs-computer", "ongoing", None, [0], "user3 cpu"),
-        ("ttt-computer-to-move", "ongoing", None, [1], "user6 cpu"),
+        ("ttt-computer-to-move", "ongoing", None, [0], "user6 cpu"),
         ("ttt-x-won", "over", "finished", None, "user2 user4"),
         ("ttt-draw", "over", "finished", None, "user5 user6"),
         ("ttt-computer-won", "over", "finished", None, "user7 cpu"),
@@ -77,7 +77,7 @@ def test_the_example_data_covers_many_match_states() -> None:
         ("poker-open", "waiting_for_players", None, None, "user7"),
         ("debug-waiting", "waiting_for_players", None, None, "user1"),
         ("debug-ongoing", "ongoing", None, [0], "user1 user2 user3"),
-        ("debug-computer-to-move", "ongoing", None, [1], "user4 cpu"),
+        ("debug-computer-to-move", "ongoing", None, [0], "user4 cpu"),
         ("debug-over", "over", "finished", None, "user5 user6"),
     ]
 
@@ -88,12 +88,15 @@ def test_the_server_can_use_the_example_data(tmp_path: Path) -> None:
     store = JsonFileStore(path)
     api = Api(store=store)
     api.passwords_by_user_id["user2"] = "user2"
-    # user2 (O) has the move in ttt-ongoing, and cell 1 is free.
-    state = api.ok("GET", "/matches/ttt-ongoing")["state"]
-    board = [*state["board"]]
-    board[1] = "O"
-    response = api.move(
-        "ttt-ongoing", as_user="user2", next_turn=0, state={**state, "board": board}
+    # user2 (O) has the move in ttt-ongoing, and cell 1 is free. The game
+    # is server-side now: the move is just the cell, the server computes
+    # the new board.
+    response = api.request(
+        "POST",
+        "/matches/ttt-ongoing/moves",
+        as_user="user2",
+        json={"move": {"cell": 1}},
     )
     store.close()
     assert response.status_code == 201
+    assert response.json()["state"]["board"][1] == "O"

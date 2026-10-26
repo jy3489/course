@@ -69,14 +69,14 @@ if (typeof window !== "undefined" && window.document) {
     const time = new Date().toLocaleTimeString();
     const summary = message.type === "state_changed"
       ? `move_count=${message.move_count} turn=${JSON.stringify(message.turn_of_player_indices)} acting_for=${message.acting_for_player_index}`
-      : `next_turn=${JSON.stringify(message.next_turn_player_indices)} new_state=${JSON.stringify(message.new_state)}`;
+      : `next_turn=${JSON.stringify(message.move?.next_turn_player_indices)} new_state=${JSON.stringify(message.move?.new_state)}`;
     const line = document.createElement("div");
     line.textContent = `${time} ${direction} ${message.type}: ${summary}`;
     $("log").prepend(line);
   }
 
   function resetForm() {
-    $("new-state").value = JSON.stringify(latest.state ?? Logic.initialState(), null, 2);
+    $("new-state").value = JSON.stringify((latest.view ?? latest.state) ?? Logic.initialState(), null, 2);
     // Default to the next seat after the current turn.
     const turn = latest.turn_of_player_indices;
     $("next-turn").value = turn === null ? "null" : String((Math.max(...turn) + 1) % latest.players.length);
@@ -113,10 +113,7 @@ if (typeof window !== "undefined" && window.document) {
     } else if (acting === null) {
       $("acting").textContent = "It's not your turn; the platform will reject moves.";
     } else {
-      const player = m.players[acting];
-      $("acting").textContent = player.kind === "computer"
-        ? `It's computer seat ${acting}'s turn and you move for it.`
-        : `It's your turn (seat ${acting}).`;
+      $("acting").textContent = `It's your turn (seat ${acting}).`;
     }
     resetForm();
   }
@@ -141,7 +138,9 @@ if (typeof window !== "undefined" && window.document) {
         return;
       }
     }
-    const message = { type: "make_move", new_state: newState, next_turn_player_indices: nextTurn };
+    // A v2 move: for the debug game the move IS the next state (the
+    // server code applies it as-is).
+    const message = { type: "make_move", move: { new_state: newState, next_turn_player_indices: nextTurn } };
     logLine("sent", message);
     window.parent.postMessage(message, "*");
   });

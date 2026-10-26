@@ -242,11 +242,21 @@ portal speaks for v2 matches:
 Portal practice (local, offline play) is not offered for v2 games: their
 logic runs on the server. v1 games keep the old protocol unchanged.
 
-## Updating the existing games (Phase 7)
+## Updating the existing games (Phase 7 — landed)
 
-The three games in `games/` are split into client + server code; each
-already starts with a pure `Logic` object, which becomes most of
-`server.js`:
+The three games in `games/` are split into client + server code
+(`tictactoe.html` + `tictactoe.server.js`, and likewise for poker and
+debug); each game's pure `Logic` object became most of its server code,
+and the clients now only render their view and send moves. The example
+data's matches were re-scripted as real moves played by that server
+code. Two things the migration surfaced: the random-walk tester now
+models a leave the way the platform does (the seat stays, taken over by
+a computer, ids renumbered) — removing the seat broke seat-indexed
+games — and tic-tac-toe's minimax is memoized, because unmemoized it
+overruns the 100 ms per-call limit on an empty board. With the built-in
+games on v2, acting on behalf survives only in the v1 protocol path
+(pre-existing client-only games); nothing in the v2 API, the portal's
+v2 flow, or the migrated games uses it.
 
 - **Tic-tac-toe:** `newMatch` empty board; move `{cell}`; `computerMove`
   minimax (memoized, ties broken by `ctx.random`); payouts: pot to a human

@@ -733,8 +733,14 @@ in plain text over HTTP.
 A game's `code` is a complete HTML document. The portal and the builder run it in an
 iframe with `sandbox="allow-scripts"`: its scripts run, but in an isolated origin, so a
 game can't read the platform's cookies or storage or call the API. The page and the game
-talk only through `postMessage`, with two messages. The server never runs game code; it
-only stores each move's state and checks whose turn it is.
+talk only through `postMessage`, with two messages.
+
+A game may also have `server_code` (the v2 Game API, specified in
+`docs/server-side-game-api.md`): plain JavaScript the server runs authoritatively —
+it holds the state and the rules, validates every move, and moves computer opponents
+itself. The client then only renders the view the server sends it. Games without
+server code keep the original (v1) protocol below, in which the server never runs
+game code; it only stores each move's state and checks whose turn it is.
 
 ### `state_changed`: platform to game
 
@@ -745,33 +751,44 @@ joining or leaving, the match ending), and again if a move the game sent was rej
 {
   "type": "state_changed",
   "state": {"board": ["X", "", "", "", "O", "", "", "", ""]},
+  "view": {"board": ["X", "", "", "", "O", "", "", "", ""], "line": null},
   "players": [
-    {"player_index": 0, "kind": "human", "name": "user1"},
-    {"player_index": 1, "kind": "computer", "name": "Computer 2"}
+    {"player_index": 0, "player_id": "user1", "kind": "human", "name": "user1"},
+    {"player_index": 1, "player_id": "computer-1", "kind": "computer", "name": "Computer 2"}
   ],
   "turn_of_player_indices": [0],
   "status": "ongoing",
   "end_reason": null,
   "move_count": 2,
   "my_player_index": 0,
-  "acting_for_player_index": 0
+  "acting_for_player_index": 0,
+  "token_pot": 0
 }
 ```
 
 | Field | Meaning |
 |-------|---------|
-| `state` | The match state from the last move: any JSON the game chose. `null` before the first move, so the game must create its own initial state |
-| `players` | Every seat, in order. `kind` is `"human"` or `"computer"`; seats can change kind when players leave or join, and seats can be added mid-match |
+| `state` | The match state from the last move: any JSON the game chose. `null` before the first move, so the game must create its own initial state. For a v2 game this is the viewer's view (the full state never leaves the server) |
+| `view` | v2 games only: the viewer's view of the match, exactly what the server code's `viewFor` returned for them (`null` for spectators). A v2 client renders this and keeps no state of its own |
+| `players` | Every seat, in order. `kind` is `"human"` or `"computer"`; `player_id` is the user's id for humans and `computer-1`, ... for computers. Seats can change kind when players leave or join, and seats can be added mid-match |
 | `turn_of_player_indices` | The seats that may move next; `null` once the match is over |
 | `status` | `"ongoing"` or `"over"` (games aren't loaded while a match waits for players) |
 | `end_reason` | When over: `"finished"` (a move ended it) or `"player_left"` |
 | `move_count` | How many moves were made |
+| `token_pot` | The match's token pot (v2 games stake tokens; see the v2 spec) |
 | `my_player_index` | The viewer's seat, to decide what to show (e.g. whose cards). `null` for spectators |
-| `acting_for_player_index` | The seat this game should make the next move for, or `null` if it must wait. It is the viewer's seat on their turn, and a computer's seat on a computer's turn if the viewer plays in the match |
+| `acting_for_player_index` | The seat this game should make the next move for, or `null` if it must wait. For a v2 game it is only ever the viewer's own seat — the server moves computers. For a v1 game it can also be a computer's seat on a computer's turn if the viewer plays in the match |
 
 ### `make_move`: game to platform
 
-Sent by the game to make the move for `acting_for_player_index`:
+Sent by the game to make the move for `acting_for_player_index`. A v2 game sends
+only the move itself — the server validates and applies it:
+
+```json
+{"type": "make_move", "move": {"cell": 4}}
+```
+
+A v1 game sends the full result:
 
 ```json
 {"type": "make_move", "new_state": {"board": ["X", "X", "", "", "O", "", "", "", ""]}, "next_turn_player_indices": [1]}
@@ -792,6 +809,11 @@ games should ignore.
 
 ### Rules for games
 
+For a v2 game, the server code holds the rules: see `docs/server-side-game-api.md`
+for the contract (deterministic logic, `viewFor` views so secrets never leave the
+server, computers moved by the server, token payouts). The rules below are the
+v1 protocol's, kept for games without server code:
+
 - **Computers are played by the game.** On a computer's turn, every human player's game
   gets `acting_for_player_index` set to that seat and should compute and send the
   computer's move (after a short delay, so people can follow). The first one to arrive
@@ -807,15 +829,19 @@ games should ignore.
 
 ### Example games
 
-The `games/` directory holds the example data's games. Each is a single HTML file whose
-script starts with a pure `Logic` object (no DOM access), followed by the UI:
+The `games/` directory holds the example data's games. Each is a pair of files: an
+HTML client that only renders its view and sends moves, and a `.server.js` with the
+game's logic, which the server runs (the v2 Game API):
 
-- `tictactoe.html`: 2 players; the computer plays perfectly (minimax).
-- `poker.html`: no-limit Texas hold'em for 2 to 8 players: 1000 chips each, blinds
-  10/20 doubling every 10 hands, side pots, and a simple computer strategy. Cards are
-  drawn with Unicode suits. The last player with chips wins.
-- `debug.html`: for testing the platform. It shows the last `state_changed` message and
-  a log of messages, and lets you send any `make_move`.
+- `tictactoe.html` + `tictactoe.server.js`: 2 players; the computer plays perfectly
+  (minimax).
+- `poker.html` + `poker.server.js`: no-limit Texas hold'em for 2 to 8 players: 1000
+  chips each, blinds 10/20 doubling every 10 hands, side pots, and a simple computer
+  strategy. Cards are drawn with Unicode suits. The last player with chips wins.
+  Hole cards and the deck never leave the server.
+- `debug.html` + `debug.server.js`: for testing the platform. It shows the last
+  `state_changed` message and a log of messages, and lets you send any move; the
+  server code applies it as the next state, as the client used to.
 
 ## Example data
 
@@ -826,25 +852,25 @@ script starts with a pure `Logic` object (no DOM access), followed by the UI:
   players; leaving and joining allowed; version 2 after a description change) and the
   Debug game (2 to 10 players);
 - 23 matches covering: waiting for players (alone, or ready to start with computers),
-  ongoing (between humans, against computers, a computer's turn, poker heads-up, with 4
+  ongoing (between humans, against computers, poker heads-up, with 4
   players on the flop, a full table of 8), players who left (replaced by a computer, or
   ending the match), players who joined mid-match (a new seat, or taking over a
   computer), matches on the old version of a game, and over (won, drawn, lost to the
   computer, hidden by a player).
 
 The matches are listed in `tests/test_example_data.py`. To change them, edit
-`example_data/make_operations.js` and regenerate both files from the directory above
-`game_platform`:
+`example_data/operations.json` — for the built-in games the moves are the games'
+own moves (`{cell}` for tic-tac-toe, poker actions, debug state moves), played by
+the server code — and regenerate from the directory above `game_platform`:
 
 ```bash
-node game_platform/example_data/make_operations.js   # needs Node.js 18+; writes operations.json
 python -m game_platform.example_data                  # applies them; writes data.example.json
 ```
 
-The JavaScript step plays the games with their own `Logic`, so every state is one the
-game can continue from. The Python step performs every operation through `GamePlatform`,
-so the data only contains states the platform allows; ids, passwords and timestamps
-are fixed, so the output is the same on every run.
+Every operation runs through `GamePlatform` and the games' real server logic, so
+an illegal move fails the build instead of producing a state the game cannot
+continue from; ids, passwords and timestamps are fixed, and computer opponents
+move synchronously, so the output is the same on every run.
 
 ## Testing
 

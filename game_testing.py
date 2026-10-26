@@ -374,12 +374,32 @@ class _Walk:
         if not ok:
             return True, state, None
         self._pot -= result.get("payout") or 0
-        self._players = [p for p in self._players if p["id"] != leaver["id"]]
+        # As on the platform, the leaver's seat does not vanish: a
+        # computer takes it over (keeping the roster's size and order, so
+        # seat-indexed games stay aligned), and computer ids are
+        # renumbered in seat order, as the platform numbers them. The
+        # turn playerLeft returned is remapped to the new ids (the
+        # platform does the same by resolving it to seats first).
+        old_ids = [player["id"] for player in self._players]
+        self._players = [
+            {**player, "kind": "computer", "max_loss": 0}
+            if player["id"] == leaver["id"]
+            else player
+            for player in self._players
+        ]
+        computers = 0
+        for player in self._players:
+            if player["kind"] == "computer":
+                computers += 1
+                player["id"] = f"computer-{computers}"
+        id_map = dict(zip(old_ids, (p["id"] for p in self._players)))
         self._last_moves.append(
             {"player_id": leaver["id"], "move": {"left": True}}
         )
         new_state: JsonValue = result.get("state")
         new_turn: list[str] | None = result.get("turn")
+        if new_turn is not None:
+            new_turn = [id_map.get(pid, pid) for pid in new_turn]
         humans_left = [p for p in self._players if p["kind"] == "human"]
         if not humans_left:
             # The platform ends the match when the last human leaves and

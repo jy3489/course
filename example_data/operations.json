@@ -58,7 +58,8 @@
   ],
   "allows_leave_mid_match": false,
   "allows_join_mid_match": false,
-  "code_file": "tictactoe.html"
+  "code_file": "tictactoe.html",
+  "server_code_file": "tictactoe.server.js"
  },
  {
   "op": "create_game",
@@ -77,7 +78,8 @@
   ],
   "allows_leave_mid_match": true,
   "allows_join_mid_match": true,
-  "code_file": "poker.html"
+  "code_file": "poker.html",
+  "server_code_file": "poker.server.js"
  },
  {
   "op": "create_game",
@@ -98,7 +100,8 @@
   ],
   "allows_leave_mid_match": true,
   "allows_join_mid_match": true,
-  "code_file": "debug.html"
+  "code_file": "debug.html",
+  "server_code_file": "debug.server.js"
  },
  {
   "op": "create_match",
@@ -121,70 +124,25 @@
   "op": "move",
   "as": "user1",
   "match": "ttt-ongoing",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "ttt-ongoing",
-  "new_state": {
-   "board": [
-    "O",
-    "",
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 0
+  }
  },
  {
   "op": "move",
   "as": "user1",
   "match": "ttt-ongoing",
-  "new_state": {
-   "board": [
-    "O",
-    "",
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 8
+  }
  },
  {
   "op": "create_match",
@@ -202,47 +160,17 @@
   "op": "move",
   "as": "user3",
   "match": "ttt-vs-computer",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "move",
   "as": "user3",
   "match": "ttt-vs-computer",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 0
+  }
  },
  {
   "op": "create_match",
@@ -260,24 +188,9 @@
   "op": "move",
   "as": "user6",
   "match": "ttt-computer-to-move",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "create_match",
@@ -300,114 +213,41 @@
   "op": "move",
   "as": "user2",
   "match": "ttt-x-won",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 0
+  }
  },
  {
   "op": "move",
   "as": "user4",
   "match": "ttt-x-won",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 3
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "ttt-x-won",
-  "new_state": {
-   "board": [
-    "X",
-    "X",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 1
+  }
  },
  {
   "op": "move",
   "as": "user4",
   "match": "ttt-x-won",
-  "new_state": {
-   "board": [
-    "X",
-    "X",
-    "",
-    "O",
-    "O",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "ttt-x-won",
-  "new_state": {
-   "board": [
-    "X",
-    "X",
-    "X",
-    "O",
-    "O",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": 0,
-   "draw": false
-  },
-  "next_turn_player_indices": null
+  "move": {
+   "cell": 2
+  }
  },
  {
   "op": "delete_match",
@@ -435,206 +275,73 @@
   "op": "move",
   "as": "user5",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 0
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 1
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 2
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "O",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "O",
-    "",
-    "O",
-    "",
-    "X",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 3
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "O",
-    "O",
-    "O",
-    "",
-    "X",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 5
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "O",
-    "O",
-    "O",
-    "X",
-    "X",
-    "",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 7
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "O",
-    "O",
-    "O",
-    "X",
-    "X",
-    "O",
-    "X"
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 6
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "ttt-draw",
-  "new_state": {
-   "board": [
-    "X",
-    "X",
-    "O",
-    "O",
-    "O",
-    "X",
-    "X",
-    "O",
-    "X"
-   ],
-   "winner": null,
-   "draw": true
-  },
-  "next_turn_player_indices": null
+  "move": {
+   "cell": 8
+  }
  },
  {
   "op": "create_match",
@@ -652,137 +359,25 @@
   "op": "move",
   "as": "user7",
   "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 0
+  }
  },
  {
   "op": "move",
   "as": "user7",
   "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "X",
-    "",
-    "O",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 1
+  }
  },
  {
   "op": "move",
   "as": "user7",
   "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "X",
-    "",
-    "O",
-    "",
-    "X",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user7",
-  "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "X",
-    "",
-    "O",
-    "",
-    "X",
-    "O",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user7",
-  "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "X",
-    "",
-    "X",
-    "",
-    "O",
-    "",
-    "X",
-    "O",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user7",
-  "match": "ttt-computer-won",
-  "new_state": {
-   "board": [
-    "X",
-    "O",
-    "X",
-    "",
-    "O",
-    "",
-    "X",
-    "O",
-    ""
-   ],
-   "winner": 1,
-   "draw": false
-  },
-  "next_turn_player_indices": null
+  "move": {
+   "cell": 3
+  }
  },
  {
   "op": "create_match",
@@ -805,47 +400,17 @@
   "op": "move",
   "as": "user1",
   "match": "ttt-player-left",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "cell": 4
+  }
  },
  {
   "op": "move",
   "as": "user3",
   "match": "ttt-player-left",
-  "new_state": {
-   "board": [
-    "",
-    "",
-    "O",
-    "",
-    "X",
-    "",
-    "",
-    "",
-    ""
-   ],
-   "winner": null,
-   "draw": false
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "cell": 2
+  }
  },
  {
   "op": "leave",
@@ -884,432 +449,6 @@
   "match": "poker-heads-up"
  },
  {
-  "op": "move",
-  "as": "user1",
-  "match": "poker-heads-up",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Qs",
-    "7s",
-    "9d",
-    "9c",
-    "4d",
-    "Kc",
-    "8s",
-    "3h",
-    "9h",
-    "3c",
-    "Qd",
-    "8h",
-    "2d",
-    "Ac",
-    "8d",
-    "6d",
-    "Ks",
-    "3d",
-    "2s",
-    "Jh",
-    "5c",
-    "Ah",
-    "7h",
-    "8c",
-    "9s",
-    "Tc",
-    "Kh",
-    "4s",
-    "2h",
-    "Js",
-    "Qh",
-    "Qc",
-    "Jd",
-    "7d",
-    "6s",
-    "Kd",
-    "7c",
-    "6c",
-    "5h",
-    "Ad",
-    "4c",
-    "Th",
-    "4h",
-    "3s",
-    "Ts",
-    "As",
-    "Jc",
-    "Td"
-   ],
-   "hole": [
-    [
-     "5s",
-     "5d"
-    ],
-    [
-     "6h",
-     "2c"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    10,
-    20
-   ],
-   "contributed": [
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user1",
-  "match": "poker-heads-up",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Qs",
-    "7s",
-    "9d",
-    "9c",
-    "4d",
-    "Kc",
-    "8s",
-    "3h",
-    "9h",
-    "3c",
-    "Qd",
-    "8h",
-    "2d",
-    "Ac",
-    "8d",
-    "6d",
-    "Ks",
-    "3d",
-    "2s",
-    "Jh",
-    "5c",
-    "Ah",
-    "7h",
-    "8c",
-    "9s",
-    "Tc",
-    "Kh",
-    "4s",
-    "2h",
-    "Js",
-    "Qh",
-    "Qc",
-    "Jd",
-    "7d",
-    "6s",
-    "Kd",
-    "7c",
-    "6c",
-    "5h",
-    "Ad",
-    "4c",
-    "Th",
-    "4h",
-    "3s",
-    "Ts",
-    "As",
-    "Jc",
-    "Td"
-   ],
-   "hole": [
-    [
-     "5s",
-     "5d"
-    ],
-    [
-     "6h",
-     "2c"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    20
-   ],
-   "contributed": [
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user1 calls 10."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-heads-up",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Qs",
-    "7s",
-    "9d",
-    "9c",
-    "4d",
-    "Kc",
-    "8s",
-    "3h",
-    "9h",
-    "3c",
-    "Qd",
-    "8h",
-    "2d",
-    "Ac",
-    "8d",
-    "6d",
-    "Ks",
-    "3d",
-    "2s",
-    "Jh",
-    "5c",
-    "Ah",
-    "7h",
-    "8c",
-    "9s",
-    "Tc",
-    "Kh",
-    "4s",
-    "2h",
-    "Js",
-    "Qh",
-    "Qc",
-    "Jd",
-    "7d",
-    "6s",
-    "Kd",
-    "7c",
-    "6c",
-    "5h",
-    "Ad",
-    "4c",
-    "Th",
-    "4h",
-    "3s",
-    "Ts"
-   ],
-   "hole": [
-    [
-     "5s",
-     "5d"
-    ],
-    [
-     "6h",
-     "2c"
-    ]
-   ],
-   "board": [
-    "Td",
-    "Jc",
-    "As"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user1 calls 10.",
-    "user2 checks.",
-    "Flop: 10♦ J♣ A♠"
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-heads-up",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Qs",
-    "7s",
-    "9d",
-    "9c",
-    "4d",
-    "Kc",
-    "8s",
-    "3h",
-    "9h",
-    "3c",
-    "Qd",
-    "8h",
-    "2d",
-    "Ac",
-    "8d",
-    "6d",
-    "Ks",
-    "3d",
-    "2s",
-    "Jh",
-    "5c",
-    "Ah",
-    "7h",
-    "8c",
-    "9s",
-    "Tc",
-    "Kh",
-    "4s",
-    "2h",
-    "Js",
-    "Qh",
-    "Qc",
-    "Jd",
-    "7d",
-    "6s",
-    "Kd",
-    "7c",
-    "6c",
-    "5h",
-    "Ad",
-    "4c",
-    "Th",
-    "4h",
-    "3s",
-    "Ts"
-   ],
-   "hole": [
-    [
-     "5s",
-     "5d"
-    ],
-    [
-     "6h",
-     "2c"
-    ]
-   ],
-   "board": [
-    "Td",
-    "Jc",
-    "As"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user1 calls 10.",
-    "user2 checks.",
-    "Flop: 10♦ J♣ A♠",
-    "user2 checks."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
   "op": "create_match",
   "id": "poker-four-on-the-flop",
   "as": "user3",
@@ -1335,603 +474,25 @@
   "op": "move",
   "as": "user3",
   "match": "poker-four-on-the-flop",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Td",
-    "6s",
-    "3c",
-    "9d",
-    "3d",
-    "As",
-    "Ah",
-    "2d",
-    "Tc",
-    "Jh",
-    "7h",
-    "9c",
-    "Kh",
-    "Qh",
-    "2s",
-    "5d",
-    "Kd",
-    "9h",
-    "7d",
-    "8s",
-    "Kc",
-    "4s",
-    "Ac",
-    "8h",
-    "7s",
-    "3s",
-    "5c",
-    "Jd",
-    "Js",
-    "Qs",
-    "Th",
-    "Qc",
-    "4h",
-    "Ts",
-    "6h",
-    "6c",
-    "2c",
-    "Ks",
-    "Qd",
-    "5h",
-    "Jc",
-    "4d",
-    "4c",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "6d"
-    ],
-    [
-     "2h",
-     "3h"
-    ],
-    [
-     "Ad",
-     "8c"
-    ],
-    [
-     "7c",
-     "9s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    true
-   ],
-   "to_act": 3,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   3
-  ]
- },
- {
-  "op": "move",
-  "as": "user3",
-  "match": "poker-four-on-the-flop",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Td",
-    "6s",
-    "3c",
-    "9d",
-    "3d",
-    "As",
-    "Ah",
-    "2d",
-    "Tc",
-    "Jh",
-    "7h",
-    "9c",
-    "Kh",
-    "Qh",
-    "2s",
-    "5d",
-    "Kd",
-    "9h",
-    "7d",
-    "8s",
-    "Kc",
-    "4s",
-    "Ac",
-    "8h",
-    "7s",
-    "3s",
-    "5c",
-    "Jd",
-    "Js",
-    "Qs",
-    "Th",
-    "Qc",
-    "4h",
-    "Ts",
-    "6h",
-    "6c",
-    "2c",
-    "Ks",
-    "Qd",
-    "5h",
-    "Jc",
-    "4d",
-    "4c",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "6d"
-    ],
-    [
-     "2h",
-     "3h"
-    ],
-    [
-     "Ad",
-     "8c"
-    ],
-    [
-     "7c",
-     "9s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "Computer 4 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user3",
-  "match": "poker-four-on-the-flop",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Td",
-    "6s",
-    "3c",
-    "9d",
-    "3d",
-    "As",
-    "Ah",
-    "2d",
-    "Tc",
-    "Jh",
-    "7h",
-    "9c",
-    "Kh",
-    "Qh",
-    "2s",
-    "5d",
-    "Kd",
-    "9h",
-    "7d",
-    "8s",
-    "Kc",
-    "4s",
-    "Ac",
-    "8h",
-    "7s",
-    "3s",
-    "5c",
-    "Jd",
-    "Js",
-    "Qs",
-    "Th",
-    "Qc",
-    "4h",
-    "Ts",
-    "6h",
-    "6c",
-    "2c",
-    "Ks",
-    "Qd",
-    "5h",
-    "Jc",
-    "4d",
-    "4c",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "6d"
-    ],
-    [
-     "2h",
-     "3h"
-    ],
-    [
-     "Ad",
-     "8c"
-    ],
-    [
-     "7c",
-     "9s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true,
-    true,
-    false
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "Computer 4 calls 20.",
-    "user3 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user4",
   "match": "poker-four-on-the-flop",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Td",
-    "6s",
-    "3c",
-    "9d",
-    "3d",
-    "As",
-    "Ah",
-    "2d",
-    "Tc",
-    "Jh",
-    "7h",
-    "9c",
-    "Kh",
-    "Qh",
-    "2s",
-    "5d",
-    "Kd",
-    "9h",
-    "7d",
-    "8s",
-    "Kc",
-    "4s",
-    "Ac",
-    "8h",
-    "7s",
-    "3s",
-    "5c",
-    "Jd",
-    "Js",
-    "Qs",
-    "Th",
-    "Qc",
-    "4h",
-    "Ts",
-    "6h",
-    "6c",
-    "2c",
-    "Ks",
-    "Qd",
-    "5h",
-    "Jc",
-    "4d",
-    "4c",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "6d"
-    ],
-    [
-     "2h",
-     "3h"
-    ],
-    [
-     "Ad",
-     "8c"
-    ],
-    [
-     "7c",
-     "9s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    false,
-    false,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    false,
-    true,
-    false
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "Computer 4 calls 20.",
-    "user3 folds.",
-    "user4 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "type": "fold"
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "poker-four-on-the-flop",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Td",
-    "6s",
-    "3c",
-    "9d",
-    "3d",
-    "As",
-    "Ah",
-    "2d",
-    "Tc",
-    "Jh",
-    "7h",
-    "9c",
-    "Kh",
-    "Qh",
-    "2s",
-    "5d",
-    "Kd",
-    "9h",
-    "7d",
-    "8s",
-    "Kc",
-    "4s",
-    "Ac",
-    "8h",
-    "7s",
-    "3s",
-    "5c",
-    "Jd",
-    "Js",
-    "Qs",
-    "Th",
-    "Qc",
-    "4h",
-    "Ts",
-    "6h",
-    "6c",
-    "2c",
-    "Ks",
-    "Qd",
-    "5h",
-    "Jc"
-   ],
-   "hole": [
-    [
-     "5s",
-     "6d"
-    ],
-    [
-     "2h",
-     "3h"
-    ],
-    [
-     "Ad",
-     "8c"
-    ],
-    [
-     "7c",
-     "9s"
-    ]
-   ],
-   "board": [
-    "8d",
-    "4c",
-    "4d"
-   ],
-   "street": "flop",
-   "in_hand": [
-    false,
-    false,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    false,
-    true,
-    true
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "Computer 4 calls 20.",
-    "user3 folds.",
-    "user4 folds.",
-    "user5 checks.",
-    "Flop: 8♦ 4♣ 4♦"
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "type": "check"
+  }
  },
  {
   "op": "update_game",
@@ -1988,1046 +549,67 @@
  },
  {
   "op": "move",
-  "as": "user1",
-  "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    1000,
-    1000,
-    1000,
-    1000,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    0,
-    0,
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    0,
-    0,
-    0,
-    0,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true
-   ],
-   "to_act": 3,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   3
-  ]
- },
- {
-  "op": "move",
   "as": "user4",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    1000,
-    1000,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    0,
-    0,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true,
-    true
-   ],
-   "to_act": 4,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   4
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user5",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    1000,
-    1000,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    0,
-    0,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false,
-    false,
-    true,
-    true,
-    true
-   ],
-   "to_act": 5,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20.",
-    "user5 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   5
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    980,
-    1000,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    0,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false,
-    false,
-    false,
-    true,
-    true
-   ],
-   "to_act": 6,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20.",
-    "user5 folds.",
-    "user6 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   6
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user7",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    0
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    0
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false,
-    false,
-    false,
-    false,
-    true
-   ],
-   "to_act": 7,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20.",
-    "user5 folds.",
-    "user6 calls 20.",
-    "user7 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   7
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user8",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    980,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true,
-    false,
-    false,
-    false,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20.",
-    "user5 folds.",
-    "user6 calls 20.",
-    "user7 calls 20.",
-    "user8 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user1",
   "match": "poker-full-table",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980,
-    980,
-    1000,
-    980,
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "6c",
-    "9s",
-    "7d",
-    "6d",
-    "5h",
-    "Ks",
-    "2h",
-    "9c",
-    "Tc",
-    "8c",
-    "As",
-    "4s",
-    "3d",
-    "Th",
-    "Jc",
-    "4c",
-    "Jd",
-    "Kc",
-    "3s",
-    "Td",
-    "9d",
-    "Ah",
-    "Qh",
-    "Ad",
-    "Qd",
-    "7s",
-    "2s",
-    "5c",
-    "Ts",
-    "2c",
-    "Qs",
-    "Kd",
-    "Kh",
-    "4h",
-    "6h",
-    "8h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "7c"
-    ],
-    [
-     "Js",
-     "3c"
-    ],
-    [
-     "2d",
-     "6s"
-    ],
-    [
-     "Qc",
-     "8s"
-    ],
-    [
-     "3h",
-     "5d"
-    ],
-    [
-     "9h",
-     "8d"
-    ],
-    [
-     "Ac",
-     "4d"
-    ],
-    [
-     "Jh",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    false,
-    true,
-    true,
-    true,
-    false,
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20,
-    20,
-    0,
-    20,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true,
-    true,
-    false,
-    false,
-    false,
-    false,
-    false
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 calls 20.",
-    "user5 folds.",
-    "user6 calls 20.",
-    "user7 calls 20.",
-    "user8 calls 20.",
-    "user1 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "call"
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-full-table",
+  "move": {
+   "type": "call"
+  }
+ },
+ {
+  "op": "move",
+  "as": "user3",
+  "match": "poker-full-table",
+  "move": {
+   "type": "check"
+  }
  },
  {
   "op": "create_match",
@@ -3055,741 +637,38 @@
   "op": "move",
   "as": "user6",
   "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "2s",
-    "2d",
-    "7h",
-    "9c",
-    "Tc",
-    "2c",
-    "Ts",
-    "5c",
-    "5d",
-    "Ks",
-    "Jc",
-    "3h",
-    "8s",
-    "9s",
-    "4d",
-    "9h",
-    "Th",
-    "8h",
-    "Qd",
-    "7d",
-    "Kd",
-    "8d",
-    "Kh",
-    "Qc",
-    "Jd",
-    "As",
-    "Ac",
-    "Kc",
-    "Jh",
-    "7c",
-    "Qs",
-    "Qh",
-    "Js",
-    "6c",
-    "6d",
-    "9d",
-    "2h",
-    "3c",
-    "4s",
-    "4c",
-    "5h",
-    "3d",
-    "6s",
-    "Ad",
-    "Ah",
-    "6h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "8c"
-    ],
-    [
-     "7s",
-     "4h"
-    ],
-    [
-     "Td",
-     "3s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user6",
-  "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "2s",
-    "2d",
-    "7h",
-    "9c",
-    "Tc",
-    "2c",
-    "Ts",
-    "5c",
-    "5d",
-    "Ks",
-    "Jc",
-    "3h",
-    "8s",
-    "9s",
-    "4d",
-    "9h",
-    "Th",
-    "8h",
-    "Qd",
-    "7d",
-    "Kd",
-    "8d",
-    "Kh",
-    "Qc",
-    "Jd",
-    "As",
-    "Ac",
-    "Kc",
-    "Jh",
-    "7c",
-    "Qs",
-    "Qh",
-    "Js",
-    "6c",
-    "6d",
-    "9d",
-    "2h",
-    "3c",
-    "4s",
-    "4c",
-    "5h",
-    "3d",
-    "6s",
-    "Ad",
-    "Ah",
-    "6h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "8c"
-    ],
-    [
-     "7s",
-     "4h"
-    ],
-    [
-     "Td",
-     "3s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    false,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user6 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user7",
   "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    990,
-    1000
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "8s",
-    "5s",
-    "Js",
-    "As",
-    "Ac",
-    "Tc",
-    "Ts",
-    "Th",
-    "Jd",
-    "2c",
-    "Qd",
-    "Ks",
-    "7d",
-    "8c",
-    "7h",
-    "Qh",
-    "4c",
-    "6s",
-    "9c",
-    "5c",
-    "4d",
-    "9d",
-    "3s",
-    "Kd",
-    "Qc",
-    "9s",
-    "Jh",
-    "Td",
-    "5h",
-    "8h",
-    "3h",
-    "Jc",
-    "4s",
-    "2d",
-    "3c",
-    "Kc",
-    "2h",
-    "Qs",
-    "6h",
-    "6c",
-    "2s",
-    "8d",
-    "Ad",
-    "9h",
-    "4h",
-    "7c"
-   ],
-   "hole": [
-    [
-     "7s",
-     "3d"
-    ],
-    [
-     "6d",
-     "Kh"
-    ],
-    [
-     "Ah",
-     "5d"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    0,
-    10
-   ],
-   "contributed": [
-    20,
-    0,
-    10
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 2,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user6 folds.",
-    "user7 folds.",
-    "user8 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user7",
-  "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    970,
-    1000
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "8s",
-    "5s",
-    "Js",
-    "As",
-    "Ac",
-    "Tc",
-    "Ts",
-    "Th",
-    "Jd",
-    "2c",
-    "Qd",
-    "Ks",
-    "7d",
-    "8c",
-    "7h",
-    "Qh",
-    "4c",
-    "6s",
-    "9c",
-    "5c",
-    "4d",
-    "9d",
-    "3s",
-    "Kd",
-    "Qc",
-    "9s",
-    "Jh",
-    "Td",
-    "5h",
-    "8h",
-    "3h",
-    "Jc",
-    "4s",
-    "2d",
-    "3c",
-    "Kc",
-    "2h",
-    "Qs",
-    "6h",
-    "6c",
-    "2s",
-    "8d",
-    "Ad",
-    "9h",
-    "4h",
-    "7c"
-   ],
-   "hole": [
-    [
-     "7s",
-     "3d"
-    ],
-    [
-     "6d",
-     "Kh"
-    ],
-    [
-     "Ah",
-     "5d"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    20,
-    10
-   ],
-   "contributed": [
-    20,
-    20,
-    10
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    true
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 2,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user6 folds.",
-    "user7 folds.",
-    "user8 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20.",
-    "user7 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user8",
   "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    970,
-    990
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "8s",
-    "5s",
-    "Js",
-    "As",
-    "Ac",
-    "Tc",
-    "Ts",
-    "Th",
-    "Jd",
-    "2c",
-    "Qd",
-    "Ks",
-    "7d",
-    "8c",
-    "7h",
-    "Qh",
-    "4c",
-    "6s",
-    "9c",
-    "5c",
-    "4d",
-    "9d",
-    "3s",
-    "Kd",
-    "Qc",
-    "9s",
-    "Jh",
-    "Td",
-    "5h",
-    "8h",
-    "3h",
-    "Jc",
-    "4s",
-    "2d",
-    "3c",
-    "Kc",
-    "2h",
-    "Qs",
-    "6h",
-    "6c",
-    "2s",
-    "8d",
-    "Ad",
-    "9h",
-    "4h",
-    "7c"
-   ],
-   "hole": [
-    [
-     "7s",
-     "3d"
-    ],
-    [
-     "6d",
-     "Kh"
-    ],
-    [
-     "Ah",
-     "5d"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    20,
-    20
-   ],
-   "contributed": [
-    20,
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 2,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user6 folds.",
-    "user7 folds.",
-    "user8 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20.",
-    "user7 calls 20.",
-    "user8 calls 10."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "leave",
-  "as": "user6",
-  "match": "poker-player-left"
+  "move": {
+   "type": "check"
+  }
  },
  {
   "op": "move",
   "as": "user7",
   "match": "poker-player-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    970,
-    990
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "8s",
-    "5s",
-    "Js",
-    "As",
-    "Ac",
-    "Tc",
-    "Ts",
-    "Th",
-    "Jd",
-    "2c",
-    "Qd",
-    "Ks",
-    "7d",
-    "8c",
-    "7h",
-    "Qh",
-    "4c",
-    "6s",
-    "9c",
-    "5c",
-    "4d",
-    "9d",
-    "3s",
-    "Kd",
-    "Qc",
-    "9s",
-    "Jh",
-    "Td",
-    "5h",
-    "8h",
-    "3h",
-    "Jc",
-    "4s",
-    "2d",
-    "3c",
-    "Kc",
-    "2h",
-    "Qs",
-    "6h",
-    "6c",
-    "2s",
-    "8d",
-    "Ad"
-   ],
-   "hole": [
-    [
-     "7s",
-     "3d"
-    ],
-    [
-     "6d",
-     "Kh"
-    ],
-    [
-     "Ah",
-     "5d"
-    ]
-   ],
-   "board": [
-    "7c",
-    "4h",
-    "9h"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 2,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user6 folds.",
-    "user7 folds.",
-    "user8 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20.",
-    "user7 calls 20.",
-    "user8 calls 10.",
-    "Computer 1 checks.",
-    "Flop: 7♣ 4♥ 9♥"
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "type": "check"
+  }
+ },
+ {
+  "op": "leave",
+  "as": "user6",
+  "match": "poker-player-left"
  },
  {
   "op": "create_match",
@@ -3812,1067 +691,22 @@
   "op": "move",
   "as": "user2",
   "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s",
-    "5h",
-    "4c",
-    "8c",
-    "2d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    10,
-    20
-   ],
-   "contributed": [
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s",
-    "5h",
-    "4c",
-    "8c",
-    "2d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    20
-   ],
-   "contributed": [
-    20,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "move",
   "as": "user3",
   "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s",
-    "5h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ]
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣"
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "check"
+  }
  },
  {
   "op": "join",
   "as": "user4",
   "match": "poker-player-joined"
- },
- {
-  "op": "move",
-  "as": "user3",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s",
-    "5h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ],
-    null
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    true,
-    false
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    0
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣",
-    "user3 checks."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ],
-    null
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c",
-    "5h"
-   ],
-   "street": "turn",
-   "in_hand": [
-    true,
-    true,
-    false
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    0
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    false
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣",
-    "user3 checks.",
-    "user2 checks.",
-    "Turn: 2♦ 8♣ 4♣ 5♥"
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user3",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h",
-    "9s"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ],
-    null
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c",
-    "5h"
-   ],
-   "street": "turn",
-   "in_hand": [
-    true,
-    true,
-    false
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    0
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣",
-    "user3 checks.",
-    "user2 checks.",
-    "Turn: 2♦ 8♣ 4♣ 5♥",
-    "user3 checks."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ],
-    null
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c",
-    "5h",
-    "9s"
-   ],
-   "street": "river",
-   "in_hand": [
-    true,
-    true,
-    false
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    0
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    false
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣",
-    "user3 checks.",
-    "user2 checks.",
-    "Turn: 2♦ 8♣ 4♣ 5♥",
-    "user3 checks.",
-    "user2 checks.",
-    "River: 2♦ 8♣ 4♣ 5♥ 9♠"
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user3",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    980,
-    1000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "Ks",
-    "3c",
-    "7s",
-    "Ts",
-    "4s",
-    "Qh",
-    "9c",
-    "7c",
-    "Qd",
-    "Td",
-    "9h",
-    "As",
-    "Qs",
-    "Ad",
-    "Ah",
-    "Th",
-    "6h",
-    "3d",
-    "2h",
-    "5c",
-    "4d",
-    "9d",
-    "2s",
-    "8d",
-    "7d",
-    "5d",
-    "Jc",
-    "8s",
-    "Kh",
-    "2c",
-    "6s",
-    "6d",
-    "Kd",
-    "Js",
-    "6c",
-    "3h",
-    "Tc",
-    "8h",
-    "3s",
-    "4h",
-    "Qc",
-    "Kc",
-    "7h"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Jh"
-    ],
-    [
-     "Jd",
-     "Ac"
-    ],
-    null
-   ],
-   "board": [
-    "2d",
-    "8c",
-    "4c",
-    "5h",
-    "9s"
-   ],
-   "street": "river",
-   "in_hand": [
-    true,
-    true,
-    false
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    20,
-    0
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "user2 calls 10.",
-    "user3 checks.",
-    "Flop: 2♦ 8♣ 4♣",
-    "user3 checks.",
-    "user2 checks.",
-    "Turn: 2♦ 8♣ 4♣ 5♥",
-    "user3 checks.",
-    "user2 checks.",
-    "River: 2♦ 8♣ 4♣ 5♥ 9♠",
-    "user3 checks."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user2",
-  "match": "poker-player-joined",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    980,
-    990
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "4c",
-    "9h",
-    "Qs",
-    "Ks",
-    "7d",
-    "4s",
-    "Ts",
-    "As",
-    "Qh",
-    "Ac",
-    "Th",
-    "Jh",
-    "5c",
-    "5d",
-    "Js",
-    "Tc",
-    "9d",
-    "5s",
-    "2h",
-    "9c",
-    "7h",
-    "2c",
-    "Ah",
-    "Kc",
-    "8d",
-    "6c",
-    "Kd",
-    "4h",
-    "Qc",
-    "3d",
-    "7s",
-    "3h",
-    "8h",
-    "2s",
-    "6s",
-    "Jd",
-    "3s",
-    "Kh",
-    "9s",
-    "Qd",
-    "7c",
-    "5h",
-    "6d",
-    "Jc",
-    "2d",
-    "Ad"
-   ],
-   "hole": [
-    [
-     "Td",
-     "4d"
-    ],
-    [
-     "3c",
-     "8c"
-    ],
-    [
-     "8s",
-     "6h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    0,
-    10
-   ],
-   "contributed": [
-    20,
-    0,
-    10
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [
-     "2d",
-     "8c",
-     "4c",
-     "5h",
-     "9s"
-    ],
-    "shown": [
-     {
-      "seat": 0,
-      "cards": [
-       "5s",
-       "Jh"
-      ],
-      "hand": "pair"
-     },
-     {
-      "seat": 1,
-      "cards": [
-       "Jd",
-       "Ac"
-      ],
-      "hand": "high card"
-     }
-    ],
-    "won": [
-     {
-      "seat": 0,
-      "amount": 40
-     }
-    ],
-    "description": "showdown, won with pair"
-   },
-   "log": [
-    "user3 checks.",
-    "user2 checks.",
-    "Turn: 2♦ 8♣ 4♣ 5♥",
-    "user3 checks.",
-    "user2 checks.",
-    "River: 2♦ 8♣ 4♣ 5♥ 9♠",
-    "user3 checks.",
-    "user2 checks.",
-    "user2 wins 40 (showdown, won with pair).",
-    "Hand #2: seat 2 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
  },
  {
   "op": "create_match",
@@ -4890,575 +724,14 @@
   "op": "move",
   "as": "user5",
   "match": "poker-took-over-computer",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    1000,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "9s",
-    "Kc",
-    "4c",
-    "Ac",
-    "Tc",
-    "4h",
-    "8s",
-    "4s",
-    "Jc",
-    "3d",
-    "2h",
-    "Jh",
-    "Qc",
-    "7h",
-    "6c",
-    "7c",
-    "8c",
-    "Qh",
-    "7d",
-    "5d",
-    "6h",
-    "Js",
-    "Qd",
-    "Jd",
-    "4d",
-    "9c",
-    "Ks",
-    "Ad",
-    "5c",
-    "5h",
-    "Ts",
-    "9d",
-    "Td",
-    "8h",
-    "7s",
-    "As",
-    "Th",
-    "Kh",
-    "2s",
-    "Ah",
-    "2d",
-    "Qs",
-    "8d",
-    "9h",
-    "3h",
-    "3s"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Kd"
-    ],
-    [
-     "3c",
-     "6s"
-    ],
-    [
-     "6d",
-     "2c"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    0,
-    10,
-    20
-   ],
-   "contributed": [
-    0,
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user5",
-  "match": "poker-took-over-computer",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "9s",
-    "Kc",
-    "4c",
-    "Ac",
-    "Tc",
-    "4h",
-    "8s",
-    "4s",
-    "Jc",
-    "3d",
-    "2h",
-    "Jh",
-    "Qc",
-    "7h",
-    "6c",
-    "7c",
-    "8c",
-    "Qh",
-    "7d",
-    "5d",
-    "6h",
-    "Js",
-    "Qd",
-    "Jd",
-    "4d",
-    "9c",
-    "Ks",
-    "Ad",
-    "5c",
-    "5h",
-    "Ts",
-    "9d",
-    "Td",
-    "8h",
-    "7s",
-    "As",
-    "Th",
-    "Kh",
-    "2s",
-    "Ah",
-    "2d",
-    "Qs",
-    "8d",
-    "9h",
-    "3h",
-    "3s"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Kd"
-    ],
-    [
-     "3c",
-     "6s"
-    ],
-    [
-     "6d",
-     "2c"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    10,
-    20
-   ],
-   "contributed": [
-    20,
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user5 calls 20."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user5",
-  "match": "poker-took-over-computer",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "9s",
-    "Kc",
-    "4c",
-    "Ac",
-    "Tc",
-    "4h",
-    "8s",
-    "4s",
-    "Jc",
-    "3d",
-    "2h",
-    "Jh",
-    "Qc",
-    "7h",
-    "6c",
-    "7c",
-    "8c",
-    "Qh",
-    "7d",
-    "5d",
-    "6h",
-    "Js",
-    "Qd",
-    "Jd",
-    "4d",
-    "9c",
-    "Ks",
-    "Ad",
-    "5c",
-    "5h",
-    "Ts",
-    "9d",
-    "Td",
-    "8h",
-    "7s",
-    "As",
-    "Th",
-    "Kh",
-    "2s",
-    "Ah",
-    "2d",
-    "Qs",
-    "8d",
-    "9h",
-    "3h",
-    "3s"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Kd"
-    ],
-    [
-     "3c",
-     "6s"
-    ],
-    [
-     "6d",
-     "2c"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    false,
-    true
-   ],
-   "bets": [
-    20,
-    10,
-    20
-   ],
-   "contributed": [
-    20,
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    false,
-    false,
-    true
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user5 calls 20.",
-    "Computer 2 folds."
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
- },
- {
-  "op": "move",
-  "as": "user5",
-  "match": "poker-took-over-computer",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "9s",
-    "Kc",
-    "4c",
-    "Ac",
-    "Tc",
-    "4h",
-    "8s",
-    "4s",
-    "Jc",
-    "3d",
-    "2h",
-    "Jh",
-    "Qc",
-    "7h",
-    "6c",
-    "7c",
-    "8c",
-    "Qh",
-    "7d",
-    "5d",
-    "6h",
-    "Js",
-    "Qd",
-    "Jd",
-    "4d",
-    "9c",
-    "Ks",
-    "Ad",
-    "5c",
-    "5h",
-    "Ts",
-    "9d",
-    "Td",
-    "8h",
-    "7s",
-    "As",
-    "Th",
-    "Kh",
-    "2s",
-    "Ah",
-    "2d",
-    "Qs",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Kd"
-    ],
-    [
-     "3c",
-     "6s"
-    ],
-    [
-     "6d",
-     "2c"
-    ]
-   ],
-   "board": [
-    "3s",
-    "3h",
-    "9h"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    false,
-    true
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    10,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    true
-   ],
-   "to_act": 2,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user5 calls 20.",
-    "Computer 2 folds.",
-    "Computer 3 checks.",
-    "Flop: 3♠ 3♥ 9♥"
-   ]
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "join",
   "as": "user1",
   "match": "poker-took-over-computer"
- },
- {
-  "op": "move",
-  "as": "user5",
-  "match": "poker-took-over-computer",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    980,
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "9s",
-    "Kc",
-    "4c",
-    "Ac",
-    "Tc",
-    "4h",
-    "8s",
-    "4s",
-    "Jc",
-    "3d",
-    "2h",
-    "Jh",
-    "Qc",
-    "7h",
-    "6c",
-    "7c",
-    "8c",
-    "Qh",
-    "7d",
-    "5d",
-    "6h",
-    "Js",
-    "Qd",
-    "Jd",
-    "4d",
-    "9c",
-    "Ks",
-    "Ad",
-    "5c",
-    "5h",
-    "Ts",
-    "9d",
-    "Td",
-    "8h",
-    "7s",
-    "As",
-    "Th",
-    "Kh",
-    "2s",
-    "Ah",
-    "2d",
-    "Qs",
-    "8d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "Kd"
-    ],
-    [
-     "3c",
-     "6s"
-    ],
-    [
-     "6d",
-     "2c"
-    ]
-   ],
-   "board": [
-    "3s",
-    "3h",
-    "9h"
-   ],
-   "street": "flop",
-   "in_hand": [
-    true,
-    false,
-    true
-   ],
-   "bets": [
-    0,
-    0,
-    0
-   ],
-   "contributed": [
-    20,
-    10,
-    20
-   ],
-   "current_bet": 0,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    false,
-    false
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user5 calls 20.",
-    "Computer 2 folds.",
-    "Computer 3 checks.",
-    "Flop: 3♠ 3♥ 9♥",
-    "Computer 3 checks."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
  },
  {
   "op": "create_match",
@@ -5476,297 +749,109 @@
   "op": "move",
   "as": "user2",
   "match": "poker-over",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "3h",
-    "As",
-    "2c",
-    "Ad",
-    "9s",
-    "2s",
-    "9h",
-    "Qs",
-    "4s",
-    "3c",
-    "5d",
-    "Jd",
-    "Jc",
-    "5h",
-    "6d",
-    "7d",
-    "2h",
-    "6s",
-    "4h",
-    "Ts",
-    "Kc",
-    "8d",
-    "Qd",
-    "5c",
-    "7c",
-    "Ah",
-    "2d",
-    "4d",
-    "6c",
-    "Qh",
-    "8s",
-    "4c",
-    "Th",
-    "Ac",
-    "Jh",
-    "Kd",
-    "Kh",
-    "7h",
-    "Tc",
-    "3d",
-    "6h",
-    "Js",
-    "9c",
-    "9d",
-    "Qc",
-    "Ks",
-    "8c",
-    "Td"
-   ],
-   "hole": [
-    [
-     "5s",
-     "3s"
-    ],
-    [
-     "8h",
-     "7s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    10,
-    20
-   ],
-   "contributed": [
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "type": "raise",
+   "to": 1000
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "poker-over",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    0,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "3h",
-    "As",
-    "2c",
-    "Ad",
-    "9s",
-    "2s",
-    "9h",
-    "Qs",
-    "4s",
-    "3c",
-    "5d",
-    "Jd",
-    "Jc",
-    "5h",
-    "6d",
-    "7d",
-    "2h",
-    "6s",
-    "4h",
-    "Ts",
-    "Kc",
-    "8d",
-    "Qd",
-    "5c",
-    "7c",
-    "Ah",
-    "2d",
-    "4d",
-    "6c",
-    "Qh",
-    "8s",
-    "4c",
-    "Th",
-    "Ac",
-    "Jh",
-    "Kd",
-    "Kh",
-    "7h",
-    "Tc",
-    "3d",
-    "6h",
-    "Js",
-    "9c",
-    "9d",
-    "Qc",
-    "Ks",
-    "8c",
-    "Td"
-   ],
-   "hole": [
-    [
-     "5s",
-     "3s"
-    ],
-    [
-     "8h",
-     "7s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    1000,
-    20
-   ],
-   "contributed": [
-    1000,
-    20
-   ],
-   "current_bet": 1000,
-   "min_raise": 980,
-   "needs_action": [
-    false,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 raises to 1000 (all in)."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "type": "raise",
+   "to": 1020
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "poker-over",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    0,
-    2000
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [],
-   "hole": [
-    null,
-    null
-   ],
-   "board": [],
-   "street": null,
-   "in_hand": [
-    false,
-    false
-   ],
-   "bets": [
-    0,
-    0
-   ],
-   "contributed": [
-    0,
-    0
-   ],
-   "current_bet": 1000,
-   "min_raise": 980,
-   "needs_action": [
-    false,
-    false
-   ],
-   "to_act": null,
-   "winner": 1,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [
-     "Td",
-     "8c",
-     "Ks",
-     "Qc",
-     "9d"
-    ],
-    "shown": [
-     {
-      "seat": 0,
-      "cards": [
-       "5s",
-       "3s"
-      ],
-      "hand": "high card"
-     },
-     {
-      "seat": 1,
-      "cards": [
-       "8h",
-       "7s"
-      ],
-      "hand": "pair"
-     }
-    ],
-    "won": [
-     {
-      "seat": 1,
-      "amount": 2000
-     }
-    ],
-    "description": "showdown, won with pair"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user2 raises to 1000 (all in).",
-    "Computer 2 calls 980 (all in).",
-    "Flop: 10♦ 8♣ K♠",
-    "Turn: 10♦ 8♣ K♠ Q♣",
-    "River: 10♦ 8♣ K♠ Q♣ 9♦",
-    "Computer 2 wins 2000 (showdown, won with pair)."
-   ]
-  },
-  "next_turn_player_indices": null
+  "move": {
+   "type": "raise",
+   "to": 1040
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1060
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1080
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1100
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1120
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1140
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 1160
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 320
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 340
+  }
+ },
+ {
+  "op": "move",
+  "as": "user2",
+  "match": "poker-over",
+  "move": {
+   "type": "raise",
+   "to": 380
+  }
  },
  {
   "op": "create_match",
@@ -5784,344 +869,9 @@
   "op": "move",
   "as": "user4",
   "match": "poker-last-human-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    990,
-    980
-   ],
-   "hand_number": 1,
-   "dealer": 0,
-   "deck": [
-    "8c",
-    "4d",
-    "9s",
-    "7s",
-    "6s",
-    "8s",
-    "9c",
-    "8h",
-    "Qs",
-    "2c",
-    "6c",
-    "3c",
-    "Ts",
-    "7c",
-    "6h",
-    "Ah",
-    "2s",
-    "3d",
-    "Tc",
-    "Ac",
-    "Ks",
-    "Kd",
-    "2d",
-    "Jh",
-    "Kh",
-    "8d",
-    "9h",
-    "Qh",
-    "As",
-    "5d",
-    "Js",
-    "2h",
-    "Qc",
-    "Jd",
-    "7d",
-    "Qd",
-    "4c",
-    "9d",
-    "Td",
-    "3h",
-    "3s",
-    "5h",
-    "Th",
-    "4s",
-    "Jc",
-    "Kc",
-    "5c",
-    "6d"
-   ],
-   "hole": [
-    [
-     "5s",
-     "4h"
-    ],
-    [
-     "Ad",
-     "7h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    10,
-    20
-   ],
-   "contributed": [
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": null,
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
- },
- {
-  "op": "move",
-  "as": "user4",
-  "match": "poker-last-human-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    970,
-    1000
-   ],
-   "hand_number": 2,
-   "dealer": 1,
-   "deck": [
-    "8c",
-    "2s",
-    "8d",
-    "Tc",
-    "4h",
-    "6d",
-    "Kd",
-    "6h",
-    "9d",
-    "6c",
-    "9c",
-    "As",
-    "4d",
-    "Qh",
-    "Jc",
-    "5d",
-    "9s",
-    "2d",
-    "8s",
-    "3s",
-    "5h",
-    "Qd",
-    "Jd",
-    "7h",
-    "Ac",
-    "Qs",
-    "3d",
-    "Jh",
-    "7c",
-    "Ad",
-    "4s",
-    "Th",
-    "Js",
-    "Qc",
-    "3c",
-    "6s",
-    "7d",
-    "Kh",
-    "2c",
-    "4c",
-    "9h",
-    "3h",
-    "8h",
-    "Kc",
-    "2h",
-    "7s",
-    "5c",
-    "Ts"
-   ],
-   "hole": [
-    [
-     "Ah",
-     "Ks"
-    ],
-    [
-     "Td",
-     "5s"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    20,
-    10
-   ],
-   "contributed": [
-    20,
-    10
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 1,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 1,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 1,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 folds.",
-    "Computer 2 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   1
-  ]
- },
- {
-  "op": "move",
-  "as": "user4",
-  "match": "poker-last-human-left",
-  "new_state": {
-   "small_blind": 10,
-   "big_blind": 20,
-   "chips": [
-    990,
-    980
-   ],
-   "hand_number": 3,
-   "dealer": 0,
-   "deck": [
-    "Qh",
-    "5c",
-    "5s",
-    "2h",
-    "6h",
-    "8c",
-    "Jd",
-    "Tc",
-    "5h",
-    "4d",
-    "Qc",
-    "Ts",
-    "7d",
-    "6s",
-    "Ks",
-    "2s",
-    "Th",
-    "Qs",
-    "8h",
-    "Kc",
-    "9c",
-    "3c",
-    "Kh",
-    "6d",
-    "2d",
-    "8d",
-    "9h",
-    "4s",
-    "Kd",
-    "Js",
-    "7s",
-    "3s",
-    "4c",
-    "3d",
-    "9d",
-    "Jc",
-    "Ah",
-    "Qd",
-    "8s",
-    "Ad",
-    "As",
-    "2c",
-    "4h",
-    "7c",
-    "9s",
-    "5d",
-    "7h",
-    "Td"
-   ],
-   "hole": [
-    [
-     "Ac",
-     "6c"
-    ],
-    [
-     "Jh",
-     "3h"
-    ]
-   ],
-   "board": [],
-   "street": "preflop",
-   "in_hand": [
-    true,
-    true
-   ],
-   "bets": [
-    10,
-    20
-   ],
-   "contributed": [
-    10,
-    20
-   ],
-   "current_bet": 20,
-   "min_raise": 20,
-   "needs_action": [
-    true,
-    true
-   ],
-   "to_act": 0,
-   "winner": null,
-   "previous_hand": {
-    "hand_number": 2,
-    "board": [],
-    "shown": [],
-    "won": [
-     {
-      "seat": 0,
-      "amount": 30
-     }
-    ],
-    "description": "everyone else folded"
-   },
-   "log": [
-    "Hand #1: seat 1 deals; blinds 10/20.",
-    "user4 folds.",
-    "Computer 2 wins 30 (everyone else folded).",
-    "Hand #2: seat 2 deals; blinds 10/20.",
-    "Computer 2 folds.",
-    "user4 wins 30 (everyone else folded).",
-    "Hand #3: seat 1 deals; blinds 10/20."
-   ]
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "type": "call"
+  }
  },
  {
   "op": "leave",
@@ -6186,37 +936,43 @@
   "op": "move",
   "as": "user1",
   "match": "debug-ongoing",
-  "new_state": {
-   "counter": 1,
-   "note": "user1 moved"
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "new_state": {
+    "counter": 1,
+    "note": "user1 moved"
+   },
+   "next_turn_player_indices": [
+    1
+   ]
+  }
  },
  {
   "op": "move",
   "as": "user2",
   "match": "debug-ongoing",
-  "new_state": {
-   "counter": 2,
-   "note": "user2 moved"
-  },
-  "next_turn_player_indices": [
-   2
-  ]
+  "move": {
+   "new_state": {
+    "counter": 2,
+    "note": "user2 moved"
+   },
+   "next_turn_player_indices": [
+    2
+   ]
+  }
  },
  {
   "op": "move",
   "as": "user3",
   "match": "debug-ongoing",
-  "new_state": {
-   "counter": 3,
-   "note": "user3 moved; back to user1"
-  },
-  "next_turn_player_indices": [
-   0
-  ]
+  "move": {
+   "new_state": {
+    "counter": 3,
+    "note": "user3 moved; back to user1"
+   },
+   "next_turn_player_indices": [
+    0
+   ]
+  }
  },
  {
   "op": "create_match",
@@ -6234,13 +990,15 @@
   "op": "move",
   "as": "user4",
   "match": "debug-computer-to-move",
-  "new_state": {
-   "counter": 1,
-   "note": "user4 passed the turn to the computer"
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "new_state": {
+    "counter": 1,
+    "note": "user4 passed the turn to the computer"
+   },
+   "next_turn_player_indices": [
+    1
+   ]
+  }
  },
  {
   "op": "create_match",
@@ -6263,22 +1021,26 @@
   "op": "move",
   "as": "user5",
   "match": "debug-over",
-  "new_state": {
-   "counter": 1,
-   "note": "user5 moved"
-  },
-  "next_turn_player_indices": [
-   1
-  ]
+  "move": {
+   "new_state": {
+    "counter": 1,
+    "note": "user5 moved"
+   },
+   "next_turn_player_indices": [
+    1
+   ]
+  }
  },
  {
   "op": "move",
   "as": "user6",
   "match": "debug-over",
-  "new_state": {
-   "counter": 2,
-   "note": "user6 ended the match"
-  },
-  "next_turn_player_indices": null
+  "move": {
+   "new_state": {
+    "counter": 2,
+    "note": "user6 ended the match"
+   },
+   "next_turn_player_indices": null
+  }
  }
 ]

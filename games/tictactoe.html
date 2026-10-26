@@ -24,127 +24,44 @@
 <div class="players" id="players"></div>
 
 <script>
-/* Match-level virtual currency payout helper. In-game poker chips remain separate. */
-function platformTokenPayout(state, latest) {
-  const pot = latest?.token_pot || 0;
-  const humanSeats = (latest?.players || []).filter(p => p.kind === "human").map(p => p.player_index);
-  if (!pot || !humanSeats.length) return undefined;
-  const winner = state?.winner;
-  const winners = Number.isInteger(winner) && humanSeats.includes(winner)
-    ? [winner] : humanSeats; // draws split the pot equally
-  const payouts = Object.fromEntries(humanSeats.map(i => [i, 0]));
-  const base = Math.floor(pot / winners.length);
-  winners.forEach((i, index) => { payouts[i] = base + (index < pot % winners.length ? 1 : 0); });
-  return payouts;
-}
-</script>
-<script>
 "use strict";
 
-// ---- Game logic: pure functions, also used by tools outside the browser. ----
-const Logic = (() => {
-  const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
-  const MARKS = ["X", "O"];
-
-  function initialState() {
-    return { board: ["", "", "", "", "", "", "", "", ""], winner: null, draw: false };
-  }
-
-  function winningLine(board) {
-    return LINES.find(([a, b, c]) => board[a] && board[a] === board[b] && board[a] === board[c]) ?? null;
-  }
-
-  /** Returns {state, nextTurn}; nextTurn is null when the game is over. */
-  function play(state, seat, cell) {
-    const current = state ?? initialState();
-    if (current.winner !== null || current.draw) throw new Error("the game is over");
-    if (current.board[cell] !== "") throw new Error("that cell is taken");
-    const board = [...current.board];
-    board[cell] = MARKS[seat];
-    const line = winningLine(board);
-    const draw = !line && board.every((mark) => mark !== "");
-    const next = { board, winner: line ? seat : null, draw };
-    return { state: next, nextTurn: line || draw ? null : 1 - seat };
-  }
-
-  /** Perfect play by minimax; ties are broken by [rng]. */
-  function computerCell(state, seat, rng = Math.random) {
-    const current = state ?? initialState();
-    const score = (board, toMove) => {
-      const line = winningLine(board);
-      if (line) return board[line[0]] === MARKS[seat] ? 1 : -1;
-      if (board.every((mark) => mark !== "")) return 0;
-      const scores = board.flatMap((mark, cell) => {
-        if (mark) return [];
-        const next = [...board];
-        next[cell] = MARKS[toMove];
-        return [score(next, 1 - toMove)];
-      });
-      return toMove === seat ? Math.max(...scores) : Math.min(...scores);
-    };
-    const options = current.board.flatMap((mark, cell) => {
-      if (mark) return [];
-      const next = [...current.board];
-      next[cell] = MARKS[seat];
-      return [{ cell, value: score(next, 1 - seat) }];
-    });
-    const best = Math.max(...options.map((option) => option.value));
-    const bestCells = options.filter((option) => option.value === best);
-    return bestCells[Math.floor(rng() * bestCells.length)].cell;
-  }
-
-  return { initialState, winningLine, play, computerCell, MARKS };
-})();
-
-// ---- UI: talks to the platform with state_changed / make_move messages. ----
+// ---- UI only: the rules live in tictactoe.server.js, on the server. ----
+// state_changed carries this player's view (the board, the winner, the
+// winning line); a click sends {type: "make_move", move: {cell}} and the
+// server validates and applies it. Computers move on the server, so the
+// client never acts for anyone but the viewer.
 if (typeof window !== "undefined" && window.document) {
+  const MARKS = ["X", "O"];
   let latest = null; // the last state_changed message
   let moveSent = false; // at most one make_move per state_changed
 
   const $ = (id) => document.getElementById(id);
-
-  function makeMove(newState, nextTurn) {
-    if (moveSent) return;
-    moveSent = true;
-    window.parent.postMessage(
-      {
-        type: "make_move",
-        ...(nextTurn === null ? {payout_player_indices: platformTokenPayout(newState, latest)} : {}),
-        new_state: newState,
-        next_turn_player_indices: nextTurn === null ? null : [nextTurn],
-      },
-      "*");
-  }
-
-  function actingSeat() {
-    if (!latest || latest.status !== "ongoing") return null;
-    return latest.acting_for_player_index;
-  }
+  const view = () => latest.view ?? latest.state;
 
   function render() {
-    const state = latest.state ?? Logic.initialState();
-    const acting = actingSeat();
-    const humanActing = acting !== null && latest.players[acting].kind === "human";
-    const line = Logic.winningLine(state.board);
-    const name = (seat) => `${latest.players[seat].name} (${Logic.MARKS[seat]})`;
+    const state = view();
+    const acting = latest.status === "ongoing" ? latest.acting_for_player_index : null;
+    const myTurn = acting !== null && acting === latest.my_player_index;
+    const name = (seat) => `${latest.players[seat].name} (${MARKS[seat]})`;
 
     let status;
     if (state.winner !== null) status = `${name(state.winner)} wins!`;
     else if (state.draw) status = "It's a draw.";
     else if (latest.status === "over") status = "The match is over.";
-    else if (humanActing) status = `Your move, ${name(acting)}.`;
-    else if (acting !== null) status = `${name(acting)} is thinking…`;
+    else if (myTurn) status = `Your move, ${name(acting)}.`;
     else status = `Waiting for ${latest.turn_of_player_indices.map((seat) => name(seat)).join(", ")}.`;
     $("status").textContent = status;
 
     $("board").replaceChildren(...state.board.map((mark, cell) => {
       const button = document.createElement("button");
       button.textContent = mark;
-      button.disabled = !humanActing || mark !== "";
-      if (line && line.includes(cell)) button.className = "win";
+      button.disabled = !myTurn || mark !== "";
+      if (state.line && state.line.includes(cell)) button.className = "win";
       button.addEventListener("click", () => {
-        const { state: next, nextTurn } = Logic.play(latest.state, acting, cell);
-        makeMove(next, nextTurn);
+        if (moveSent) return;
+        moveSent = true;
+        window.parent.postMessage({ type: "make_move", move: { cell } }, "*");
       });
       return button;
     }));
@@ -152,20 +69,10 @@ if (typeof window !== "undefined" && window.document) {
     $("players").replaceChildren(...latest.players.slice(0, 2).map((player) => {
       const div = document.createElement("div");
       const you = player.player_index === latest.my_player_index ? " — you" : "";
-      div.textContent = `${Logic.MARKS[player.player_index]}: ${player.name}${you}`;
-      if (latest.turn_of_player_indices.includes(player.player_index)) div.className = "turn";
+      div.textContent = `${MARKS[player.player_index]}: ${player.name}${you}`;
+      if (latest.turn_of_player_indices && latest.turn_of_player_indices.includes(player.player_index)) div.className = "turn";
       return div;
     }));
-
-    if (acting !== null && latest.players[acting].kind === "computer") {
-      const scheduledFor = latest;
-      setTimeout(() => {
-        if (latest !== scheduledFor) return;
-        const cell = Logic.computerCell(latest.state, acting);
-        const { state: next, nextTurn } = Logic.play(latest.state, acting, cell);
-        makeMove(next, nextTurn);
-      }, 600);
-    }
   }
 
   window.addEventListener("message", (event) => {
