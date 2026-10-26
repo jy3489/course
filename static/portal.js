@@ -922,13 +922,27 @@ function renderMatch() {
       );
     }
   } else if (match.status === "ongoing" && mySeat && !match.localMode) {
-    const confirm =
-      game && game.allows_leave_mid_match
-        ? "Leave? A computer takes over your seat."
-        : "Leave? This game doesn't allow leaving, so the match ends for everyone.";
-    actions.push(
-      actionButton("Leave", call("POST", "/leave"), { danger: true, confirm }),
-    );
+    if (game && game.server_code && (match.token_pot ?? 0) > 0) {
+      // Leaving a paid v2 match: the server first previews what the
+      // game's playerLeft would pay back, and only a confirmed click
+      // applies that exact preview.
+      actions.push(
+        actionButton("Leave", async () => {
+          const preview = await portalRequest("POST", `${path}/maybeLeave`, { user });
+          const payout = preview.pending_leave_payout ?? 0;
+          if (!confirm(`You will get ${payout} tokens back — leave?`)) return;
+          await portalRequest("POST", `${path}/playerLeft`, { user });
+        }, { danger: true }),
+      );
+    } else {
+      const confirm =
+        game && game.allows_leave_mid_match
+          ? "Leave? A computer takes over your seat."
+          : "Leave? This game doesn't allow leaving, so the match ends for everyone.";
+      actions.push(
+        actionButton("Leave", call("POST", "/leave"), { danger: true, confirm }),
+      );
+    }
   } else if (match.status === "over") {
     if (mySeat && !match.localMode) {
       const playingSoloWithComputers =

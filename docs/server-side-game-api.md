@@ -75,7 +75,7 @@ const game = {
 | `ctx.pot` | The tokens in the pot |
 | `ctx.random()` | A seeded random number in [0, 1). `Math.random` is replaced by the same generator |
 | `ctx.move_count` | How many moves were made so far |
-| `ctx.estimateWinChance(state, playerId)` | (Phase 4) Platform helper: Monte-Carlo estimate of a player's chance of winning, for `playerLeft` payouts |
+| `ctx.estimateWinChance(state, playerId, turn?)` | Platform helper: Monte-Carlo estimate of a player's chance of winning, for `playerLeft` payouts. Plays the game out from `state` with `randomMove` (up to 100 walks of up to 200 moves) and returns the fraction of walks the player wins — a walk is won when the player's final payout is the largest (ties share the win). `turn` says who may move first; without it, the first mover is discovered by trying each player. Like everything else, the estimate is deterministic for a given call |
 
 ### Errors
 
@@ -101,13 +101,20 @@ const game = {
   the match ends. The pot can't be negative while the match is ongoing and
   must be exactly 0 when it ends.
 - If a player leaves and at most one human remains, the platform settles the
-  pot: `playerLeft` pays the leaver, and the remaining human may keep playing
-  against the computers with nothing at stake. If no human is left, or the
-  game doesn't allow leaving, the match ends with `end_reason: "player_left"`.
-- Leave-with-tokens confirmation (Phase 4): `POST /matches/{id}/maybeLeave`
-  previews the payout and stores the `playerLeft` result on the match;
-  `POST /matches/{id}/playerLeft` applies it. Any other move aborts the
-  pending leave. The portal shows the payout in a confirmation dialog first.
+  pot: `playerLeft` pays the leaver, the rest of the pot goes to the one
+  remaining human, and they may keep playing against the computers with
+  nothing at stake. If no human is left, the match ends with
+  `end_reason: "player_left"` (any pot the game did not pay out goes to the
+  leaver, so the pot still ends at exactly 0). A game that does not allow
+  leaving, or defines no `playerLeft`, also ends the match that way — with
+  the pot split equally among the humans in the match, the leaver included.
+- Leave-with-tokens confirmation: `POST /matches/{id}/maybeLeave` previews
+  the payout and stores the `playerLeft` result on the match;
+  `POST /matches/{id}/playerLeft` applies it, exactly as previewed. Any
+  other move (or a join) aborts the pending leave. The portal shows the
+  payout in a confirmation dialog first.
+- `playerLeft` calls get a 2-second time budget instead of the usual
+  100 ms, because `ctx.estimateWinChance`'s walks take about a second.
 
 ## Client code (iframe protocol v2)
 
@@ -148,8 +155,8 @@ client-computed `new_state` / `next_turn_player_indices`, and
 | `POST /games/test` | — | Runs the random-walk/fuzz tests on unsaved code, for the builder and the AI fix loop (Phase 5) |
 | `POST /matches` | `{game_id, num_computer_opponents, private?}` | Also `max_loss` (Phase 3) |
 | `POST /matches/{id}/join`, `POST /invites/{token}/accept` | Take a seat | Also deduct `max_loss` (409 if the balance is too low); mid-match the server calls `playerJoined` (Phase 3/4) |
-| `POST /matches/{id}/leave` | A computer takes over the seat, or the match ends | Before the start, a refund; mid-match, `playerLeft` (Phase 4) |
-| `POST /matches/{id}/maybeLeave`, `POST /matches/{id}/playerLeft` | — | Leave preview + confirm (Phase 4) |
+| `POST /matches/{id}/leave` | A computer takes over the seat, or the match ends | Before the start, a refund; mid-match, `playerLeft` |
+| `POST /matches/{id}/maybeLeave`, `POST /matches/{id}/playerLeft` | — | Leave preview + confirm |
 | `POST /matches/{id}/start` | `{first_turn_player_indices, initial_state}` | `{}` — the server calls `newMatch` (Phase 3) |
 | `POST /matches/{id}/moves` | `{new_state, next_turn_player_indices, expected_move_count?}` | `{move, expected_move_count?}`, only from a human in `turn` (403 otherwise); 400 for `InvalidMove` (Phase 3) |
 | `GET /matches/{id}` | The whole state, to anyone | The caller's `view` and the pot; the full state only in the debug tools (Phase 3) |

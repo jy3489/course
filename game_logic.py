@@ -103,6 +103,80 @@ class __FrozenDate extends __RealDate {
 }
 Date = __FrozenDate;
 
+// Monte-Carlo win estimate, exposed to game code as
+// ctx.estimateWinChance(state, playerId, turn?): plays the game out from
+// the given state with randomMove (or computerMove when the game defines
+// no randomMove), up to __ESTIMATE_WALKS times, and returns the fraction
+// of walks the player wins — a walk is won when the player's final payout
+// is the largest (a tie for largest counts as an equal share of a win).
+// [turn], when given, is who may move first; without it, the first mover
+// is discovered by trying each player until one can move. The walk and
+// move caps keep the estimate bounded (about a second for typical
+// games), and because every random draw comes from the call's seeded
+// generator the estimate is deterministic for a given call. A walk that
+// errors or does not finish within the move cap counts as played but
+// not won.
+const __ESTIMATE_WALKS = 100;
+const __ESTIMATE_MAX_MOVES = 200;
+function __estimateWalk(ctx, moveFor, state, firstTurn) {
+  // One walk: the final payouts object, or null when the walk fails or
+  // the game does not end within the move cap.
+  let current = JSON.parse(JSON.stringify(state === undefined ? null : state));
+  let turn = firstTurn ? firstTurn.slice() : null;
+  for (let step = 0; step < __ESTIMATE_MAX_MOVES; step++) {
+    if (turn === null) {
+      // First step, and the caller did not say whose turn it is: try
+      // each player until one can actually move.
+      let moved = false;
+      for (const candidate of ctx.players) {
+        try {
+          const move = moveFor.call(game, current, candidate.id, ctx);
+          const result = game.applyMove(current, candidate.id, move, ctx);
+          current = result.state;
+          if (result.turn === null) return result.payouts || null;
+          turn = result.turn;
+          moved = true;
+          break;
+        } catch (e) { /* that player cannot move here; try the next */ }
+      }
+      if (!moved) return null;
+      continue;
+    }
+    if (turn.length === 0) return null;
+    const mover = turn[Math.floor(__random() * turn.length)];
+    let result;
+    try {
+      const move = moveFor.call(game, current, mover, ctx);
+      result = game.applyMove(current, mover, move, ctx);
+    } catch (e) {
+      return null;
+    }
+    current = result.state;
+    if (result.turn === null) return result.payouts || null;
+    turn = result.turn;
+  }
+  return null;
+}
+function __estimateWinChance(ctx, state, playerId, firstTurn) {
+  const moveFor = typeof game.randomMove === "function" ? game.randomMove
+    : typeof game.computerMove === "function" ? game.computerMove : null;
+  if (moveFor === null || typeof game.applyMove !== "function") return 0;
+  let score = 0;
+  for (let walk = 0; walk < __ESTIMATE_WALKS; walk++) {
+    const payouts = __estimateWalk(ctx, moveFor, state, firstTurn);
+    if (payouts === null) continue;
+    const mine = payouts[playerId] || 0;
+    let best = 0;
+    let tied = 0;
+    for (const id of Object.keys(payouts)) {
+      if (payouts[id] > best) { best = payouts[id]; tied = 1; }
+      else if (payouts[id] === best) { tied++; }
+    }
+    if (mine > 0 && mine === best) score += 1 / tied;
+  }
+  return score / __ESTIMATE_WALKS;
+}
+
 // Calls one game function and reports the outcome as a JSON envelope:
 //   {"ok": true, "result": <the function's JSON result>}
 //   {"ok": false, "kind": "invalid_move", "message": ...}
@@ -120,6 +194,9 @@ function __invoke(name, argsJson, ctxJson, seed, frozenMillis) {
     }
     const ctx = JSON.parse(ctxJson);
     ctx.random = __random;
+    ctx.estimateWinChance = function (state, playerId, turn) {
+      return __estimateWinChance(ctx, state, playerId, turn);
+    };
     const args = JSON.parse(argsJson);
     args.push(ctx);
     const result = fn.apply(game, args);
@@ -208,12 +285,15 @@ class GameLogic:
 
     def has(self, function: str) -> bool:
         """Whether the game defines [function] (some functions are optional)."""
+        if self._context is None:
+            try:
+                self._context = self._new_context()
+            except GameLogicError:
+                return False
         try:
-            context = self._context()
-        except GameLogicError:
-            return False
-        try:
-            return bool(context.eval(f"typeof game.{function} === 'function'"))
+            return bool(
+                self._context.eval(f"typeof game.{function} === 'function'")
+            )
         except Exception:
             return False
 
@@ -224,12 +304,17 @@ class GameLogic:
         ctx: dict[str, Any] | None = None,
         seed: int = 0,
         now: dt.datetime | None = None,
+        time_limit_seconds: float | None = None,
     ) -> Any:
         """Calls game.<function>(*args, ctx) and returns its JSON result.
 
         [args] and [ctx] must be JSON values (ctx.random is provided by the
         platform and must not be in [ctx]). [seed] drives ctx.random and
         Math.random for this call; [now] is the time the frozen Date shows.
+        [time_limit_seconds] overrides the per-call time limit for this
+        call only (playerLeft gets a longer budget: it may price its
+        payout with ctx.estimateWinChance, whose walks take about a
+        second); the context's usual limit is restored afterwards.
         Raises [InvalidMoveError] if the game throws InvalidMove, and
         [GameLogicError] for any bug-level failure.
         """
@@ -247,6 +332,14 @@ class GameLogic:
             seed=int(seed) & 0xFFFFFFFF,
             frozen=frozen_millis,
         )
+        override = (
+            time_limit_seconds
+            if time_limit_seconds is not None
+            and time_limit_seconds != self._time_limit_seconds
+            else None
+        )
+        if override is not None:
+            self._context.set_time_limit(override)
         try:
             envelope_text = self._context.eval(invocation)
         except quickjs.JSException as error:
@@ -257,9 +350,12 @@ class GameLogic:
             if _is_timeout(error):
                 raise GameLogicTimeout(
                     f"game.{function} ran past the "
-                    f"{self._time_limit_seconds}s time limit"
+                    f"{override or self._time_limit_seconds}s time limit"
                 ) from error
             raise GameLogicError(f"game.{function} failed: {error}") from error
+        finally:
+            if override is not None and self._context is not None:
+                self._context.set_time_limit(self._time_limit_seconds)
         envelope = json.loads(envelope_text)
         if envelope.get("ok"):
             result = envelope.get("result")

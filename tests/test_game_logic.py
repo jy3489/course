@@ -171,6 +171,90 @@ def test_time_limit():
         logic.call("computerMove", {}, "computer-1", ctx=_ctx(), seed=1)
 
 
+def test_a_call_can_raise_the_time_limit_for_itself():
+    # playerLeft gets a longer budget (it may price its payout with
+    # ctx.estimateWinChance): a call that is too slow for the usual limit
+    # succeeds with an override, and the usual limit is back afterwards.
+    slow = GameLogic(
+        "const game = { viewFor(state, playerId, ctx) {"
+        "  let s = 0; for (let i = 0; i < 5000000; i++) s += i % 7;"
+        "  return {s: s}; } };",
+        time_limit_seconds=0.1,
+    )
+    with pytest.raises(GameLogicTimeout):
+        slow.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)
+    result = slow.call(
+        "viewFor", {}, "u1", ctx=_ctx(), seed=1, time_limit_seconds=2.0
+    )
+    assert result == {"s": 14999995}
+    with pytest.raises(GameLogicTimeout):
+        slow.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)
+
+
+# A rigged race for the estimateWinChance tests: every step goes to the
+# same player, who wins the whole pot on their third move — so whoever
+# moves first always wins.
+FIRST_MOVER_WINS = r"""
+const game = {
+  newMatch(ctx) { return {state: {n: 0}, turn: [ctx.players[0].id]}; },
+  applyMove(state, playerId, move, ctx) {
+    const n = state.n + 1;
+    const over = n >= 3;
+    const result = {state: {n: n}, turn: over ? null : [playerId]};
+    if (over) result.payouts = {[playerId]: ctx.pot};
+    return result;
+  },
+  randomMove(state, playerId, ctx) { return {}; },
+  viewFor(state, playerId, ctx) {
+    return {
+      with_turn: ctx.estimateWinChance(state, playerId, [playerId]),
+      discovered: ctx.estimateWinChance(state, playerId),
+    };
+  },
+};
+"""
+
+
+def _two_human_ctx():
+    return _ctx(
+        players=[
+            {"id": "u1", "kind": "human", "display_name": "One",
+             "picture_url": "", "max_loss": 10},
+            {"id": "u2", "kind": "human", "display_name": "Two",
+             "picture_url": "", "max_loss": 10},
+        ],
+        pot=10,
+    )
+
+
+def test_estimate_win_chance():
+    logic = GameLogic(FIRST_MOVER_WINS)
+    # Moving first always wins this game.
+    view = logic.call("viewFor", {"n": 0}, "u1", ctx=_two_human_ctx(), seed=3)
+    assert view == {"with_turn": 1.0, "discovered": 1.0}
+    # Without a named first mover, the walks discover u1 (listed first)
+    # as the mover — so u2's chance is 0, even though u2 would also win
+    # if it were the one to move first.
+    view = logic.call("viewFor", {"n": 0}, "u2", ctx=_two_human_ctx(), seed=3)
+    assert view == {"with_turn": 1.0, "discovered": 0.0}
+
+
+def test_estimate_win_chance_is_deterministic():
+    logic = GameLogic(FIRST_MOVER_WINS)
+    first = logic.call("viewFor", {"n": 1}, "u2", ctx=_two_human_ctx(), seed=9)
+    second = logic.call("viewFor", {"n": 1}, "u2", ctx=_two_human_ctx(), seed=9)
+    assert first == second
+
+
+def test_estimate_win_chance_without_a_move_function_is_zero():
+    logic = GameLogic(
+        "const game = { viewFor(state, playerId, ctx) {"
+        "  return {chance: ctx.estimateWinChance(state, playerId)}; } };"
+    )
+    view = logic.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)
+    assert view == {"chance": 0}
+
+
 def test_memory_limit():
     logic = GameLogic(
         "const game = { viewFor(state, playerId, ctx) {"

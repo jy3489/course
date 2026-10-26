@@ -119,12 +119,14 @@ def test_draft_publish_carries_server_code(api: Api):
 def test_match_max_loss_seed_and_player_ids(api: Api):
     owner = api.new_user("owner")
     game = _create_game(api, owner)
+    # The stake is taken when the match is created (Phase 4), so it must
+    # fit the owner's balance: a fresh owner has their 10-token grant.
     match = api.ok(
         "POST", "/matches", as_user=owner,
-        json={"game_id": game["id"], "max_loss": 25},
+        json={"game_id": game["id"], "max_loss": 10},
     )
-    assert match["bet_per_player"] == 25
-    assert match["max_loss"] == 25
+    assert match["bet_per_player"] == 10
+    assert match["max_loss"] == 10
     assert match["seed"] != 0
     assert match["players"][0]["id"] == owner
     assert match["pending_leave_player_id"] is None

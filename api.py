@@ -668,6 +668,27 @@ def leave_match(platform: Platform, caller_id: CallerId, match_id: str) -> Match
     )
 
 
+@router.post("/matches/{match_id}/maybeLeave")
+def maybe_leave(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
+    """Previews leaving an ongoing v2 match: the response's
+    pending_leave_payout is what leaving would pay the caller. The preview
+    is stored on the match and changes nothing else."""
+    return _match_out(
+        platform, platform.maybe_leave(caller_id=caller_id, match_id=match_id),
+        caller_id=caller_id,
+    )
+
+
+@router.post("/matches/{match_id}/playerLeft")
+def player_left(platform: Platform, caller_id: CallerId, match_id: str) -> MatchOut:
+    """Applies the caller's leave preview from maybeLeave, exactly as
+    previewed."""
+    return _match_out(
+        platform, platform.confirm_leave(caller_id=caller_id, match_id=match_id),
+        caller_id=caller_id,
+    )
+
+
 @router.post("/matches/{match_id}/moves", status_code=HTTPStatus.CREATED)
 def make_move(
     platform: Platform, caller_id: CallerId, match_id: str, body: MoveCreate

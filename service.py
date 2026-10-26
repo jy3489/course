@@ -116,6 +116,11 @@ def _new_verification_code() -> str:
 # match with no clock. Kept as a list so more choices can be added later.
 SPEED_TURN_SECONDS: Final = (60, 180, 600)
 
+# playerLeft calls get a longer time budget than other game functions:
+# a playerLeft may price its payout with ctx.estimateWinChance, whose
+# Monte-Carlo walks take about a second.
+PLAYER_LEFT_TIME_LIMIT_SECONDS: Final = 2.0
+
 # "Leave this field unchanged" for update calls, for fields where None is a
 # real value of its own (a game whose server code was removed has none).
 UNSET: Final = object()
@@ -1151,6 +1156,13 @@ class GamePlatform:
                 hashlib.sha256(match_id.encode()).digest()[:4], "big"
             ),
         )
+        if game.server_code and bet_per_player:
+            # A v2 match takes each human's stake as they join — the
+            # creator now, everyone else in _join — so the pot is real
+            # from the start, leaving the waiting room refunds it, and
+            # deleting a waiting match refunds everyone (Phase 4).
+            self._deduct_stake(caller_id, bet_per_player)
+            match = replace(match, token_pot=bet_per_player)
         self._store.put_match(match)
         return match
 
@@ -1238,8 +1250,26 @@ class GamePlatform:
                 human_user_ids=[*match.human_user_ids, caller_id],
                 num_computer_opponents=match.num_computer_opponents,
             )
+        game = self._store.get_game_version(match.game_id, match.game_version)
+        stake = (
+            match.bet_per_player
+            if game is not None and game.server_code
+            else 0
+        )
+        if stake:
+            # A v2 match takes the joiner's stake as they join (the pot
+            # grows by it), in the waiting room and mid-match alike.
+            self._deduct_stake(caller_id, stake)
         saved = self._save(
-            replace(match, seats=seats, turn_started_at=clock_restart or match.turn_started_at)
+            replace(
+                match,
+                seats=seats,
+                turn_started_at=clock_restart or match.turn_started_at,
+                token_pot=match.token_pot + stake,
+                # A join changes the match any leave preview was computed
+                # on, so the preview no longer stands.
+                pending_leave=None,
+            )
         )
         if match.status == "ongoing":
             game = self._store.get_game_version(saved.game_id, saved.game_version)
@@ -1363,26 +1393,57 @@ class GamePlatform:
             self._save(replace(match, rematch_match_id=rematch.id))
             return rematch
 
+    def _check_can_stake(self, user_id: str, amount: int) -> None:
+        """Raises unless [user_id] can stake [amount] tokens, counting the
+        daily grant they would receive (see [_deduct_stake])."""
+        user = self._store.get_user(user_id)
+        if user is None:
+            raise NotFoundError("player not found")
+        day = self._clock().astimezone(dt.timezone.utc).date().isoformat()
+        grant = 10 if user.last_token_grant_day != day else 0
+        if user.token_balance + grant < amount:
+            raise ConflictError("a player has insufficient tokens")
+
+    def _deduct_stake(self, user_id: str, amount: int) -> None:
+        """Takes [amount] tokens from a player entering a paid match: the
+        daily grant is applied first, then the stake is deducted."""
+        user = self._store.get_user(user_id)
+        if user is None:
+            raise NotFoundError("player not found")
+        day = self._clock().astimezone(dt.timezone.utc).date().isoformat()
+        grant = 10 if user.last_token_grant_day != day else 0
+        if user.token_balance + grant < amount:
+            raise ConflictError("a player has insufficient tokens")
+        self._store.put_user(
+            replace(
+                user,
+                token_balance=user.token_balance + grant - amount,
+                last_token_grant_day=day if grant else user.last_token_grant_day,
+            )
+        )
+
+    def _credit_tokens(self, user_id: str, amount: int) -> None:
+        """Gives [amount] tokens back to a player (a payout, a settlement
+        share, a refund). A missing user is skipped: their account is gone,
+        and a payout must not fail the match over it."""
+        if not amount:
+            return
+        user = self._store.get_user(user_id)
+        if user is not None:
+            self._store.put_user(
+                replace(user, token_balance=user.token_balance + amount)
+            )
+
     def _fund_match_tokens(self, match: Match) -> list[str]:
         humans = [seat.user_id for seat in match.seats if seat.kind == "human"]
         if match.bet_per_player and len(humans) != len(match.seats):
             raise InvalidRequestError("computer opponents cannot enter paid matches")
         if len(set(humans)) != len(humans):
             raise InvalidRequestError("duplicate accounts cannot wager against themselves")
-        day = self._clock().astimezone(dt.timezone.utc).date().isoformat()
-        updates = []
         for uid in humans:
-            user = self._store.get_user(uid)
-            if user is None:
-                raise NotFoundError("player not found")
-            grant = 10 if user.last_token_grant_day != day else 0
-            if user.token_balance + grant < match.bet_per_player:
-                raise ConflictError("a player has insufficient tokens")
-            updates.append(replace(user,
-                token_balance=user.token_balance + grant - match.bet_per_player,
-                last_token_grant_day=day if grant else user.last_token_grant_day))
-        for user in updates:
-            self._store.put_user(user)
+            self._check_can_stake(uid, match.bet_per_player)
+        for uid in humans:
+            self._deduct_stake(uid, match.bet_per_player)
         return humans
 
     # Server-side game logic (v2 Game API, docs/server-side-game-api.md).
@@ -1437,7 +1498,12 @@ class GamePlatform:
         return (match.seed + len(match.moves)) % (2**32)
 
     def _call_logic(
-        self, game: Game, match: Match, function: str, *args: Any
+        self,
+        game: Game,
+        match: Match,
+        function: str,
+        *args: Any,
+        time_limit_seconds: float | None = None,
     ) -> Any:
         """Runs one game function; records bug-level failures on the game
         version and raises a PlatformError for them. InvalidMove passes
@@ -1449,6 +1515,7 @@ class GamePlatform:
                 ctx=self._game_ctx(match),
                 seed=self._call_seed(match),
                 now=self._clock(),
+                time_limit_seconds=time_limit_seconds,
             )
         except InvalidMoveError:
             raise
@@ -1512,14 +1579,7 @@ class GamePlatform:
                 }
                 for index, amount in payouts_by_index.items():
                     seat = match.seats[index]
-                    user = self._store.get_user(seat.user_id or "")
-                    if user is not None:
-                        self._store.put_user(
-                            replace(
-                                user,
-                                token_balance=user.token_balance + amount,
-                            )
-                        )
+                    self._credit_tokens(seat.user_id or "", amount)
         now = self._clock()
         record = Move(
             move_number=len(match.moves) + 1,
@@ -1539,7 +1599,14 @@ class GamePlatform:
                 turn_of_player_indices=turn_indices,
                 status="ongoing" if turn_indices is not None else "over",
                 end_reason=None if turn_indices is not None else "finished",
-                token_payouts=payouts_by_index
+                # The final payouts merge over any payouts already made
+                # while the match ran (leavers and settlements, Phase 4),
+                # so the record always covers the whole pot.
+                token_payouts=(
+                    {**(match.token_payouts or {}), **payouts_by_index}
+                    if payouts_by_index is not None
+                    else match.token_payouts
+                )
                 if turn_indices is None
                 else match.token_payouts,
                 pending_leave=None,
@@ -1580,10 +1647,16 @@ class GamePlatform:
             )
 
     def _begin_v2_match(self, match: Match, game: Game) -> Match:
-        """Starts a v2 match: stakes the tokens, runs newMatch, saves the
-        result, and lets any computer with the first turn move."""
+        """Starts a v2 match: runs newMatch, saves the result, and lets any
+        computer with the first turn move. The pot is already staked —
+        v2 matches take each human's stake as they join (see [_new_match]
+        and [_join]) — except matches created before that, which are
+        funded here, all at once."""
         humans = [seat for seat in match.seats if seat.kind == "human"]
-        pot = match.bet_per_player * len(humans)
+        pot = match.token_pot
+        if match.bet_per_player and not pot:
+            self._fund_match_tokens(match)
+            pot = match.bet_per_player * len(humans)
         funded_view = replace(match, token_pot=pot)
         try:
             result = self._logic_for(game).call(
@@ -1597,7 +1670,6 @@ class GamePlatform:
             raise PlatformError(
                 f"the game's server code failed in newMatch: {error}"
             ) from error
-        self._fund_match_tokens(match)
         turn_indices = self._turn_indices(match, result)
         saved = self._save(
             replace(
@@ -1781,6 +1853,14 @@ class GamePlatform:
             seat = self._get_seat(match, caller_id)
             if match.status == "over":
                 raise ConflictError("the match is over")
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            if game is not None and game.server_code:
+                # A v2 leave is settled by the game's own playerLeft (or
+                # the platform's equal split when the game does not decide
+                # payouts): see the leave section below.
+                return self._leave_match_v2(
+                    match, game, seat=seat, caller_id=caller_id
+                )
             if match.status == "waiting_for_players":
                 if caller_id == match.owner_user_id:
                     raise ConflictError(
@@ -1826,6 +1906,318 @@ class GamePlatform:
                 )
             # A leave from the waiting room (still waiting_for_players) tells nobody.
             return saved
+
+    # Leaving a v2 match (Phase 4): the game's playerLeft decides what a
+    # leaver is paid, the pot is settled when too few humans remain, and
+    # the maybeLeave/playerLeft endpoints let the portal confirm the
+    # payout with the player before anything changes.
+
+    def _leave_match_v2(
+        self, match: Match, game: Game, *, seat: Seat, caller_id: str
+    ) -> Match:
+        """Leaving a v2 match. In the waiting room the leaver's stake is
+        refunded and their seat freed. Mid-match, the game's playerLeft
+        decides the leaver's payout when the game allows leaving;
+        otherwise the match ends and the pot is split equally."""
+        if match.status == "waiting_for_players":
+            if caller_id == match.owner_user_id:
+                raise ConflictError(
+                    "the owner cannot leave a match that has not started; "
+                    "delete it instead"
+                )
+            # The stake was taken when the player joined; a match created
+            # before stakes were taken at join time has an empty pot and
+            # nothing to refund.
+            staked = (
+                match.bet_per_player
+                if match.token_pot >= match.bet_per_player
+                else 0
+            )
+            self._credit_tokens(caller_id, staked)
+            remaining_humans = [
+                user_id
+                for user_id in match.human_user_ids
+                if user_id != caller_id
+            ]
+            return self._save(
+                replace(
+                    match,
+                    seats=_waiting_seats(
+                        human_user_ids=remaining_humans,
+                        num_computer_opponents=match.num_computer_opponents,
+                    ),
+                    token_pot=match.token_pot - staked,
+                    pending_leave=None,
+                )
+            )
+        if self._rules_of(match).allows_leave_mid_match and self._logic_for(
+            game
+        ).has("playerLeft"):
+            preview = self._compute_leave_preview(match, game, caller_id)
+            return self._apply_leave_preview(
+                match, seat=seat, caller_id=caller_id, preview=preview
+            )
+        return self._end_match_by_leave(match, caller_id=caller_id)
+
+    def _compute_leave_preview(
+        self, match: Match, game: Game, caller_id: str
+    ) -> dict[str, Any]:
+        """Runs the game's playerLeft for [caller_id] without changing
+        the match: the payout leaving would give them, and the state and
+        turn it would produce. This is what maybeLeave stores on the
+        match and what leaving applies, so a confirmed leave pays exactly
+        what was previewed. A game bug is recorded and answered 500; a
+        game refusing the leave with InvalidMove is answered 400."""
+        try:
+            result = self._call_logic(
+                game,
+                match,
+                "playerLeft",
+                match.state,
+                caller_id,
+                time_limit_seconds=PLAYER_LEFT_TIME_LIMIT_SECONDS,
+            )
+        except InvalidMoveError as error:
+            raise InvalidRequestError(error.message) from error
+        return {
+            "player_id": caller_id,
+            "payout": result.get("payout") or 0,
+            "state": result.get("state"),
+            "turn": result.get("turn"),
+        }
+
+    def _apply_leave_preview(
+        self, match: Match, *, seat: Seat, caller_id: str, preview: dict[str, Any]
+    ) -> Match:
+        """Applies a playerLeft result (see [_compute_leave_preview]): the
+        leaver is paid their payout, a computer takes their seat, and the
+        match continues on the returned state and turn — unless the game
+        ended it or no human is left, in which case the pot is settled
+        and the match is over."""
+        turn_ids = preview.get("turn")
+        turn_indices: frozenset[int] | None = None
+        if turn_ids is not None:
+            turn_seats = []
+            for turn_id in turn_ids:
+                turn_seat = match.seat_of_player_id(turn_id)
+                if turn_seat is None:
+                    raise ConflictError(
+                        "the match changed since this leave was previewed"
+                    )
+                turn_seats.append(turn_seat)
+            turn_indices = frozenset(s.player_index for s in turn_seats)
+        payout = int(preview.get("payout") or 0)
+        remaining = [
+            s for s in match.seats if s.kind == "human" and s.user_id != caller_id
+        ]
+        updated = self._computer_takes_seat(match, seat)
+        self._credit_tokens(caller_id, payout)
+        pot = match.token_pot - payout
+        payouts = dict(match.token_payouts or {})
+        if match.token_pot:
+            payouts[seat.player_index] = payout
+        if turn_indices is None or not remaining:
+            # The game ended the match, or no human is left to play it:
+            # settle whatever is left of the pot and finish.
+            payouts = self._settle_pot(
+                pot,
+                payouts,
+                recipients=remaining,
+                fallback=(caller_id, seat.player_index),
+            )
+            updated = replace(
+                updated,
+                state=preview.get("state"),
+                status="over",
+                turn_of_player_indices=None,
+                end_reason="player_left",
+                token_pot=0,
+                token_payouts=payouts if match.token_pot else match.token_payouts,
+                pending_leave=None,
+            )
+        else:
+            if len(remaining) == 1:
+                # One human left: the pot is settled to them now, and
+                # they may keep playing the computers with nothing at
+                # stake.
+                payouts = self._settle_pot(pot, payouts, recipients=remaining)
+                pot = 0
+            updated = replace(
+                updated,
+                state=preview.get("state"),
+                turn_of_player_indices=turn_indices,
+                token_pot=pot,
+                token_payouts=payouts if match.token_pot else match.token_payouts,
+                pending_leave=None,
+                turn_started_at=self._clock() if match.turn_seconds else None,
+            )
+        saved = self._save(updated)
+        self._notify_leave(saved, caller_id=caller_id)
+        if saved.status == "ongoing":
+            self._schedule_computer_moves(saved)
+            return self._store.get_match(match.id) or saved
+        return saved
+
+    def _settle_pot(
+        self,
+        pot: int,
+        payouts: dict[int, int],
+        *,
+        recipients: list[Seat],
+        fixed: dict[int, int] | None = None,
+        fallback: tuple[str, int] | None = None,
+    ) -> dict[int, int]:
+        """Pays out everything left in a pot of [pot] tokens and returns
+        the updated per-seat payouts record. [fixed] amounts (by seat
+        index) are paid exactly — a preview promised them; what remains
+        is split equally among the other [recipients] (in seat order, the
+        first seats get the remainder tokens). When there is nobody to
+        split among, [fallback] — a (user id, seat index) pair — receives
+        what is left, so a match never ends still holding tokens."""
+        if pot <= 0:
+            return payouts
+        remaining = pot
+        fixed = fixed or {}
+        by_index = {seat.player_index: seat for seat in recipients}
+        for index, amount in fixed.items():
+            fixed_seat = by_index.get(index)
+            if fixed_seat is None or not amount:
+                continue
+            self._credit_tokens(fixed_seat.user_id or "", amount)
+            payouts[index] = payouts.get(index, 0) + amount
+            remaining -= amount
+        others = [seat for seat in recipients if seat.player_index not in fixed]
+        if remaining > 0 and others:
+            share, extra = divmod(remaining, len(others))
+            for position, other in enumerate(others):
+                amount = share + (1 if position < extra else 0)
+                if amount:
+                    self._credit_tokens(other.user_id or "", amount)
+                    payouts[other.player_index] = (
+                        payouts.get(other.player_index, 0) + amount
+                    )
+            remaining = 0
+        if remaining > 0 and fallback is not None:
+            user_id, index = fallback
+            self._credit_tokens(user_id, remaining)
+            payouts[index] = payouts.get(index, 0) + remaining
+        return payouts
+
+    def _end_match_by_leave(
+        self, match: Match, *, caller_id: str, leaver_share: int | None = None
+    ) -> Match:
+        """Ends a v2 match because a player left and the game does not
+        decide leaver payouts (it defines no playerLeft, or leaving
+        mid-match is not allowed): the pot is split equally among the
+        humans in the match, the leaver included, so no stake is
+        stranded. [leaver_share] pays the leaver exactly that amount (a
+        preview promised it) and splits the rest among the others."""
+        payouts = dict(match.token_payouts or {})
+        if match.token_pot:
+            humans = [s for s in match.seats if s.kind == "human"]
+            leaver_seat = match.seat_of(caller_id)
+            fixed = (
+                {leaver_seat.player_index: leaver_share}
+                if leaver_share is not None and leaver_seat is not None
+                else None
+            )
+            payouts = self._settle_pot(
+                match.token_pot, payouts, recipients=humans, fixed=fixed
+            )
+        saved = self._save(
+            replace(
+                self._ended_by_leaving(match),
+                token_pot=0 if match.token_pot else match.token_pot,
+                token_payouts=payouts if match.token_pot else match.token_payouts,
+                pending_leave=None,
+            )
+        )
+        self._notify_leave(saved, caller_id=caller_id)
+        return saved
+
+    def _notify_leave(self, saved: Match, *, caller_id: str) -> None:
+        """The notifications a v2 leave causes (the same ones a v1 leave
+        causes)."""
+        others = [
+            user_id for user_id in saved.human_user_ids if user_id != caller_id
+        ]
+        if saved.status == "over":
+            self._notify_match_event(
+                "notify.match_over",
+                match=saved,
+                recipient_ids=others,
+                tag_suffix="over",
+            )
+        elif saved.status == "ongoing":
+            leaver = self._store.get_user(caller_id)
+            self._notify_match_event(
+                "notify.player_left",
+                match=saved,
+                recipient_ids=others,
+                actor_name=leaver.display_name if leaver is not None else "",
+                tag_suffix="left",
+            )
+
+    def maybe_leave(self, *, caller_id: str, match_id: str) -> Match:
+        """Previews leaving an ongoing v2 match (POST
+        /matches/{id}/maybeLeave): computes what leaving would pay the
+        caller — the game's playerLeft, or the platform's equal split
+        when the game does not decide payouts — and stores it on the
+        match as its pending leave. Nothing else changes; any move or
+        join clears the preview, and [confirm_leave] applies it exactly."""
+        with self._lock:
+            match = self._get_match(match_id)
+            self._get_seat(match, caller_id)
+            if match.status == "over":
+                raise ConflictError("the match is over")
+            if match.status != "ongoing":
+                raise ConflictError("the match has not started")
+            game = self._store.get_game_version(match.game_id, match.game_version)
+            if game is None or not game.server_code:
+                raise ConflictError(
+                    "only a server-side (v2) game has a leave preview"
+                )
+            if self._rules_of(match).allows_leave_mid_match and self._logic_for(
+                game
+            ).has("playerLeft"):
+                preview: dict[str, Any] = self._compute_leave_preview(
+                    match, game, caller_id
+                )
+            else:
+                humans = [s for s in match.seats if s.kind == "human"]
+                preview = {
+                    "player_id": caller_id,
+                    "payout": match.token_pot // len(humans) if humans else 0,
+                    "end": True,
+                }
+            return self._save(replace(match, pending_leave=preview))
+
+    def confirm_leave(self, *, caller_id: str, match_id: str) -> Match:
+        """Applies the caller's stored leave preview (POST
+        /matches/{id}/playerLeft), exactly as previewed. A preview only
+        stands until the next move or join, so what is applied here is
+        never stale."""
+        with self._lock:
+            match = self._get_match(match_id)
+            seat = self._get_seat(match, caller_id)
+            if match.status == "over":
+                raise ConflictError("the match is over")
+            if match.status != "ongoing":
+                raise ConflictError("the match has not started")
+            preview = match.pending_leave
+            if not isinstance(preview, dict) or preview.get("player_id") != caller_id:
+                raise ConflictError(
+                    "you have no leave to confirm; preview it with maybeLeave first"
+                )
+            if preview.get("end"):
+                return self._end_match_by_leave(
+                    match,
+                    caller_id=caller_id,
+                    leaver_share=int(preview.get("payout") or 0),
+                )
+            return self._apply_leave_preview(
+                match, seat=seat, caller_id=caller_id, preview=preview
+            )
 
     def make_move(
         self,
@@ -1992,6 +2384,21 @@ class GamePlatform:
         with self._lock:
             match = self._get_match(match_id)
             if caller_id == match.owner_user_id:
+                game = self._store.get_game_version(
+                    match.game_id, match.game_version
+                )
+                if (
+                    game is not None
+                    and game.server_code
+                    and match.status == "waiting_for_players"
+                    and match.bet_per_player
+                    and match.token_pot
+                    >= match.bet_per_player * len(match.human_user_ids)
+                ):
+                    # A waiting v2 match holds its players' stakes (taken
+                    # as they joined); deleting it refunds everyone.
+                    for user_id in match.human_user_ids:
+                        self._credit_tokens(user_id, match.bet_per_player)
                 self._delete_match_and_invites(match_id)
                 return
             if match.status != "over":
