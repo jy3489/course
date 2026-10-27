@@ -229,22 +229,45 @@ def build_prompt_messages(
     return messages, context
 
 
+def _extract_json_object(text: str) -> dict | None:
+    """Find the reply envelope embedded in [text].
+
+    The model sometimes wraps its JSON in prose or a markdown fence
+    despite being told not to (long, spec-like prompts provoke it).
+    Scan for a decodable JSON object, preferring the first one that
+    carries a `message`, as the envelope contract requires; fall back
+    to the first decodable object at all, so validation can name what
+    is wrong with it."""
+    decoder = json.JSONDecoder()
+    fallback: dict | None = None
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            data, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if isinstance(data.get("message"), str):
+            return data
+        if fallback is None:
+            fallback = data
+    return fallback
+
+
 def _parse_reply(raw: str) -> AgentChatResponse:
     text = raw.strip()
     if not text:
         raise AgentError("The agent returned an empty reply.")
-    # Tolerate markdown-fenced JSON even though the prompt forbids it.
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else ""
-        if text.rsplit("```", 1)[0].strip():
-            text = text.rsplit("```", 1)[0]
-        text = text.strip()
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise AgentError(f"The agent's reply was not valid JSON: {exc}") from exc
+        # Tolerate prose- or markdown-wrapped JSON even though the
+        # prompt forbids it: extract the envelope object if there is one.
+        data = _extract_json_object(text)
+        if data is None:
+            raise AgentError(f"The agent's reply was not valid JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise AgentError("The agent's reply was not a JSON object.")
     message = data.get("message")
@@ -375,8 +398,12 @@ def chat_with_agent(
         except AgentError as exc:
             last_error = exc
             notes.append(f"attempt {attempt}: {exc}")
+            logger.warning(
+                "Builder attempt %d reply unusable: %s | reply starts: %.200r",
+                attempt, exc, result.content,
+            )
             messages.append({"role": "assistant", "content": result.content})
-            messages.append({"role": "user", "content": f"Please correct the response: {exc} Return the complete JSON response including code and matching allowed_player_counts."})
+            messages.append({"role": "user", "content": f"Please correct the response: {exc} Return the complete JSON response including code and matching allowed_player_counts. Reply with the JSON object only — no prose before or after it, and no markdown fences."})
             continue
         if response.server_code and server_tester is not None:
             report = None

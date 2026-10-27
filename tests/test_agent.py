@@ -147,6 +147,25 @@ def test_fenced_json_is_tolerated() -> None:
     assert chat_with_agent(_FakeClient(reply), _request()).message == "hi"
 
 
+def test_prose_wrapped_json_is_extracted() -> None:
+    # Long, spec-like prompts make the model narrate around the envelope
+    # it was told to return alone; the envelope is still in there.
+    envelope = json.dumps({"message": "Built it", "code": None})
+    reply = f"Here is the game you asked for:\n{envelope}\nWant any changes?"
+    assert chat_with_agent(_FakeClient(reply), _request()).message == "Built it"
+
+
+def test_fenced_json_with_prose_is_extracted() -> None:
+    reply = 'Done!\n```json\n{"message": "hi", "code": null}\n```'
+    assert chat_with_agent(_FakeClient(reply), _request()).message == "hi"
+
+
+def test_braces_in_prose_do_not_shadow_the_envelope() -> None:
+    envelope = json.dumps({"message": "hi", "code": None})
+    reply = f'Moves look like {{"type": "call"}} in this game. {envelope}'
+    assert chat_with_agent(_FakeClient(reply), _request()).message == "hi"
+
+
 @pytest.mark.parametrize(
     "reply",
     [
