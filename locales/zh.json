@@ -37,6 +37,8 @@
   "error.no_leave_to_confirm": "您没有待确认的离场；请先用 maybeLeave 预览",
   "error.leave_preview_stale": "自预览此离场以来对局已发生变化",
   "error.server_code_failed_tests": "游戏的服务器代码未通过测试：{failure}（种子 {seed}）；运行 POST /games/test 查看完整报告",
+  "error.refactor_job_running": "已有一个重构任务正在运行；请等待它完成。",
+  "error.refactor_job_not_found": "没有这样的重构任务。",
   "error.match_not_ongoing": "对局尚未进行",
   "error.match_already_started": "对局已经开始",
   "error.match_full": "对局人数已满",

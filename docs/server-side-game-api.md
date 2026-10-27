@@ -291,3 +291,25 @@ takeover now schedules the computer's moves like every other path —
 in v1 a human's browser submitted them, so the takeover path never
 did, and a v2 match stalled on the computer's turn (found by the
 Playwright speed test when the UI suite was migrated to v2 games).
+
+## Refactoring all games (admin — landed 2026-10-27)
+
+`POST /admin/refactor_all_games` (super admin: the master password, as
+HTTP Basic auth) starts a background job that applies one prompt to the
+published games: for each game it sends the prompt plus the game's data
+(name, description, rules, client code, server code) to the building
+agent — the same agent, system prompt, and test-fix loop as the builder —
+and saves the code it returns as a new version of the game. The save
+goes through `update_game`'s admin path, so the publish gate re-tests
+any new server code and a refusal leaves the game untouched; only the
+two code fields are taken from the reply, so a refactor never renames a
+game or changes who can play it. `game_ids` in the body restricts the
+run to those games; without it every published game is refactored. One
+job runs at a time (a second POST is a 409). `GET
+/admin/refactor_all_games/{job_id}` reports progress and the per-game
+outcome (`updated` / `unchanged` / `failed` with the reason — a failed
+game keeps its previous code, and the run continues). The agent exchange
+is recorded against each game, like a builder conversation. First use:
+converting the remaining client-only games to this API with a
+conversion prompt; the same endpoint serves later fleet-wide refactors
+(adding unit tests, checking hidden information, checking determinism).

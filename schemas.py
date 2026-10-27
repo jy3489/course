@@ -1042,6 +1042,35 @@ class AgentChatResponse(BaseModel):
     parse_note: str | None = None
 
 
+class RefactorAllGamesRequest(_Request):
+    """Body of POST /admin/refactor_all_games (super admin): one prompt the
+    building agent applies to every published game, saving the code it
+    returns back to each game as a new version."""
+
+    prompt: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    # Restrict the run to these games; null means every published game.
+    game_ids: list[str] | None = None
+
+
+class RefactorGameResultOut(BaseModel):
+    game_id: str
+    name: str
+    # "updated" (a new version was saved), "unchanged" (nothing to save), or
+    # "failed" (the game keeps its previous code; [detail] says why).
+    outcome: str
+    detail: str = ""
+    # The game's version after an "updated" outcome.
+    version: int | None = None
+
+
+class RefactorJobOut(BaseModel):
+    job_id: str
+    status: str  # "running" | "done"
+    total: int
+    completed: int
+    results: list[RefactorGameResultOut]
+
+
 class LocaleOut(BaseModel):
     code: str
     # The language's own name, for a language picker.

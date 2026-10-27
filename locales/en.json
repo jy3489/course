@@ -37,6 +37,8 @@
   "error.no_leave_to_confirm": "you have no leave to confirm; preview it with maybeLeave first",
   "error.leave_preview_stale": "the match changed since this leave was previewed",
   "error.server_code_failed_tests": "the game's server code failed its tests: {failure} (seed {seed}); run POST /games/test for the full report",
+  "error.refactor_job_running": "A refactor job is already running; wait for it to finish.",
+  "error.refactor_job_not_found": "No such refactor job.",
   "error.match_not_ongoing": "the match is not ongoing",
   "error.match_already_started": "the match has already started",
   "error.match_full": "the match is full",

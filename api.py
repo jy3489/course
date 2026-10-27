@@ -4,7 +4,9 @@ import io
 import mimetypes
 import secrets
 import asyncio
+import threading
 import time
+import uuid
 from dataclasses import replace
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
@@ -19,14 +21,19 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 import segno
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import State
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
 
 from game_platform import i18n
-from game_platform.models import GameRules, Match, MatchStatus
+from game_platform.models import Game, GameRules, Match, MatchStatus
 from game_platform.schemas import (
     AgentChatRequest,
     AgentConversationOut,
+    AgentMessage,
+    RefactorAllGamesRequest,
+    RefactorGameResultOut,
+    RefactorJobOut,
     CatalogOut,
     LocaleOut,
     LocalesOut,
@@ -1202,6 +1209,231 @@ async def agent_chat(
     return response
 
 
+# Refactor all games (super admin): one prompt, applied by the building
+# agent to every published game, saving the returned code back as a new
+# version of each game. This is the fleet-wide counterpart of the builder:
+# it exists for migrations like converting every client-only game to the
+# server-side API, and later for checks like hidden information or
+# determinism. A run is a background job (one agent call per game can take
+# up to the generation budget), started by the POST and polled by the GET.
+
+
+def _refactor_job_out(job: dict) -> RefactorJobOut:
+    """The public view of a refactor job record. Callers hold the jobs lock."""
+    return RefactorJobOut(
+        job_id=job["job_id"],
+        status=job["status"],
+        total=job["total"],
+        completed=len(job["results"]),
+        results=[RefactorGameResultOut(**result) for result in job["results"]],
+    )
+
+
+@debug_router.post(
+    "/admin/refactor_all_games",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.ACCEPTED,
+)
+def refactor_all_games(
+    request: Request, platform: Platform, body: RefactorAllGamesRequest
+) -> RefactorJobOut:
+    """Starts a refactor job over the published games (or [body.game_ids])
+    and returns it; poll GET /admin/refactor_all_games/{job_id}."""
+    config: ModelApiConfig = request.app.state.model_api_config
+    client = ModelApiClient(
+        api_key=config.api_key, model=config.model, base_url=config.base_url
+    )
+    if not client.enabled:
+        raise HTTPException(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            detail="The game-building agent is not set up: no Model API key is "
+            "configured on the server.",
+        )
+    games = platform.list_games(owner_user_id=None)
+    missing: list[str] = []
+    if body.game_ids is not None:
+        by_id = {game.id: game for game in games}
+        missing = [game_id for game_id in body.game_ids if game_id not in by_id]
+        games = [by_id[game_id] for game_id in body.game_ids if game_id in by_id]
+    with request.app.state.refactor_lock:
+        if any(
+            job["status"] == "running"
+            for job in request.app.state.refactor_jobs.values()
+        ):
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail="A refactor job is already running; wait for it to finish.",
+            )
+        job = {
+            "job_id": uuid.uuid4().hex,
+            "status": "running",
+            "total": len(games) + len(missing),
+            "results": [
+                {
+                    "game_id": game_id,
+                    "name": "",
+                    "outcome": "failed",
+                    "detail": "game not found (not a published game)",
+                    "version": None,
+                }
+                for game_id in missing
+            ],
+        }
+        request.app.state.refactor_jobs[job["job_id"]] = job
+    threading.Thread(
+        target=_run_refactor_job,
+        args=(request.app.state, platform, client, job["job_id"], body.prompt, games),
+        daemon=True,
+    ).start()
+    return _refactor_job_out(job)
+
+
+@debug_router.get(
+    "/admin/refactor_all_games/{job_id}", dependencies=[MasterPassword]
+)
+def refactor_job(request: Request, job_id: str) -> RefactorJobOut:
+    """One refactor job's progress and per-game results."""
+    with request.app.state.refactor_lock:
+        job = request.app.state.refactor_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND, detail="No such refactor job."
+            )
+        return _refactor_job_out(job)
+
+
+def _run_refactor_job(
+    app_state: State,
+    platform: GamePlatform,
+    client: ModelApiClient,
+    job_id: str,
+    prompt: str,
+    games: list[Game],
+) -> None:
+    """The job thread: refactor each game in turn, recording every outcome.
+    A game's failure never stops the run — its previous code stays live."""
+    for game in games:
+        result = _refactor_one_game(app_state, platform, client, prompt, game)
+        with app_state.refactor_lock:
+            app_state.refactor_jobs[job_id]["results"].append(result)
+    with app_state.refactor_lock:
+        app_state.refactor_jobs[job_id]["status"] = "done"
+
+
+def _refactor_one_game(
+    app_state: State,
+    platform: GamePlatform,
+    client: ModelApiClient,
+    prompt: str,
+    game: Game,
+) -> dict:
+    """Sends [prompt] plus the game's data to the agent and saves what it
+    returns as a new version of the game (through the publish gate). Only
+    the two code fields are taken from the reply: a refactor never renames
+    a game or changes who can play it."""
+    result = {
+        "game_id": game.id,
+        "name": game.name,
+        "outcome": "failed",
+        "detail": "",
+        "version": None,
+    }
+
+    def server_tester(
+        server_code: str,
+        allowed_player_counts: list[int],
+        allows_leave_mid_match: bool,
+        allows_join_mid_match: bool,
+    ):
+        return platform.test_game_code(
+            server_code=server_code,
+            rules=GameRules(
+                allowed_player_counts=tuple(allowed_player_counts),
+                allows_leave_mid_match=allows_leave_mid_match,
+                allows_join_mid_match=allows_join_mid_match,
+            ),
+            game_id=game.id,
+        )
+
+    try:
+        response = chat_with_agent(
+            client,
+            AgentChatRequest(
+                game_name=game.name,
+                game_description=game.description,
+                allowed_player_counts=list(game.rules.allowed_player_counts),
+                player_count_mode="manual",
+                allows_leave_mid_match=game.rules.allows_leave_mid_match,
+                allows_join_mid_match=game.rules.allows_join_mid_match,
+                code=game.code,
+                server_code=game.server_code or "",
+                messages=[AgentMessage(role="user", content=prompt)],
+                game_id=game.id,
+            ),
+            server_tester=server_tester,
+            max_fix_attempts=app_state.ai_max_fix_attempts,
+        )
+    except AgentError as exc:
+        return {**result, "detail": f"the agent failed: {exc}"}
+    # Record the exchange against the game, as the builder does, so the
+    # admin conversation view shows how the game got its new code.
+    try:
+        platform.record_agent_exchange(
+            caller_id=game.owner_user_id,
+            game_id=game.id,
+            user_text=prompt,
+            assistant_text=response.message,
+        )
+    except Exception:
+        pass
+    if response.server_code is not None and response.server_test_passed is False:
+        note = f" ({response.parse_note})" if response.parse_note else ""
+        return {
+            **result,
+            "detail": "the agent's server code failed its random-walk tests "
+            f"and was not saved{note}",
+        }
+    if response.code is None and response.server_code is None:
+        return {**result, "outcome": "unchanged", "detail": "the agent returned no code changes"}
+    current = next(
+        (g for g in platform.list_games(owner_user_id=None) if g.id == game.id),
+        None,
+    )
+    if current is None:
+        return {**result, "detail": "the game no longer exists"}
+    if current.version != game.version:
+        return {
+            **result,
+            "detail": f"the game changed during the refactor (now version "
+            f"{current.version}); skipped so the newer edit is not overwritten",
+        }
+    try:
+        updated = platform.update_game(
+            caller_id=game.owner_user_id,
+            game_id=game.id,
+            code=response.code,
+            server_code=(
+                response.server_code if response.server_code is not None else UNSET
+            ),
+            _admin=True,
+        )
+    except Exception as exc:
+        # Gate refusals and validation errors leave the game untouched.
+        return {**result, "detail": str(exc)}
+    if updated.version == game.version:
+        return {
+            **result,
+            "outcome": "unchanged",
+            "detail": "the agent's code was identical to the current version",
+        }
+    return {
+        **result,
+        "outcome": "updated",
+        "detail": f"saved as version {updated.version}",
+        "version": updated.version,
+    }
+
+
 @debug_router.get(
     "/admin/games/{game_id}/agent-conversation", dependencies=[MasterPassword]
 )
@@ -1325,6 +1557,11 @@ def create_app(
         model_api_config if model_api_config is not None else ModelApiConfig()
     )
     app.state.ai_max_fix_attempts = ai_max_fix_attempts
+    # Refactor-all-games jobs (see /admin/refactor_all_games): job_id ->
+    # mutable job record, guarded by the lock. In-memory on purpose: a
+    # restart loses the progress view, never any game's saved code.
+    app.state.refactor_jobs: dict[str, dict] = {}
+    app.state.refactor_lock = threading.Lock()
     app.state.auth_config = auth_config if auth_config is not None else AuthConfig()
     app.state.push_config = push_config if push_config is not None else PushConfig()
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()

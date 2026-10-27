@@ -1074,15 +1074,24 @@ class GamePlatform:
         code: str | None = None,
         server_code: str | None | object = UNSET,
         _publishing: bool = False,
+        _admin: bool = False,
     ) -> Game:
         """Creates a new version of the game, unless nothing changes.
 
         Fields left as [None] are unchanged, except [server_code]: it is
         unchanged unless a value (including None, which removes the game's
         server code) is passed explicitly.
+
+        [_admin] skips the ownership check: the caller is the platform
+        operator (the refactor-all-games job), not the game's owner. The
+        publish gate and every other rule still apply.
         """
         with self._lock:
-            game = self._get_owned_game(caller_id=caller_id, game_id=game_id)
+            game = (
+                self._get_live_game(game_id)
+                if _admin
+                else self._get_owned_game(caller_id=caller_id, game_id=game_id)
+            )
             if not game.published and not _publishing:
                 raise ConflictError("game is unpublished; edit its private draft and Publish to share it")
             rules = game.rules

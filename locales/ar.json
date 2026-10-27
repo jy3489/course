@@ -37,6 +37,8 @@
   "error.no_leave_to_confirm": "ليس لديك مغادرة لتأكيدها؛ عاينها أولاً باستخدام maybeLeave",
   "error.leave_preview_stale": "تغيرت المباراة منذ معاينة هذه المغادرة",
   "error.server_code_failed_tests": "فشل كود خادم اللعبة في اختباراته: {failure} (seed {seed})؛ شغّل POST /games/test للحصول على التقرير الكامل",
+  "error.refactor_job_running": "توجد مهمة إعادة هيكلة قيد التشغيل بالفعل؛ انتظر حتى تنتهي.",
+  "error.refactor_job_not_found": "لا توجد مهمة إعادة هيكلة كهذه.",
   "error.match_not_ongoing": "المباراة ليست جارية",
   "error.match_already_started": "بدأت المباراة بالفعل",
   "error.match_full": "المباراة ممتلئة",

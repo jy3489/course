@@ -37,6 +37,8 @@
   "error.no_leave_to_confirm": "आपके पास पुष्टि करने के लिए कोई छोड़ना नहीं है; पहले maybeLeave से इसका पूर्वावलोकन करें",
   "error.leave_preview_stale": "इस छोड़ने के पूर्वावलोकन के बाद से मैच बदल गया है",
   "error.server_code_failed_tests": "गेम का सर्वर कोड अपने परीक्षणों में विफल रहा: {failure} (सीड {seed}); पूरी रिपोर्ट के लिए POST /games/test चलाएं",
+  "error.refactor_job_running": "एक रीफ़ैक्टर कार्य पहले से चल रहा है; इसके समाप्त होने की प्रतीक्षा करें।",
+  "error.refactor_job_not_found": "ऐसा कोई रीफ़ैक्टर कार्य नहीं है।",
   "error.match_not_ongoing": "मैच चल नहीं रहा है",
   "error.match_already_started": "मैच पहले ही शुरू हो चुका है",
   "error.match_full": "मैच भरा हुआ है",
