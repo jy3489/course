@@ -101,12 +101,12 @@ if (typeof window !== "undefined" && window.document) {
       }
       const notes = [];
       if (seat === s.dealer) notes.push("dealer");
-      if (s.hole[seat] && !s.in_hand[seat]) notes.push("folded");
+      if (s.dealt_in[seat] && !s.in_hand[seat]) notes.push("folded");
       if (s.in_hand[seat] && s.chips[seat] === 0) notes.push("all in");
-      if (!s.hole[seat] && s.chips[seat] > 0 && s.winner === null) notes.push("joins next hand");
+      if (!s.dealt_in[seat] && s.chips[seat] > 0 && s.winner === null) notes.push("joins next hand");
       if (s.chips[seat] === 0 && !s.in_hand[seat]) notes.push("out");
       const label = `${player.name}${seat === me ? " (you)" : ""}`;
-      return el("tr", { className: seat === s.to_act ? "turn" : !s.hole[seat] ? "out" : "" },
+      return el("tr", { className: seat === s.to_act ? "turn" : !s.in_hand[seat] ? "out" : "" },
         el("td", { textContent: label }),
         el("td", { className: "num", textContent: s.chips[seat] }),
         el("td", { className: "num", textContent: s.bets[seat] || "" }),

@@ -457,6 +457,10 @@ const game = {
     // The deck never leaves the server, and neither do other players'
     // hole cards; what a showdown revealed is in previous_hand.
     view.deck = [];
+    // Which seats were dealt into this hand is public (their cards are
+    // not); the client needs it to tell "folded" from "joins next hand",
+    // since hidden hole cards are null in the view either way.
+    view.dealt_in = state.hole.map((cards) => cards !== null);
     const seat = playerId === null ? -1 : seatOf(ctx, playerId);
     view.hole = state.hole.map((cards, index) => (index === seat ? cards : null));
     view.your_seat = seat === -1 ? null : seat;
@@ -468,10 +472,23 @@ const game = {
   },
 
   playerJoined(state, playerId, ctx) {
-    // A seat taken over from a computer is already in the state; an
-    // appended seat gets chips and plays from the next hand.
+    // An appended seat gets chips and plays from the next hand. A seat
+    // taken over from a computer may be mid-hand: the new player sits
+    // the rest of that hand out — the seat's bets stay in the pot, its
+    // cards are mucked unseen — and is dealt in from the next hand.
     const grown = ensureSeats(state, ctx.players.length);
-    return { state: grown, turn: turnOf(grown, ctx) };
+    const seat = seatOf(ctx, playerId);
+    if (seat === -1 || !grown.in_hand[seat]) {
+      return { state: grown, turn: turnOf(grown, ctx) };
+    }
+    grown.in_hand[seat] = false;
+    grown.hole[seat] = null;
+    log(grown, `${namesOf(ctx)[seat]} joins and sits out until the next hand.`);
+    if (grown.to_act !== seat) {
+      return { state: grown, turn: turnOf(grown, ctx) };
+    }
+    const next = advance(grown, seat, ctx.random, namesOf(ctx));
+    return { state: next, turn: turnOf(next, ctx) };
   },
 
   playerLeft(state, playerId, ctx) {

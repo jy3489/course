@@ -1344,6 +1344,11 @@ class GamePlatform:
                         turn_of_player_indices=self._turn_indices(saved, result),
                     )
                 )
+                # playerJoined may have moved the turn onto a computer
+                # seat (e.g. a takeover that sits the seat out); in a v2
+                # match the server moves computer seats itself.
+                self._schedule_computer_moves(saved)
+                saved = self._store.get_match(saved.id) or saved
         joiner = self._store.get_user(caller_id)
         self._notify_match_event(
             "notify.player_joined",

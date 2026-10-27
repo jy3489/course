@@ -263,7 +263,11 @@ v2 flow, or the migrated games uses it.
   winner, split among humans on a draw or if a computer won. No join/leave.
 - **Poker:** `newMatch` 1000 chips each, blinds, first deal shuffled with
   `ctx.random`; `viewFor` hides the deck and other players' hole cards until
-  showdown; `playerJoined` plays from the next hand; `playerLeft` pays in
+  showdown (it does publish `dealt_in` — which seats were dealt into the
+  hand is public, and the client labels seats from it, never from the
+  hidden cards); `playerJoined` plays from the next hand — a seat taken
+  over from a computer mid-hand is folded out and its cards mucked, so
+  the new player sits the rest of the hand out; `playerLeft` pays in
   proportion to chip share; `payouts` the rest to the best-placed human.
 - **Debug:** applies any move `{new_state, next_turn, payouts?}` as-is with
   validation; `computerMove`/`randomMove` pass the turn, and the passes

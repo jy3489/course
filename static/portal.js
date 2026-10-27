@@ -924,15 +924,19 @@ function renderMatch() {
       );
     }
   } else if (match.status === "ongoing" && mySeat && !match.localMode) {
-    if (game && game.server_code && (match.token_pot ?? 0) > 0) {
-      // Leaving a paid v2 match: the server first previews what the
-      // game's playerLeft would pay back, and only a confirmed click
-      // applies that exact preview.
+    if (game && game.server_code) {
+      // Leaving a v2 match: the server first previews what leaving
+      // would pay back (the game's playerLeft, or the platform's
+      // split), and only a confirmed click applies that exact preview
+      // — so the amount is always shown, staked match or not.
       actions.push(
         actionButton("Leave", async () => {
           const preview = await portalRequest("POST", `${path}/maybeLeave`, { user });
           const payout = preview.pending_leave_payout ?? 0;
-          if (!confirm(`You will get ${payout} tokens back — leave?`)) return;
+          const ends = game.allows_leave_mid_match
+            ? ""
+            : " Leaving ends the match for everyone.";
+          if (!confirm(`You will get ${payout} tokens back — leave?${ends}`)) return;
           await portalRequest("POST", `${path}/playerLeft`, { user });
         }, { danger: true }),
       );

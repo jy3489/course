@@ -9,7 +9,8 @@ through the emulator endpoints (the phase's exit check).
 
 from pathlib import Path
 
-from game_platform.tests.helpers import Api
+from game_platform.game_logic import GameLogic
+from game_platform.tests.helpers import Api, error
 
 GAMES_DIR = Path(__file__).parent.parent / "games"
 
@@ -193,6 +194,79 @@ def test_poker_computers_play_on_the_server(api: Api):
         current = _act_by_view(api, current["id"], {**users_by_seat, seat: owner})
     # The match progressed through the computer's turns on its own.
     assert current["move_count"] > moves_before + 2
+
+
+def test_poker_mid_match_takeover_sits_out_the_hand(api: Api):
+    owner = api.new_user("owner")
+    joiner = api.new_user("joiner")
+    game = _create_game(
+        api, owner, "poker", allowed_player_counts=[2, 3, 4],
+        allows_leave_mid_match=True, allows_join_mid_match=True,
+    )
+    match = api.ok(
+        "POST", "/matches", as_user=owner,
+        json={"game_id": game["id"], "num_computer_opponents": 1},
+    )
+    current = api.ok("POST", f"/matches/{match['id']}/start", as_user=owner, json={})
+    # A hand is in progress against the computer (seat 1). The joiner
+    # takes that seat over mid-hand...
+    api.ok("POST", f"/matches/{match['id']}/join", as_user=joiner)
+    view = api.ok("GET", f"/matches/{match['id']}", as_user=joiner)["state"]
+    # ...but sits it out: no cards, not in the hand, nothing legal to do,
+    # and the server refuses a move from her in this hand.
+    assert view["in_hand"][1] is False
+    assert view["hole"][1] is None
+    assert view["dealt_in"][1] is False
+    assert view["legal"] is None
+    status, _ = error(api.request(
+        "POST", f"/matches/{match['id']}/moves", as_user=joiner,
+        json={"move": {"type": "call"},
+              "expected_move_count": current["move_count"]},
+    ))
+    assert status == 403
+    # The label data behind the player table: the seat that is playing
+    # (seat 0) is dealt in — it must not be flagged "joins next hand".
+    assert view["dealt_in"][0] is True
+    # The owner finishes the hand alone; the next hand deals her in.
+    users_by_seat = {0: owner, 1: joiner}
+    for _ in range(60):
+        view = api.ok("GET", f"/matches/{match['id']}", as_user=joiner)["state"]
+        if view["in_hand"][1]:
+            break
+        probe = api.ok("GET", f"/matches/{match['id']}", as_user=owner)
+        if probe["status"] == "over":
+            break
+        _act_by_view(api, match["id"], users_by_seat)
+    view = api.ok("GET", f"/matches/{match['id']}", as_user=joiner)["state"]
+    assert view["in_hand"][1] is True
+    assert len(view["hole"][1]) == 2
+
+
+def test_poker_takeover_on_the_acting_seat_moves_the_turn_on():
+    logic = GameLogic((GAMES_DIR / "poker.server.js").read_text())
+
+    def player(pid: str, kind: str) -> dict:
+        return {"id": pid, "kind": kind, "display_name": pid,
+                "picture_url": "", "max_loss": 0}
+
+    def ctx(players: list[dict]) -> dict:
+        return {"players": players, "pot": 0, "move_count": 0}
+
+    before = [player("h1", "human"), player("h2", "human"),
+              player("computer-1", "computer")]
+    state = logic.call("newMatch", ctx=ctx(before), seed=5)["state"]
+    # The computer's seat is mid-hand and holding the turn when a human
+    # takes it over: the seat folds out and the turn moves on to a
+    # player who can act, instead of sticking on the new player.
+    state["to_act"] = 2
+    after = [player("h1", "human"), player("h2", "human"),
+             player("h3", "human")]
+    joined = logic.call("playerJoined", state, "h3", ctx=ctx(after), seed=5)
+    state = joined["state"]
+    assert state["in_hand"][2] is False
+    assert state["hole"][2] is None
+    assert joined["turn"] in (["h1"], ["h2"])
+    assert state["to_act"] in (0, 1)
 
 
 def test_poker_player_left_pays_their_chip_share(api: Api):
