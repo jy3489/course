@@ -429,11 +429,20 @@ const Auth = (() => {
       account ? account.display_name : I18n.t("ui.auth.log_in", {}, "Log in")
     );
     const panel = el("div", { class: "auth-menu-panel", hidden: true });
+    panel.inert = true;
+    panel.setAttribute("aria-hidden", "true");
+    const hidePanel = () => {
+      panel.inert = true;
+      panel.setAttribute("aria-hidden", "true");
+      panel.hidden = true;
+    };
     button.onclick = (event) => {
       event.stopPropagation();
       panel.hidden = !panel.hidden;
+      panel.inert = panel.hidden;
+      panel.setAttribute("aria-hidden", String(panel.hidden));
     };
-    document.addEventListener("click", () => (panel.hidden = true), { once: true });
+    document.addEventListener("click", () => hidePanel(), { once: true });
 
     if (account) {
       panel.append(el("div", { class: "auth-menu-heading" },
@@ -450,13 +459,13 @@ const Auth = (() => {
         );
       }
       panel.append(
-        el("button", { type: "button", textContent: I18n.t("ui.auth.link_method", {}, "Link a login method"), onclick: () => { panel.hidden = true; openDialog("link"); } }),
+        el("button", { type: "button", textContent: I18n.t("ui.auth.link_method", {}, "Link a login method"), onclick: () => { hidePanel(); openDialog("link"); } }),
         el("button", {
           type: "button",
           textContent: I18n.t("ui.auth.copy_invite", {}, "Copy my invite link"),
           title: "Everyone who signs up through this link counts as invited by you",
           onclick: () => {
-            panel.hidden = true;
+            hidePanel();
             navigator.clipboard
               // Read again: the code may have arrived after the menu was drawn.
               .writeText(inviteLink(current() ?? account))
@@ -479,7 +488,7 @@ const Auth = (() => {
       }
     }
     panel.append(
-      el("button", { type: "button", textContent: account ? I18n.t("ui.auth.add_account", {}, "Add another account") : I18n.t("ui.auth.log_in", {}, "Log in"), onclick: () => { panel.hidden = true; openDialog("login"); } })
+      el("button", { type: "button", textContent: account ? I18n.t("ui.auth.add_account", {}, "Add another account") : I18n.t("ui.auth.log_in", {}, "Log in"), onclick: () => { hidePanel(); openDialog("login"); } })
     );
     if (account) {
       panel.append(
