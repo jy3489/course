@@ -206,8 +206,10 @@ class PortalOffline {
     this.write(data);
     return this.decorate(base);
   }
-  async sync() {
-    if (!this.online() || !this.user() || Date.now() < this.retryAfter) return;
+  async sync({ force = false } = {}) {
+    // The retry backoff keeps background polls from hammering a dead
+    // connection; an explicit move (force) still gets its attempt.
+    if (!this.online() || !this.user() || (!force && Date.now() < this.retryAfter)) return;
     // Caller holds the origin-wide portal lock. Reload storage on every write.
     const account = this.user();
     const identity = this.key();

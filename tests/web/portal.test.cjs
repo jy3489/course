@@ -345,6 +345,19 @@ test('invalid next seats are rejected before a move is durably queued',async()=>
   await t.run('onMakeMove({new_state:{score:1},next_turn_player_indices:[1]})');
   assert.match(t.node('match-message').textContent,/invalid next player/);
 });
+test('a second v2 move is not queued behind a pending one',async()=>{
+  const t=setup();
+  t.run('navigator.locks={request:async(name,run)=>run()};state.match={id:"m",game_id:"g",game_version:1,status:"ongoing",turn_of_player_indices:[0],move_count:3,players:[{player_index:0,user_id:"owner",kind:"human"}]};state.loaded="m@g@1";state.enq=0;state.forces=[];offline.enqueue=(match,body)=>{state.enq++;return match};offline.sync=async(opts)=>{state.forces.push(opts&&opts.force)};offline.read=()=>({queues:{}})');
+  await t.run('onMakeMove({move:{type:"call"}})');
+  assert.equal(t.run('state.enq'),1);
+  assert.deepEqual([...t.run('state.forces')],[true]);
+  // The first move is now stuck waiting to sync: another click is a
+  // decision on the same stale view and must not queue behind it.
+  t.run('offline.read=()=>({queues:{m:[{body:{move:{type:"call"},expected_move_count:3}}]}})');
+  await t.run('onMakeMove({move:{type:"fold"}})');
+  assert.equal(t.run('state.enq'),1);
+  assert.deepEqual([...t.run('state.forces')],[true,true]);
+});
 test('switching matches unloads the old iframe immediately',()=>{
   const t=setup();t.run('state.loaded="old@g@1";frame.unload=()=>{state.unloaded=true};selectMatch("new")');
   assert.equal(t.run('state.unloaded'),true);assert.equal(t.run('state.loaded'),null);

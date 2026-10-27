@@ -1198,12 +1198,21 @@ async function onMakeMove(move) {
         // it, so the client checks nothing but whose turn it is.
         if (!match || !user || actingFor(match, user.id) === null)
           throw new Error("It isn't your turn.");
+        if (offline.read().queues?.[match.id]?.length) {
+          // A v2 move is already waiting to sync. Unlike a v1 move it
+          // carries no resulting state, so a second click is a decision
+          // on the same stale view — queueing it behind the first could
+          // only conflict once the server answers. Drop it and push the
+          // pending move instead; the game replays from the synced state.
+          await offline.sync({ force: true });
+          return;
+        }
         state.match = offline.enqueue(match, {
           move: move.move,
           expected_move_count: match.move_count,
         });
         state.lastSent = null;
-        await offline.sync();
+        await offline.sync({ force: true });
         return;
       }
       const next = move.next_turn_player_indices;
@@ -1217,7 +1226,7 @@ async function onMakeMove(move) {
         expected_move_count: match.move_count,
       });
       state.lastSent = null;
-      await offline.sync();
+      await offline.sync({ force: true });
     });
   } catch (error) {
     showMessage(error.message, "error");

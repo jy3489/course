@@ -72,6 +72,26 @@ test("commit with lost response is recognized from history, never double submitt
   assert.equal(o.cached("/matches/match").move_count, 1);
   assert.deepEqual(o.read().queues, {});
 });
+test("a forced sync ignores the retry backoff; a background sync respects it", async () => {
+  let remote = base,
+    posts = 0;
+  const v2body = { move: { type: "call" }, expected_move_count: 0 };
+  const { o, setOnline } = setup(async (method, path, opt) => {
+    if (method === "GET") return remote;
+    posts++;
+    remote = { ...remote, move_count: remote.move_count + 1 };
+    return remote;
+  });
+  o.enqueue(base, v2body);
+  setOnline(true);
+  o.retryAfter = Date.now() + 60000;
+  await o.sync();
+  assert.equal(posts, 0);
+  assert.equal(o.decorate(base).pending, 1);
+  await o.sync({ force: true });
+  assert.equal(posts, 1);
+  assert.deepEqual(o.read().queues, {});
+});
 test("conflicting remote move is kept and offline branch remains available for explicit resolution", async () => {
   const remote = { ...base, move_count: 1, state: { other: 1 } };
   const { o, setOnline } = setup(async (method, path) =>
