@@ -16,6 +16,9 @@ test('avatars load, sound preference persists, and reduced motion disables trans
  const paths=await page.locator('#seats img').evaluateAll(images=>images.map(image=>(image as HTMLImageElement).src));
  expect(paths.some(path=>path.includes('/computers/'))).toBe(true);
  expect(paths.some(path=>path.includes('/users/'))).toBe(true);
+ const accountPicture = await page.locator('.auth-menu-button .auth-avatar').getAttribute('src');
+ await expect(page.locator('#seats img').first()).toHaveAttribute('src', accountPicture!);
+ await expect(page.locator('#seats img').first()).toHaveCSS('width', '44px');
  const sound=page.locator('#match-sounds');
  await expect(sound).toHaveAttribute('aria-pressed','false');
  await page.evaluate(() => {

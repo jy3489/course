@@ -219,7 +219,7 @@
 @media(max-width:640px){.topbar .token-wallet{padding:5px 9px 5px 5px;gap:5px;min-height:35px}.token-wallet-coin{width:26px;height:26px;font-size:14px}.token-wallet-label{font-size:8px}.token-wallet-number strong{font-size:16px}.token-wallet-number{font-size:10px}.token-stake-panel{padding:14px}.token-summary-values{gap:8px}.token-summary-values strong{font-size:16px}}
 
 /* Avatars stay secondary to readable player names. */
-.player-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+.player-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; flex-shrink:0; }
 .seat-chip { display:inline-flex; align-items:center; gap:.4rem; }
 @media (prefers-reduced-motion: no-preference) {
   button { transition: background-color 140ms, box-shadow 140ms; }
@@ -267,3 +267,5 @@
 @media (prefers-reduced-motion: no-preference) {
   .match-more > summary { transition:background-color 150ms ease, border-color 150ms ease; }
 }
+
+#account-menu .auth-avatar { width:36px; height:36px; flex-shrink:0; }

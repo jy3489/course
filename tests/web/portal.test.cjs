@@ -368,3 +368,11 @@ test('late game-code responses cannot populate a newly selected match',async()=>
   const pending=t.run('syncGame()');t.run('state.match={id:"new"}');resolve({code:'old game'});await pending;
   assert.equal(t.run('state.badLoad'),undefined);assert.equal(t.run('state.loaded'),null);
 });
+
+test('current account avatar wins over stale match profile cache',()=>{
+  const {run}=setup();
+  run('Auth.current=()=>({id:"owner",picture_url:"/saved-deer.png"});state.pictureCache.set("owner","/old-puppy.png")');
+  assert.equal(run('playerPicture({kind:"human",user_id:"owner"})'),'/saved-deer.png');
+  run('state.pictureCache.set("other","/other-cat.png")');
+  assert.equal(run('playerPicture({kind:"human",user_id:"other"})'),'/other-cat.png');
+});

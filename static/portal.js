@@ -170,6 +170,8 @@ async function updateTokenWallet(user) {
     const record = await portalTransport("GET", `/users/${encodeURIComponent(user.id)}`, {user});
     if (me()?.id !== user.id) return;
     // Accounts saved before short invite links learn their referral code here.
+    state.pictureCache.set(user.id, record.picture_url);
+    state.nameCache.set(user.id, record.display_name);
     if (record.referral_code) Auth.setReferralCode?.(user.id, record.referral_code);
     if (Auth.setPicture?.(user.id, record.picture_url)) Auth.renderMenu($("account-menu"));
     if (!Number.isSafeInteger(record.token_balance) || record.token_balance < 0) {
@@ -306,7 +308,7 @@ async function ensureDetails() {
   if (state.match) collect(state.match);
   await Promise.all([
     ...[...userIds]
-      .filter((id) => !state.nameCache.has(id))
+      .filter((id) => !state.nameCache.has(id) || !state.pictureCache.get(id))
       .map(async (id) => {
         try {
           const profile = await portalRequest("GET", `/users/${id}`);
@@ -376,13 +378,14 @@ async function refreshLocked() {
     }
     await ensureDetails();
     if (user?.id !== me()?.id) return;
+    await updateTokenWallet(user);
+    if (user?.id !== me()?.id) return;
     render();
     window.PortalFeedback?.update(state.match, user?.id, {
       suppressed: Boolean(state.replay || state.match?.pending || state.match?.conflict || state.match?.localMode || !navigator.onLine),
       yourTurn: Boolean(user && state.match && isYourTurn(state.match, user.id)),
       outcome: state.match ? matchOutcome(state.match, user?.id)?.kind : null,
     });
-    await updateTokenWallet(user);
     await syncGame();
     showPageError("");
     offlineStatus();
@@ -780,7 +783,11 @@ function actionButton(
 }
 
 function playerPicture(player) {
-  if (player.kind !== "computer") return state.pictureCache.get(player.user_id) || "/static/avatars/users/puppy/puppy-natural-classic-open.png";
+  if (player.kind !== "computer") {
+    const account = me();
+    return (account?.id === player.user_id ? account.picture_url : null) ||
+      state.pictureCache.get(player.user_id) || "/static/avatars/users/puppy/puppy-natural-classic-open.png";
+  }
   const animals = ["puppy", "bird", "cat", "bunny", "fox", "bear", "panda", "frog", "penguin", "otter"];
   return `/static/avatars/computers/${animals[Array.from(player.id || `computer-${player.player_index + 1}`).reduce((sum, char) => sum + char.codePointAt(0), 0) % animals.length]}.png`;
 }
@@ -834,7 +841,7 @@ function renderMatch() {
     ...match.players.map((player) =>
       el("span", {
         class: `seat-chip${turn.includes(player.player_index) ? " turn" : ""}`,
-      }, el("img", {class: "player-avatar", src: playerPicture(player), alt: "", width: 36, height: 36,
+      }, el("img", {class: "player-avatar", src: playerPicture(player), alt: "", width: 44, height: 44,
         onerror: event => { event.target.hidden = true; }}), el("span", {textContent:
           `${playerName(player)}${player === mySeat ? " · You" : ""}` +
           `${turn.includes(player.player_index) ? " — to move" : ""}`,
