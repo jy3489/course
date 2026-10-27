@@ -9,7 +9,9 @@ through the emulator endpoints (the phase's exit check).
 
 from pathlib import Path
 
-from game_platform.game_logic import GameLogic
+import pytest
+
+from game_platform.game_logic import GameLogic, InvalidMoveError
 from game_platform.tests.helpers import Api, error
 
 GAMES_DIR = Path(__file__).parent.parent / "games"
@@ -267,6 +269,35 @@ def test_poker_takeover_on_the_acting_seat_moves_the_turn_on():
     assert state["hole"][2] is None
     assert joined["turn"] in (["h1"], ["h2"])
     assert state["to_act"] in (0, 1)
+
+
+def test_poker_cannot_fold_when_checking_is_free():
+    logic = GameLogic((GAMES_DIR / "poker.server.js").read_text())
+
+    def player(pid: str) -> dict:
+        return {"id": pid, "kind": "human", "display_name": pid,
+                "picture_url": "", "max_loss": 0}
+
+    ctx = {"players": [player("h1"), player("h2")], "pot": 0, "move_count": 0}
+    state = logic.call("newMatch", ctx=ctx, seed=5)["state"]
+    # Heads-up: h1 is the small blind and faces the big blind, so
+    # folding is genuinely on the table for her.
+    view = logic.call("viewFor", state, "h1", ctx=ctx, seed=5)
+    assert view["legal"]["canFold"] is True
+    state = logic.call(
+        "applyMove", state, "h1", {"type": "call"}, ctx=ctx, seed=5
+    )["state"]
+    # The big blind can check for free: the legal set offers no fold,
+    # and the server rejects one anyway.
+    view = logic.call("viewFor", state, "h2", ctx=ctx, seed=5)
+    assert view["legal"]["canCheck"] is True
+    assert view["legal"]["canFold"] is False
+    with pytest.raises(InvalidMoveError):
+        logic.call("applyMove", state, "h2", {"type": "fold"}, ctx=ctx, seed=5)
+    state = logic.call(
+        "applyMove", state, "h2", {"type": "check"}, ctx=ctx, seed=5
+    )["state"]
+    assert state["street"] == "flop"
 
 
 def test_poker_player_left_pays_their_chip_share(api: Api):

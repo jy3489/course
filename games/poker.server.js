@@ -219,6 +219,10 @@ function act(state, seat, action, rng, names = null) {
   const options = legal(s, seat);
   switch (action.type) {
     case "fold":
+      // Folding is only for facing a bet; with nothing to call the
+      // player checks instead (legal() already withholds canFold then —
+      // this enforces it server-side too).
+      if (!options.canFold) throw new Error("can't fold when checking is free");
       s.in_hand[seat] = false;
       log(s, `${who} folds.`);
       break;
