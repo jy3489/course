@@ -19,6 +19,7 @@ from typing import Any, Final
 from pydantic import JsonValue
 
 from game_platform import i18n
+from game_platform.avatars import random_user_avatar, computer_avatar
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
@@ -371,7 +372,7 @@ class GamePlatform:
                 referral_code=self._take_referral_code(user_id),
                 display_name=display_name,
                 email=email,
-                picture_url=picture_url,
+                picture_url=picture_url.strip() or random_user_avatar(),
                 locale=locale,
                 password=self._new_password(),
                 linked_accounts=linked_accounts,
@@ -491,10 +492,12 @@ class GamePlatform:
                 if user.referral_code:
                     self._user_ids_by_code[user.referral_code] = user.id
             for user in users:
-                if not user.referral_code:
-                    self._store.put_user(
-                        replace(user, referral_code=self._take_referral_code(user.id))
-                    )
+                if not user.referral_code or not user.picture_url:
+                    self._store.put_user(replace(
+                        user,
+                        referral_code=user.referral_code or self._take_referral_code(user.id),
+                        picture_url=user.picture_url or random_user_avatar(),
+                    ))
 
     def _take_referral_code(self, user_id: str) -> str:
         """A random code no account has yet, now reserved for [user_id]. The caller
@@ -1786,7 +1789,7 @@ class GamePlatform:
                         "id": player_id,
                         "kind": "computer",
                         "display_name": f"Computer {number}",
-                        "picture_url": "",
+                        "picture_url": computer_avatar(player_id),
                         "max_loss": 0,
                     }
                 )

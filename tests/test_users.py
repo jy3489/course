@@ -14,7 +14,7 @@ def test_create_and_get_a_guest_user(api: Api) -> None:
     assert user == {
         "id": user["id"],
         "display_name": "alice",
-        "picture_url": "",
+        "picture_url": user["picture_url"],
         "locale": "",
         "replaced_by_user_id": None,
         "replaced_user_ids": [],
@@ -26,6 +26,7 @@ def test_create_and_get_a_guest_user(api: Api) -> None:
         "created_at": "2026-01-01T00:01:00Z",
         "updated_at": "2026-01-01T00:01:00Z",
     }
+    assert user["picture_url"].startswith("/static/avatars/users/")
     assert len(user["password"]) >= 20
     assert user["referral_code"].isdigit() and 10000 <= int(user["referral_code"]) <= 99999
     # The password is only ever returned on creation (linked logins only to the

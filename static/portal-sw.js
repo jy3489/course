@@ -1,16 +1,17 @@
 "use strict";
 // Scope deliberately stays /static/: no backend route or Service-Worker-Allowed change.
-const CACHE = "playroom-portal-shell-v57";
+const CACHE = "playroom-portal-shell-v62";
 const SHELL = [
+  "/static/portal-feedback.js?v=1",
   "/static/portal.html",
   "/static/common.css?v=12",
-  "/static/portal.css?v=21",
-  "/static/common.js?v=13",
+  "/static/portal.css?v=26",
+  "/static/common.js?v=14",
   "/static/i18n.js?v=2",
-  "/static/auth.js?v=4",
+  "/static/auth.js?v=5",
   "/static/push-notifications.js?v=1",
-  "/static/portal.js?v=44",
-  "/static/portal-match-layout.js?v=3",
+  "/static/portal.js?v=48",
+  "/static/portal-match-layout.js?v=4",
   "/static/portal-speed.js?v=2",
   "/static/portal-match-layout.css?v=1",
   "/static/portal-speed.css?v=2",
@@ -56,7 +57,7 @@ self.addEventListener("fetch", (event) => {
   // Never cache API/auth requests or other students' pages.
   if (
     url.origin !== self.location.origin ||
-    !SHELL.includes(url.pathname + url.search)
+    !SHELL.includes(url.pathname + url.search) && !/^\/static\/avatars\/(users\/[^/]+|computers)\/[^/]+\.png$/.test(url.pathname)
   )
     return;
   // The page itself comes from the network when online, so a deploy shows up on the
@@ -83,7 +84,10 @@ self.addEventListener("fetch", (event) => {
       .open(CACHE)
       .then(
         async (cache) =>
-          (await cache.match(event.request)) || fetch(event.request),
+          (await cache.match(event.request)) || fetch(event.request).then(response => {
+            if (response.ok && url.pathname.startsWith("/static/avatars/")) cache.put(event.request, response.clone());
+            return response;
+          }),
       ),
   );
 });

@@ -88,6 +88,7 @@ function currentPushSubscription() {
 const state = {
   games: [], // latest versions, from GET /games
   gameCache: new Map(), // "game_id@version" -> game (null when gone)
+  pictureCache: new Map(),
   nameCache: new Map(), // user id -> display name
   myMatches: [],
   openMatches: [],
@@ -170,6 +171,7 @@ async function updateTokenWallet(user) {
     if (me()?.id !== user.id) return;
     // Accounts saved before short invite links learn their referral code here.
     if (record.referral_code) Auth.setReferralCode?.(user.id, record.referral_code);
+    if (Auth.setPicture?.(user.id, record.picture_url)) Auth.renderMenu($("account-menu"));
     if (!Number.isSafeInteger(record.token_balance) || record.token_balance < 0) {
       wallet.hidden = true; walletBalance = null; updateStakePreview(); return;
     }
@@ -307,10 +309,9 @@ async function ensureDetails() {
       .filter((id) => !state.nameCache.has(id))
       .map(async (id) => {
         try {
-          state.nameCache.set(
-            id,
-            (await portalRequest("GET", `/users/${id}`)).display_name,
-          );
+          const profile = await portalRequest("GET", `/users/${id}`);
+          state.nameCache.set(id, profile.display_name);
+          state.pictureCache.set(id, profile.picture_url);
         } catch {
           state.nameCache.set(id, shortId(id));
         }
@@ -376,11 +377,17 @@ async function refreshLocked() {
     await ensureDetails();
     if (user?.id !== me()?.id) return;
     render();
+    window.PortalFeedback?.update(state.match, user?.id, {
+      suppressed: Boolean(state.replay || state.match?.pending || state.match?.conflict || state.match?.localMode || !navigator.onLine),
+      yourTurn: Boolean(user && state.match && isYourTurn(state.match, user.id)),
+      outcome: state.match ? matchOutcome(state.match, user?.id)?.kind : null,
+    });
     await updateTokenWallet(user);
     await syncGame();
     showPageError("");
     offlineStatus();
   } catch (error) {
+    window.PortalFeedback?.reset();
     showPageError(`Couldn't load data from the server: ${error.message}`);
   } finally {
     state.refreshing = false;
@@ -623,11 +630,20 @@ function renderGameSearch() {
     : `${results.length} ${results.length === 1 ? "game" : "games"}${query ? " found" : " available"}. Scroll to browse ${query ? "all matches" : "the full catalog"}, or type to filter. Use arrow keys and Enter to open or join a game.`;
 }
 
+function revealPortalSection(id) {
+  const node = $(id);
+  if (!node?.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  node.getAnimations?.().forEach(animation => animation.cancel());
+  node.animate?.([{opacity:.45, transform:'translateY(5px)'}, {opacity:1, transform:'translateY(0)'}],
+    {duration:180, easing:'ease-out'});
+}
+
 function browseAllGames() {
   if (!state.gameSearchOpen) state.gameSearchOriginal = $("new-game").value;
   $("game-search").value = "";
   onGameSearchInput();
   $("game-search").focus();
+  revealPortalSection("game-search-popup");
 }
 
 function closeGameSearch(restore = false) {
@@ -763,6 +779,12 @@ function actionButton(
   });
 }
 
+function playerPicture(player) {
+  if (player.kind !== "computer") return state.pictureCache.get(player.user_id) || "/static/avatars/users/puppy/puppy-natural-classic-open.png";
+  const animals = ["puppy", "bird", "cat", "bunny", "fox", "bear", "panda", "frog", "penguin", "otter"];
+  return `/static/avatars/computers/${animals[Array.from(player.id || `computer-${player.player_index + 1}`).reduce((sum, char) => sum + char.codePointAt(0), 0) % animals.length]}.png`;
+}
+
 function renderMatch() {
   const match = state.match;
   const user = me();
@@ -812,10 +834,11 @@ function renderMatch() {
     ...match.players.map((player) =>
       el("span", {
         class: `seat-chip${turn.includes(player.player_index) ? " turn" : ""}`,
-        textContent:
+      }, el("img", {class: "player-avatar", src: playerPicture(player), alt: "", width: 36, height: 36,
+        onerror: event => { event.target.hidden = true; }}), el("span", {textContent:
           `${playerName(player)}${player === mySeat ? " · You" : ""}` +
           `${turn.includes(player.player_index) ? " — to move" : ""}`,
-      }),
+      })),
     ),
   );
 
@@ -1003,7 +1026,7 @@ function renderMatch() {
                 ? Auth.inviteLink(Auth.current(), `match=${match.id}`)
                 : `${location.origin}/portal#match=${match.id}`,
             )
-            .then(() => toast("Copied the link")),
+            .then(() => toast("✓ Invite link copied")),
       }),
     );
   if (secondaryActions.length) {
@@ -1012,12 +1035,17 @@ function renderMatch() {
       el("div", {class:"match-more-panel"}, ...secondaryActions));
     menu.addEventListener?.("toggle", () => {
       if (menu.isConnected) {
+        const newlyOpened = menu.open && state.moreActionsMatch !== match.id;
         state.moreActionsMatch = menu.open ? match.id : null;
         if (menu.open) {
           const panel = menu.querySelector(".match-more-panel"), rect = menu.getBoundingClientRect();
           const width = panel.getBoundingClientRect().width, height = panel.getBoundingClientRect().height;
           panel.style.left = Math.max(8,Math.min(rect.left,window.innerWidth-width-8))+"px";
           panel.style.top = Math.max(8,Math.min(rect.bottom+8,window.innerHeight-height-8))+"px";
+          if (newlyOpened && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            panel.animate?.([{opacity:.3, translate:'0 -5px'}, {opacity:1, translate:'0 0'}],
+              {duration:180, easing:'ease-out'});
+          }
         }
       }
     });
@@ -1165,6 +1193,7 @@ async function syncGame() {
       player_id: player.id,
       kind: player.kind,
       name: playerName(player),
+      picture_url: playerPicture(player),
     })),
     turn: view.turn_of_player_indices,
     status: view.status,
@@ -1344,6 +1373,7 @@ async function main() {
     state.myMatches = [];
     state.gameCache.clear();
     state.nameCache.clear();
+    state.pictureCache.clear();
     frame.unload();
     state.loaded = null;
     history.replaceState(null, "", state.detailGameId ? `#game=${encodeURIComponent(state.detailGameId)}` : "#");
@@ -1394,18 +1424,20 @@ async function main() {
   });
   $("show-creator").addEventListener("click", () => {
     $("match-creator").open = true;
-    $("match-creator").scrollIntoView({behavior: "smooth", block: "start"});
+    $("match-creator").scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
     $("game-search").focus({preventScroll: true});
   });
   document.querySelectorAll("[data-game-filter]").forEach(button => button.addEventListener("click", () => {
     state.libraryFilter = button.dataset.gameFilter;
     document.querySelectorAll("[data-game-filter]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
     renderLibrary();
+    revealPortalSection("game-library");
   }));
   document.querySelectorAll("[data-game-view]").forEach(button => button.addEventListener("click", () => {
     state.libraryView = button.dataset.gameView;
     document.querySelectorAll("[data-game-view]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
     renderLibrary();
+    revealPortalSection("game-library");
   }));
   $("reset-games").addEventListener("click", () => {
     state.libraryFilter = "all";
@@ -1429,7 +1461,7 @@ async function main() {
     const game = /^\/games\/([^/]+)\/versions\/(\d+)$/.exec(path);
     if (game) state.gameCache.set(`${game[1]}@${game[2]}`, value);
     const user = /^\/users\/([^/]+)$/.exec(path);
-    if (user) state.nameCache.set(user[1], value.display_name);
+    if (user) { state.nameCache.set(user[1], value.display_name); state.pictureCache.set(user[1], value.picture_url); }
   }
   state.match =
     cached.local[state.selectedId] ||

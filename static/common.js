@@ -408,9 +408,19 @@ function setUpSidebarDrawer() {
     for (const button of openers) button.setAttribute('aria-expanded',String(opened));
   }
   function setOpen(value,opener) {
+    const changed = opened !== Boolean(value);
+    const rect = sidebar.animate ? sidebar.getBoundingClientRect() : null;
+    sidebar.getAnimations?.().forEach(animation => animation.cancel());
     opened=Boolean(value);
     if (opened) returnFocus=opener || document.activeElement;
     render();
+    if (changed && rect && document.querySelector('.portal-shell') && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const geometry = opened ? {} : {position:'fixed', top:`${rect.top}px`, left:`${rect.left}px`, width:`${rect.width}px`, height:`${rect.height}px`, zIndex:120};
+      sidebar.animate?.([
+        {...geometry, visibility:'visible', opacity:opened ? .3 : 1, transform:opened ? 'translateX(-24px)' : 'translateX(0)'},
+        {...geometry, visibility:'visible', opacity:opened ? 1 : 0, transform:opened ? 'translateX(0)' : 'translateX(-24px)'}
+      ], {duration:220, easing:'ease-out'});
+    }
     if (opened) close.focus();
     else if (returnFocus) { returnFocus.focus({preventScroll:true}); returnFocus=null; }
   }

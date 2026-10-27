@@ -217,3 +217,53 @@
 .token-summary-payout>small{width:100%;text-align:right;font-size:11px;color:#cae6b8}
 .paid-lobby-hint{border:1px solid #426d6d;background:#1b353a;color:#b8edee;border-radius:9px;padding:12px 14px;line-height:1.5;margin:0;font-size:13px}
 @media(max-width:640px){.topbar .token-wallet{padding:5px 9px 5px 5px;gap:5px;min-height:35px}.token-wallet-coin{width:26px;height:26px;font-size:14px}.token-wallet-label{font-size:8px}.token-wallet-number strong{font-size:16px}.token-wallet-number{font-size:10px}.token-stake-panel{padding:14px}.token-summary-values{gap:8px}.token-summary-values strong{font-size:16px}}
+
+/* Avatars stay secondary to readable player names. */
+.player-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+.seat-chip { display:inline-flex; align-items:center; gap:.4rem; }
+@media (prefers-reduced-motion: no-preference) {
+  button { transition: background-color 140ms, box-shadow 140ms; }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  .match-tools:not([hidden]) { animation: portal-reveal 260ms cubic-bezier(.2,.8,.2,1); }
+  @keyframes portal-reveal { from {opacity:.25; transform:translateY(-10px)} to {opacity:1; transform:translateY(0)} }
+}
+
+/* Portal-only polish; hidden panels remain inert through their existing JS. */
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.sidebar-docked) .portal-sidebar {
+    transition: transform 240ms cubic-bezier(.2,.8,.2,1), visibility 240ms;
+  }
+  #account-menu .auth-menu-panel {
+    opacity:1; transform:translateY(0);
+    transition: opacity 180ms ease, transform 180ms ease, display 180ms allow-discrete;
+  }
+  #account-menu .auth-menu-panel[hidden] { opacity:0; transform:translateY(-8px); }
+  @starting-style {
+    #account-menu .auth-menu-panel:not([hidden]) { opacity:0; transform:translateY(-8px); }
+  }
+  .toast:not([hidden]) { animation:portal-reveal 220ms ease-out; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* JS handles both docked and overlay drawer motion, including closing. */
+  body .portal-sidebar { transition:none; }
+  .portal-shell button, .portal-shell input, .portal-shell select {
+    transition:background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+  }
+  .creator-toggle { transition:transform 180ms ease; }
+  .game-search-popup:not([hidden]), .game-detail-page:not([hidden]),
+  .match-stage:not([hidden]), .match-creator[open] .creator-content {
+    animation:portal-section-enter 200ms ease-out;
+  }
+  @keyframes portal-section-enter {
+    from {opacity:.45; translate:0 5px;} to {opacity:1; translate:0 0;}
+  }
+}
+#game-search:focus-visible {
+  border-color:#5fd4ff;
+  box-shadow:0 0 0 3px #5fd4ff26;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .match-more > summary { transition:background-color 150ms ease, border-color 150ms ease; }
+}

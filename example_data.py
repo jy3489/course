@@ -91,7 +91,7 @@ def _apply(
     if kind == "create_user":
         ids.push(operation["id"])
         passwords.push(operation["password"])
-        platform.create_user(display_name=operation["display_name"])
+        platform.create_user(display_name=operation["display_name"], picture_url="/static/avatars/users/puppy/puppy-natural-classic-open.png")
     elif kind == "create_game":
         ids.push(operation["id"])
         platform.create_game(

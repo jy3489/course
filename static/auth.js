@@ -78,6 +78,14 @@ const Auth = (() => {
 
   /** Saves [code] as account [id]'s referral code (accounts saved before codes existed
    * learn theirs from the server later). */
+  function setPicture(id, picture) {
+    const all = load(), account = all.find(a => a.id === id);
+    if (!account || !picture || account.picture_url === picture) return false;
+    account.picture_url = picture;
+    save(all);
+    return true;
+  }
+
   function setReferralCode(id, code) {
     const accounts = load();
     const account = accounts.find((a) => a.id === id);
@@ -493,6 +501,7 @@ const Auth = (() => {
     headers,
     inviteLink,
     setReferralCode,
+    setPicture,
     newAccountBody,
     openDialog,
     closeDialog,

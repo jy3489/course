@@ -179,7 +179,8 @@ def test_a_call_can_raise_the_time_limit_for_itself():
         "const game = { viewFor(state, playerId, ctx) {"
         "  let s = 0; for (let i = 0; i < 5000000; i++) s += i % 7;"
         "  return {s: s}; } };",
-        time_limit_seconds=0.1,
+        # A 1 ms budget reliably interrupts this loop even on fast CPUs.
+        time_limit_seconds=0.001,
     )
     with pytest.raises(GameLogicTimeout):
         slow.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)

@@ -17,9 +17,18 @@ window.PortalMatchLayout = (() => {
     const active = Boolean(match);
     const waiting = match?.status === "waiting_for_players";
     const focused = active && !waiting && (manualFocus ?? landscape.matches);
+    const focusChanged = active && document.body.classList.contains("match-page") &&
+      document.body.classList.contains("match-focus") !== focused;
     document.body.classList.toggle("match-page", active);
     document.body.classList.toggle("match-focus", focused);
     document.body.classList.toggle("match-lobby", active && waiting);
+    // Fade the toolbar after the layout switches; never transform/reload the game iframe.
+    if (focusChanged && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const toolbar = $("match-focus-toggle").parentElement;
+      toolbar?.getAnimations?.().forEach(animation => animation.cancel());
+      toolbar?.animate?.([{opacity:.35, transform:"translateY(-4px)"}, {opacity:1, transform:"translateY(0)"}],
+        {duration:220, easing:"ease-out"});
+    }
     $("match-tools").hidden = !active || (!waiting && !controlsOpen);
     $("match-controls-toggle").hidden = waiting;
     $("match-controls-toggle").setAttribute("aria-expanded", String(waiting || controlsOpen));
