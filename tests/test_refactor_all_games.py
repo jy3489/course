@@ -285,3 +285,73 @@ def test_a_second_job_conflicts_while_one_is_running(monkeypatch) -> None:
     assert response.status_code == 409
     release.set()
     assert wait_done(client, job["job_id"])["status"] == "done"
+
+
+# PUT /admin/games/{game_id}/code: the hand-written counterpart of the
+# refactor job — same admin path, same publish gate, explicit code.
+
+
+def test_admin_set_code_requires_the_master_password() -> None:
+    client = make_client()
+    _, alice = new_user(client, "alice")
+    game = new_game(client, alice)
+    url = f"/admin/games/{game['id']}/code"
+    assert client.put(url, json={"server_code": GOOD_SERVER_CODE}).status_code == 401
+    assert (
+        client.put(url, auth=("admin", "wrong"), json={"server_code": GOOD_SERVER_CODE}).status_code
+        == 401
+    )
+
+
+def test_admin_set_code_saves_a_game_owned_by_someone_else() -> None:
+    client = make_client()
+    _, alice = new_user(client, "alice")
+    game = new_game(client, alice)
+    response = client.put(
+        f"/admin/games/{game['id']}/code",
+        auth=ADMIN,
+        json={"code": "<div>v2</div>", "server_code": GOOD_SERVER_CODE},
+    )
+    assert response.is_success, response.text
+    saved = response.json()
+    assert saved["version"] == 2
+    assert saved["code"] == "<div>v2</div>"
+    assert saved["server_code"] == GOOD_SERVER_CODE
+    # A client-only save keeps the server code (and vice versa).
+    response = client.put(
+        f"/admin/games/{game['id']}/code", auth=ADMIN, json={"code": "<div>v3</div>"}
+    )
+    assert response.is_success, response.text
+    saved = response.json()
+    assert saved["version"] == 3
+    assert saved["server_code"] == GOOD_SERVER_CODE
+
+
+def test_admin_set_code_publish_gate_refuses_broken_server_code() -> None:
+    client = make_client()
+    _, alice = new_user(client, "alice")
+    game = new_game(client, alice)
+    response = client.put(
+        f"/admin/games/{game['id']}/code",
+        auth=ADMIN,
+        json={"server_code": BAD_SERVER_CODE},
+    )
+    assert response.status_code == 400
+    assert "failed its tests" in response.json()["detail"]
+    assert client.get(f"/games/{game['id']}").json()["version"] == 1
+
+
+def test_admin_set_code_unknown_game_and_empty_body() -> None:
+    client = make_client()
+    _, alice = new_user(client, "alice")
+    game = new_game(client, alice)
+    assert (
+        client.put(
+            "/admin/games/missing/code", auth=ADMIN, json={"code": "<div>x</div>"}
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put(f"/admin/games/{game['id']}/code", auth=ADMIN, json={}).status_code
+        == 422
+    )

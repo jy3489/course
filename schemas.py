@@ -1071,6 +1071,23 @@ class RefactorJobOut(BaseModel):
     results: list[RefactorGameResultOut]
 
 
+class AdminGameCodeRequest(_Request):
+    """New code for one game, saved by a super admin through
+    PUT /admin/games/{game_id}/code — the hand-written counterpart of
+    the refactor job, for code a person wrote rather than the agent.
+    At least one field is required; an omitted field keeps the game's
+    current code of that kind."""
+
+    code: str | None = None
+    server_code: str | None = None
+
+    @model_validator(mode="after")
+    def _some_code(self) -> "AdminGameCodeRequest":
+        if self.code is None and self.server_code is None:
+            raise ValueError("provide code, server_code, or both")
+        return self
+
+
 class LocaleOut(BaseModel):
     code: str
     # The language's own name, for a language picker.

@@ -28,6 +28,7 @@ from pydantic import JsonValue
 from game_platform import i18n
 from game_platform.models import Game, GameRules, Match, MatchStatus
 from game_platform.schemas import (
+    AdminGameCodeRequest,
     AgentChatRequest,
     AgentConversationOut,
     AgentMessage,
@@ -1432,6 +1433,32 @@ def _refactor_one_game(
         "detail": f"saved as version {updated.version}",
         "version": updated.version,
     }
+
+
+@debug_router.put(
+    "/admin/games/{game_id}/code", dependencies=[MasterPassword]
+)
+def admin_set_game_code(
+    platform: Platform, game_id: str, body: AdminGameCodeRequest
+) -> GameOut:
+    """Saves hand-written client and/or server code for any game, as a
+    super admin: the save goes through update_game's admin path, so the
+    publish gate still tests new server code and a refusal changes
+    nothing. The refactor job is the agent-driven counterpart; this is
+    for code a person wrote (for example the games whose agent
+    conversions kept failing their tests)."""
+    game = platform.get_game(game_id)
+    return GameOut.of(
+        platform.update_game(
+            caller_id=game.owner_user_id,
+            game_id=game_id,
+            code=body.code,
+            server_code=(
+                body.server_code if body.server_code is not None else UNSET
+            ),
+            _admin=True,
+        )
+    )
 
 
 @debug_router.get(

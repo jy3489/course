@@ -313,3 +313,10 @@ is recorded against each game, like a builder conversation. First use:
 converting the remaining client-only games to this API with a
 conversion prompt; the same endpoint serves later fleet-wide refactors
 (adding unit tests, checking hidden information, checking determinism).
+
+The hand-written counterpart is `PUT /admin/games/{game_id}/code`
+(same master-password auth): the body carries explicit `code` and/or
+`server_code` and the save goes through the same admin path and
+publish gate — for conversions a person writes by hand when the
+agent's attempts keep failing a game's tests (the last few complex
+games: chess, a second backgammon, Rummy 500, ERS, Guandan).
