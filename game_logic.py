@@ -33,6 +33,7 @@ Design notes:
 
 import datetime as dt
 import json
+import threading
 from typing import Any
 
 import quickjs
@@ -246,7 +247,13 @@ def _is_timeout(error: Exception) -> bool:
 
 class GameLogic:
     """One game's server code, runnable. Create one per game version and
-    reuse it: the QuickJS context is cached between calls."""
+    reuse it: the QuickJS context is cached between calls.
+
+    The platform shares one instance across threads (request threads,
+    the computer-move timer, the game tester), but a QuickJS context may
+    only be entered from one thread at a time: concurrent evaluation
+    corrupts the interpreter and the process dies with a fatal error.
+    Every entry into the context is therefore serialized on a lock."""
 
     def __init__(
         self,
@@ -259,6 +266,7 @@ class GameLogic:
         self._time_limit_seconds = time_limit_seconds
         self._memory_limit_bytes = memory_limit_bytes
         self._context: quickjs.Context | None = None
+        self._lock = threading.RLock()
 
     def _new_context(self) -> quickjs.Context:
         context = quickjs.Context()
@@ -285,6 +293,10 @@ class GameLogic:
 
     def has(self, function: str) -> bool:
         """Whether the game defines [function] (some functions are optional)."""
+        with self._lock:
+            return self._has(function)
+
+    def _has(self, function: str) -> bool:
         if self._context is None:
             try:
                 self._context = self._new_context()
@@ -298,6 +310,30 @@ class GameLogic:
             return False
 
     def call(
+        self,
+        function: str,
+        *args: Any,
+        ctx: dict[str, Any] | None = None,
+        seed: int = 0,
+        now: dt.datetime | None = None,
+        time_limit_seconds: float | None = None,
+    ) -> Any:
+        """Calls game.<function>(*args, ctx) and returns its JSON result.
+
+        Serialized on this instance's lock (see the class docstring):
+        the cached QuickJS context is never entered concurrently.
+        """
+        with self._lock:
+            return self._call(
+                function,
+                *args,
+                ctx=ctx,
+                seed=seed,
+                now=now,
+                time_limit_seconds=time_limit_seconds,
+            )
+
+    def _call(
         self,
         function: str,
         *args: Any,

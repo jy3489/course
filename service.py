@@ -19,7 +19,6 @@ from typing import Any, Final
 from pydantic import JsonValue
 
 from game_platform import i18n
-from game_platform.avatars import random_user_avatar, computer_avatar
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
@@ -372,7 +371,7 @@ class GamePlatform:
                 referral_code=self._take_referral_code(user_id),
                 display_name=display_name,
                 email=email,
-                picture_url=picture_url.strip() or random_user_avatar(),
+                picture_url=picture_url,
                 locale=locale,
                 password=self._new_password(),
                 linked_accounts=linked_accounts,
@@ -492,12 +491,10 @@ class GamePlatform:
                 if user.referral_code:
                     self._user_ids_by_code[user.referral_code] = user.id
             for user in users:
-                if not user.referral_code or not user.picture_url:
-                    self._store.put_user(replace(
-                        user,
-                        referral_code=user.referral_code or self._take_referral_code(user.id),
-                        picture_url=user.picture_url or random_user_avatar(),
-                    ))
+                if not user.referral_code:
+                    self._store.put_user(
+                        replace(user, referral_code=self._take_referral_code(user.id))
+                    )
 
     def _take_referral_code(self, user_id: str) -> str:
         """A random code no account has yet, now reserved for [user_id]. The caller
@@ -1789,7 +1786,7 @@ class GamePlatform:
                         "id": player_id,
                         "kind": "computer",
                         "display_name": f"Computer {number}",
-                        "picture_url": computer_avatar(player_id),
+                        "picture_url": "",
                         "max_loss": 0,
                     }
                 )
@@ -2021,6 +2018,16 @@ class GamePlatform:
         )
         timer.daemon = True
         timer.start()
+
+    def resume_computer_moves(self) -> None:
+        """Schedules computer moves for every ongoing match that is
+        waiting on a computer seat. Moves are arranged on timers as play
+        advances, and a server restart loses those timers, which would
+        leave such a match stuck on the computer's turn forever; called
+        once at startup so those matches pick up where they left off."""
+        for match in self._store.list_all_matches():
+            if match.status == "ongoing":
+                self._schedule_computer_moves(match)
 
     def _run_computer_moves(self, match_id: str) -> None:
         """Moves every computer seat that holds the turn, one after another,

@@ -124,6 +124,7 @@ def main() -> None:
         if args.purge_example_data:
             purge_example_data(platform)
             return
+        platform.resume_computer_moves()
         warn_about_insecure_setup(config, platform)
         app = create_app(
             platform,

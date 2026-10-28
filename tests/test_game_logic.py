@@ -9,6 +9,7 @@ same frozen time returns exactly the same result.
 
 import datetime as dt
 import json
+import threading
 
 import pytest
 
@@ -179,8 +180,7 @@ def test_a_call_can_raise_the_time_limit_for_itself():
         "const game = { viewFor(state, playerId, ctx) {"
         "  let s = 0; for (let i = 0; i < 5000000; i++) s += i % 7;"
         "  return {s: s}; } };",
-        # A 1 ms budget reliably interrupts this loop even on fast CPUs.
-        time_limit_seconds=0.001,
+        time_limit_seconds=0.1,
     )
     with pytest.raises(GameLogicTimeout):
         slow.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)
@@ -265,6 +265,48 @@ def test_memory_limit():
     )
     with pytest.raises(GameLogicError):
         logic.call("viewFor", {}, "u1", ctx=_ctx(), seed=1)
+
+
+def test_one_logic_called_from_many_threads_at_once():
+    """The platform shares one GameLogic per game version across request
+    threads (viewFor on every match poll), the computer-move timer thread
+    and the game tester. A QuickJS context is not thread-safe: before
+    GameLogic serialized its calls, two threads evaluating in the same
+    context at once corrupted the interpreter and the whole server
+    process died with a fatal error (seen live 2026-10-28, when a
+    computer-move timer raced a page refresh's viewFor). Concurrent
+    calls on one instance must all complete and stay deterministic."""
+    logic = GameLogic(COUNTER_GAME)
+    ctx = _ctx()
+    now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    errors: list[Exception] = []
+    views: list[dict] = []
+
+    def work(seed: int) -> None:
+        try:
+            for _ in range(25):
+                views.append(
+                    logic.call(
+                        "viewFor", {"count": 3}, "u1", ctx=ctx, seed=seed, now=now
+                    )
+                )
+                assert logic.call(
+                    "computerMove", {"count": 3}, "computer-1",
+                    ctx=ctx, seed=seed, now=now,
+                ) == {"add": 1}
+                assert logic.has("viewFor")
+        except Exception as error:  # collected and asserted below
+            errors.append(error)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    assert len(views) == 8 * 25
+    assert all(view["count"] == 3 and view["you"] == "u1" for view in views)
+    assert len({json.dumps(view, sort_keys=True) for view in views}) == 1
 
 
 def test_invalid_results_are_game_bugs():

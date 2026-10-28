@@ -8,7 +8,9 @@ is their own view, computers move on the server, and the winner of a paid
 match is paid the pot by the game's own payouts.
 """
 
-from game_platform.tests.helpers import Api
+from game_platform.service import GamePlatform
+from game_platform.store import InMemoryStore
+from game_platform.tests.helpers import Api, FakeClock
 
 COUNTER_GAME = r"""
 const game = {
@@ -171,6 +173,40 @@ def test_computer_moves_on_the_server(api: Api):
     moves = api.ok("GET", f"/matches/{match_id}/moves")
     assert [m["player_id"] for m in moves] == [alice, "computer-1"]
     assert moves[1]["move"] == {"add": 1}
+
+
+def test_resume_computer_moves_picks_up_matches_stuck_on_a_computer():
+    """Computer moves are arranged on timers as play advances; a server
+    restart loses the timers, so a match left on the computer's turn
+    would wait forever (seen live 2026-10-28 after a crash: the match
+    sat on the computer's turn for good). A fresh platform over the
+    same store is a restart — still stuck — and resume_computer_moves,
+    called once from main() at startup, must set it moving again."""
+    store = InMemoryStore()
+    # A long delay stands in for "the timer never fired": the process
+    # died before the computer's reply came due.
+    api = Api(store=store, computer_move_delay_seconds=3600)
+    alice = api.new_user("alice")
+    game_id = _create_game(api, alice)
+    match_id = _start(api, alice, game_id, num_computer_opponents=1)
+
+    response = _move(api, match_id, as_user=alice, add=3)
+    assert response.status_code == 201
+    stuck = api.ok("GET", f"/matches/{match_id}", as_user=alice)
+    assert stuck["state"]["count"] == 3
+    assert stuck["turn_of_player_indices"] == [1]
+
+    restarted = GamePlatform(
+        store=store, clock=FakeClock(), computer_move_delay_seconds=0
+    )
+    still_stuck = api.ok("GET", f"/matches/{match_id}", as_user=alice)
+    assert still_stuck["state"]["count"] == 3
+
+    restarted.resume_computer_moves()
+    after = api.ok("GET", f"/matches/{match_id}", as_user=alice)
+    assert after["state"]["count"] == 4
+    assert after["turn_of_player_indices"] == [0]
+    assert after["move_count"] == 2
 
 
 def test_computer_moves_first_when_it_has_the_first_turn(api: Api):
