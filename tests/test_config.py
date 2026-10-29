@@ -18,7 +18,9 @@ def _write_config(directory: Path, config: object) -> Path:
 def test_the_example_config_lists_every_field_with_its_default() -> None:
     example = json.loads(EXAMPLE.read_text())
     assert Config.model_validate(example) == Config()
-    assert example == json.loads(Config().model_dump_json())
+    defaults = json.loads(Config().model_dump_json())
+    defaults["data_file"]["path"] = Path(defaults["data_file"]["path"]).as_posix()
+    assert example == defaults
 
 
 def test_omitted_fields_take_their_defaults(tmp_path: Path) -> None:
@@ -39,7 +41,8 @@ def test_data_file_path_is_relative_to_the_config_file(tmp_path: Path) -> None:
         return load_config(_write_config(config_dir, config)).data_file.path
 
     assert data_file("data/game.json") == config_dir / "data" / "game.json"
-    assert data_file("/abs/game.json") == Path("/abs/game.json")
+    absolute_path = tmp_path / "absolute" / "game.json"
+    assert data_file(str(absolute_path)) == absolute_path
     assert data_file("~/game.json") == Path.home() / "game.json"
 
 

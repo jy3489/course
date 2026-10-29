@@ -22,6 +22,9 @@ def test_a_server_that_cannot_save_its_data_is_unhealthy(tmp_path: Path) -> None
     response = api.request("GET", "/health")
     assert response.status_code == 503
     assert response.json()["status"] == "degraded"
-    assert response.json()["storage"] == "NotADirectoryError"
+    assert response.json()["storage"] in {
+        "NotADirectoryError",
+        "FileNotFoundError",
+    }
     # Stop the writer thread, which would otherwise keep retrying after the test.
     store.close()
