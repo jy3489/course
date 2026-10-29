@@ -6,6 +6,7 @@ email. See config.example.json.
 """
 
 import logging
+import os
 import smtplib
 from email.message import EmailMessage
 from typing import Protocol
@@ -65,6 +66,110 @@ class TwilioSender:
             raise SenderError(f"Twilio refused to send: {response.text[:200]}")
 
 
+class TwilioVoiceSender:
+    """Send a six-digit verification code by automated phone call."""
+
+    def __init__(self, *, account_sid, auth_token, from_number):
+        self.sid = account_sid
+        self.token = auth_token
+        self.from_number = from_number
+
+    def send_login_code(self, destination, code):
+        if len(code) != 6 or not code.isascii() or not code.isdigit():
+            raise SenderError("invalid verification code")
+
+        spoken = ". ".join(code)
+        twiml = (
+            "<Response>"
+            "<Say>Your BuildPlay login code is.</Say>"
+            f"<Say>{spoken}.</Say>"
+            f"<Say>Again. {spoken}.</Say>"
+            "</Response>"
+        )
+
+        try:
+            response = httpx.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Calls.json",
+                auth=(self.sid, self.token),
+                data={
+                    "From": self.from_number,
+                    "To": destination,
+                    "Twiml": twiml,
+                },
+                timeout=10,
+            )
+        except httpx.HTTPError as exc:
+            raise SenderError(
+                "couldn't reach Twilio for phone verification"
+            ) from exc
+
+        if response.status_code >= 300:
+            raise SenderError(
+                "Twilio could not place the verification call"
+            )
+
+
+class TwilioVerifyClient:
+    def __init__(self, *, account_sid: str, auth_token: str, service_sid: str):
+        self.sid = account_sid
+        self.token = auth_token
+        self.service_sid = service_sid
+
+    def _request(self, action: str, payload: dict[str, str]) -> dict:
+        if not (self.sid and self.token and self.service_sid):
+            raise SenderError("Twilio Verify credentials are not configured")
+        try:
+            result = httpx.post(
+                f"https://verify.twilio.com/v2/Services/{self.service_sid}/{action}",
+                auth=(self.sid, self.token),
+                data=payload,
+                timeout=10,
+            )
+        except httpx.HTTPError as exc:
+            raise SenderError("Could not connect to Twilio Verify") from exc
+
+        if result.status_code >= 300:
+            if action == "VerificationCheck" and result.status_code == 404:
+                return {"status": "expired"}
+            raise SenderError(
+                f"Twilio Verify failed (HTTP {result.status_code})"
+            )
+        try:
+            return result.json()
+        except ValueError as exc:
+            raise SenderError("Unexpected Twilio Verify response") from exc
+
+    def start_verification(self, number: str, channel: str) -> None:
+        if channel not in ("sms", "call"):
+            raise SenderError("Unsupported verification channel")
+        result = self._request(
+            "Verifications", {"To": number, "Channel": channel}
+        )
+        if result.get("status") != "pending":
+            raise SenderError("Twilio did not start the verification")
+
+    def check_verification(self, number: str, code: str) -> bool:
+        if not (len(code) == 6 and code.isascii() and code.isdigit()):
+            return False
+        result = self._request(
+            "VerificationCheck", {"To": number, "Code": code}
+        )
+        return result.get("status") == "approved"
+
+
+def make_verify_client(config: SmsAuthConfig) -> TwilioVerifyClient | None:
+    if config.provider != "verify":
+        return None
+    return TwilioVerifyClient(
+        account_sid=os.environ.get("TWILIO_ACCOUNT_SID")
+            or config.twilio_account_sid,
+        auth_token=os.environ.get("TWILIO_AUTH_TOKEN")
+            or config.twilio_auth_token,
+        service_sid=os.environ.get("TWILIO_VERIFY_SERVICE_SID")
+            or config.twilio_verify_service_sid,
+    )
+
+
 class SmtpSender:
     """Sends email through any SMTP server."""
 
@@ -108,9 +213,9 @@ class SmtpSender:
 def make_sms_sender(config: SmsAuthConfig) -> CodeSender:
     if config.provider == "twilio":
         return TwilioSender(
-            account_sid=config.twilio_account_sid,
-            auth_token=config.twilio_auth_token,
-            from_number=config.twilio_from_number,
+            account_sid=os.environ.get("TWILIO_ACCOUNT_SID", config.twilio_account_sid),
+            auth_token=os.environ.get("TWILIO_AUTH_TOKEN", config.twilio_auth_token),
+            from_number=os.environ.get("TWILIO_FROM_NUMBER", config.twilio_from_number),
         )
     return LogSender()
 
@@ -126,3 +231,14 @@ def make_email_sender(config: EmailAuthConfig) -> CodeSender:
             use_tls=config.smtp_use_tls,
         )
     return LogSender()
+
+
+def make_voice_sender(config: SmsAuthConfig) -> CodeSender:
+    if config.provider != "twilio" or not config.twilio_voice_enabled:
+        return LogSender()
+
+    return TwilioVoiceSender(
+        account_sid=os.environ.get("TWILIO_ACCOUNT_SID", config.twilio_account_sid),
+        auth_token=os.environ.get("TWILIO_AUTH_TOKEN", config.twilio_auth_token),
+        from_number=os.environ.get("TWILIO_FROM_NUMBER", config.twilio_from_number),
+    )

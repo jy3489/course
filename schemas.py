@@ -243,6 +243,7 @@ class PhoneStart(_Request):
     model_config = _example({"phone_number": "+15551234567"})
 
     phone_number: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    delivery_method: Literal["sms", "call"] = "sms"
 
 
 class EmailStart(_Request):
@@ -281,6 +282,7 @@ class AuthConfigOut(BaseModel):
 
     google_client_id: str
     phone_login_enabled: bool
+    phone_call_enabled: bool = False
     email_login_enabled: bool
 
 

@@ -581,6 +581,41 @@ class GamePlatform:
             self._verification_starts[normalized] = [*starts, now]
             return verification_id, code, normalized
 
+    def _external_phone_pending(self, verification_id: str) -> _Verification:
+        entry = self._verifications.get(verification_id)
+        if entry is None or entry.kind != "phone":
+            raise NotFoundError("verification not found or expired")
+        if (self._clock() - entry.created_at).total_seconds() > VERIFICATION_TTL_SECONDS:
+            del self._verifications[verification_id]
+            raise NotFoundError("verification not found or expired")
+        if entry.attempts >= VERIFICATION_MAX_ATTEMPTS:
+            raise ConflictError("too many wrong codes; request a new one")
+        return entry
+
+    def pending_external_phone(self, verification_id: str) -> str:
+        with self._lock:
+            return self._external_phone_pending(verification_id).identifier
+
+    def finish_external_phone(
+        self, verification_id: str, *, approved: bool,
+        display_name: str | None = None,
+        as_user_id: str | None = None,
+        invited_by_user_id: str | None = None,
+    ) -> tuple[User, str | None]:
+        with self._lock:
+            entry = self._external_phone_pending(verification_id)
+            if not approved:
+                entry.attempts += 1
+                raise InvalidRequestError("wrong code")
+            del self._verifications[verification_id]
+            return self.login_with_linked_account(
+                kind="phone",
+                identifier=entry.identifier,
+                display_name=display_name or entry.identifier,
+                as_user_id=as_user_id,
+                invited_by_user_id=invited_by_user_id,
+            )
+
     def verify_code(
         self,
         *,

@@ -12,7 +12,7 @@ from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
 from game_platform.saving_store import SavingStore
 from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
-from game_platform.senders import make_email_sender, make_sms_sender
+from game_platform.senders import make_email_sender, make_sms_sender, make_voice_sender, make_verify_client
 from game_platform.service import GamePlatform
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,8 @@ def main() -> None:
             auth_config=config.auth,
             push_config=push_config,
             sms_sender=make_sms_sender(config.auth.sms),
+            voice_sender=make_voice_sender(config.auth.sms),
+            verify_client=make_verify_client(config.auth.sms),
             email_sender=make_email_sender(config.auth.email),
             cors_allow_origins=config.server.cors_allow_origins,
             public_base_url=config.server.public_base_url,
