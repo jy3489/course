@@ -126,6 +126,38 @@ def install(app, *, debug_tools):
             "next_cursor": result.next_cursor,
         }
 
+    @app.get("/v2/users/me/invites")
+    def my_invites(
+        platform: Platform,
+        caller_id: CallerId,
+        limit: int = Query(50, ge=1, le=100),
+        cursor: str | None = None,
+    ):
+        result = page(
+            store_of(platform),
+            "invites",
+            filters=[("created_by_user_id", "==", caller_id)],
+            limit=limit,
+            cursor=cursor,
+            scope=caller_id,
+        )
+        return {
+            "items": [
+                {
+                    "token": invite.token,
+                    "match_id": invite.match_id,
+                    "created_at": invite.created_at,
+                    "expires_at": invite.expires_at,
+                    "max_uses": invite.max_uses,
+                    "revoked": invite.revoked,
+                    "views": invite.views,
+                    "acceptance_count": len(invite.acceptances),
+                }
+                for invite in result.items
+            ],
+            "next_cursor": result.next_cursor,
+        }
+
     @app.get("/v2/matches/open")
     def open_matches(
         platform: Platform,

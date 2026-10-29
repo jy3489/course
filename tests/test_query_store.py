@@ -104,6 +104,44 @@ def test_referred_users_paginate_and_bind_cursor_to_caller(store):
     assert all("password" not in user for user in first["items"])
 
 
+def test_invite_pages_are_scoped_to_creator(store):
+    import datetime as dt
+    from game_platform.models import Invite
+
+    api = api_for(store)
+    owner, other = api.new_user("owner"), api.new_user("other")
+    now = dt.datetime.now(dt.timezone.utc)
+    for i in range(3):
+        store.put_invite(
+            Invite(
+                token=f"owner-invite-{i}",
+                match_id="match",
+                created_by_user_id=owner,
+                created_at=now,
+            )
+        )
+    store.put_invite(
+        Invite(
+            token="other-invite",
+            match_id="match",
+            created_by_user_id=other,
+            created_at=now,
+        )
+    )
+    path = "/v2/users/me/invites?limit=2"
+    first = api.ok("GET", path, as_user=owner)
+    second = api.ok("GET", path, as_user=owner, params={"cursor": first["next_cursor"]})
+    assert {x["token"] for x in first["items"] + second["items"]} == {
+        f"owner-invite-{i}" for i in range(3)
+    }
+    assert (
+        api.request(
+            "GET", path, as_user=other, params={"cursor": first["next_cursor"]}
+        ).status_code
+        == 400
+    )
+
+
 def test_referrals_and_linked_identity_survive_restart(store):
     api = api_for(store)
     alice = api.new_user("alice")
