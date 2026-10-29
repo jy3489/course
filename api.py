@@ -759,9 +759,12 @@ def player_left(platform: Platform, caller_id: CallerId, match_id: str) -> Match
 
 @router.post("/matches/{match_id}/moves", status_code=HTTPStatus.CREATED)
 def make_move(
-    platform: Platform, caller_id: CallerId, match_id: str, body: MoveCreate
+    platform: Platform, caller_id: CallerId, match_id: str, body: MoveCreate,
+    idempotency_key: str | None = Header(default=None, max_length=128),
 ) -> MatchOut:
+    extra = {"request_id": idempotency_key} if getattr(platform._store, "scalable", False) else {}
     match = platform.make_move(
+        **extra,
         caller_id=caller_id,
         match_id=match_id,
         new_state=body.new_state,
@@ -777,11 +780,15 @@ def make_move(
 
 @router.get("/matches/{match_id}/history")
 def get_match_history(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> MatchHistoryOut:
+    if getattr(platform._store, "scalable", False):
+        raise HTTPException(409, "use /v2/matches/{match_id}/history with bounded pages")
     return MatchHistoryOut.of(platform.get_match(match_id, caller_id=caller_id))
 
 
 @router.get("/matches/{match_id}/moves")
 def list_moves(platform: Platform, match_id: str, caller_id: OptionalCallerId) -> list[MoveOut]:
+    if getattr(platform._store, "scalable", False):
+        raise HTTPException(409, "use /v2/matches/{match_id}/history with bounded pages")
     return [MoveOut.of(move) for move in platform.get_match(match_id, caller_id=caller_id).moves]
 
 
@@ -1594,6 +1601,8 @@ def create_app(
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()
     app.state.email_sender = email_sender if email_sender is not None else LogSender()
     app.include_router(router)
+    from game_platform.scaling_api import install as install_scaling_api
+    install_scaling_api(app, debug_tools=debug_tools)
     app.include_router(auth_router)
     app.include_router(i18n_router)
     app.include_router(push_router)

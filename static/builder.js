@@ -43,9 +43,23 @@ function restoreWork() {
 }
 async function loadGames() {
   const user=me();
-  const [games,drafts]=user ? await Promise.all([apiRequest("GET","/builder/games",{user}),apiRequest("GET","/game-drafts",{user})]) : [[],[]];
+  const [games,drafts]=user ? await Promise.all([StoragePages.list(apiRequest,"/builder/games",{user}),StoragePages.list(apiRequest,"/game-drafts",{user})]) : [[],[]];
   if (me()?.id !== user?.id) return;
-  state.games=games; state.drafts=drafts;
+  // Keep the selected detail and its edit revision while the list changes page.
+  // Replacing it with a newer summary could let stale edits overwrite new work.
+  const keepSelected=(items,selected)=>selected
+    ? [...items.filter(item=>item.id!==selected.id),selected] : items;
+  state.games=keepSelected(games,selectedGame());
+  state.drafts=keepSelected(drafts,selectedDraft());
+  const sidebar=document.querySelector(".sidebar");
+  if (sidebar) {
+    let pages=document.getElementById("builder-pages");
+    if (!pages) {pages=document.createElement("div");pages.id="builder-pages";sidebar.append(pages);}
+    StoragePages.controls("/builder/games",user,pages,async()=>{await loadGames();renderLibrary();});
+    let draftPages=document.getElementById("builder-draft-pages");
+    if (!draftPages) {draftPages=document.createElement("div");draftPages.id="builder-draft-pages";sidebar.append(draftPages);}
+    StoragePages.controls("/game-drafts",user,draftPages,async()=>{await loadGames();renderLibrary();});
+  }
 }
 function clearAgent() {
   if (state.agentRequest) {state.agentRequest.cancelled=true;state.agentRequest.controller.abort();}
@@ -58,6 +72,28 @@ async function select(id) {
   clearTimeout(state.saveTimer); clearAgent(); state.session++;
   state.selectedId=id; state.ownerId=me()?.id; state.undo=[]; state.deleteArmed=false; state.saveError="";state.saveWarning="";
   state.messages=[];state.log=[]; state.aiOpen=true;
+  if (id !== "new" && await StoragePages.enabled()) {
+    const user=me(),session=state.session;
+    state.restoring=true;renderStatus();
+    try {
+      const get=path=>apiRequest("GET",path+encodeURIComponent(id),{user}).catch(error=>{
+        if(error.status===404)return null;
+        throw error;
+      });
+      // A working copy and its published version can be on different pages.
+      const [draft,game]=await Promise.all([get("/game-drafts/"),get("/games/")]);
+      if (!currentSession(session,user)) return;
+      if(!draft && !game)throw new Error("This game or draft is no longer available.");
+      state.drafts=[...state.drafts.filter(item=>item.id!==id),...(draft?[draft]:[])];
+      state.games=[...state.games.filter(item=>item.id!==id),...(game?[game]:[])];
+    } catch(error) {
+      if(currentSession(session,user)) {
+        state.selectedId=null;state.baseline=null;state.editor=copy(EMPTY);
+        stopTest();render();showPageError("Couldn't load game: "+error.message);
+      }
+      return;
+    } finally {if(currentSession(session,user)){state.restoring=false;renderStatus();}}
+  }
   state.editor=content(selectedDraft() ?? selectedGame() ?? EMPTY);
   state.baseline=JSON.stringify(state.editor);
   restoreWork(); stopTest(); $("agent-input").value=""; render();
@@ -80,9 +116,10 @@ async function loadStarters() {
   const request=++state.starterRequest,user=me();
   state.starterLoading=true;renderStarters();setMessage("starter-message","Loading games…");
   try {
-    const games=await apiRequest("GET","/games");
+    const games=await StoragePages.list(apiRequest,"/games",{user});
     if (request!==state.starterRequest || me()?.id!==user?.id) return;
     state.starters=games;
+    StoragePages.controls("/games",user,$("starter-game"),loadStarters);
     setMessage("starter-message",games.length?"Browse all "+games.length+" games or search to narrow the list.":"No games are available yet.");
   } catch(error) {
     if(request===state.starterRequest)setMessage("starter-message","Couldn't load games: "+error.message,"error");
@@ -90,10 +127,13 @@ async function loadStarters() {
     if(request===state.starterRequest){state.starterLoading=false;renderStarters();}
   }
 }
-function useStarter() {
+async function useStarter() {
   if (!me() || state.selectedId!=="new" || state.editor.code || state.agentSending || state.publishing || state.restoring || state.savePromise || state.starterLoading) return;
-  const game=state.starters.find(item=>item.id===$("starter-game").value);
+  let game=state.starters.find(item=>item.id===$("starter-game").value);
   if (!game) return;
+  const session=state.session, user=me(), editor=state.editor;
+  if (await StoragePages.enabled()) game=await apiRequest("GET","/games/"+encodeURIComponent(game.id)+"/versions/"+game.version,{user:me()});
+  if (session!==state.session || user?.id!==me()?.id || state.selectedId!=="new" || state.editor!==editor || state.editor.code) return;
   state.editor=content({...game,name:game.name+" (copy)",description:(game.description || game.name)+" · Based on "+game.name+" v"+game.version+"."});
   state.messages=[];state.log=[];state.undo=[];state.aiOpen=true;
   render();renderPlayModes();startTest();scheduleAutosave();
@@ -633,7 +673,7 @@ async function onUserChanged() {
 async function resumeWorkspace() {
   let last;
   try {last=me() && localStorage.getItem("game-platform.builder.last.v2."+me().id);} catch {}
-  if (last && (state.games.some(game=>game.id===last) || state.drafts.some(game=>game.id===last) ||
+  if (last && ((last!=="new" && await StoragePages.enabled()) || state.games.some(game=>game.id===last) || state.drafts.some(game=>game.id===last) ||
       (last==="new" && localStorage.getItem(recoveryKey("new"))))) await select(last);
   else render();
 }
@@ -652,7 +692,13 @@ async function main() {
   $("undo-move").addEventListener("click",undoTestMove);$("load-version").addEventListener("click",restoreVersion);
   $("delete-game").addEventListener("click",deleteGame);$("agent-send").addEventListener("click",sendAgentMessage);
   $("load-starters").addEventListener("click",loadStarters);$("use-starter").addEventListener("click",useStarter);
-  $("starter-search").addEventListener("input",renderStarters);
+  $("starter-search").addEventListener("input",()=>{
+    renderStarters();
+    if(StoragePages.search("/games",me(),$("starter-search").value)) {
+      clearTimeout(state.starterSearchTimer);
+      state.starterSearchTimer=setTimeout(loadStarters,300);
+    }
+  });
   $("agent-stop").addEventListener("click",stopAgentWaiting);
   $("agent-input").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey))sendAgentMessage();});
   document.addEventListener("i18n-changed",()=>{

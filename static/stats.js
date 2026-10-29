@@ -184,7 +184,10 @@ async function refresh() {
     if (!response.ok) throw new Error(`GET /admin/stats: ${response.status}`);
     const stats = await response.json();
     $("error").textContent = "";
-    render(stats);
+    if (stats.schema_version === 2) {
+      const rows=Object.entries(stats.counts).sort(([a],[b])=>a.localeCompare(b));
+      $("content").replaceChildren(table("Database records",["Record type","Count"],rows));
+    } else render(stats);
     $("freshness").textContent = `Loaded ${formatTime(stats.generated_at)}`;
   } catch (error) {
     $("error").textContent = `Couldn't load statistics: ${error.message}`;

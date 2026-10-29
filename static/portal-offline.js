@@ -89,6 +89,18 @@ class PortalOffline {
         throw Object.assign(new Error("Account changed"), { status: 409 });
       this.network = true;
       const d = this.read();
+      const paged = /^\/v2(\/(?:games|matches(?:\/open)?))\?/.exec(path);
+      if (paged) {
+        // Cache only the most recent page per list. Preserve the old aliases
+        // used to restore the offline shell and queued local moves.
+        for (const key of Object.keys(d.responses)) {
+          if(key.startsWith("/v2"+paged[1]+"?") && key!==path) delete d.responses[key];
+        }
+        d.responses[paged[1]]=value.items;
+        if(paged[1]==="/matches") for(const match of value.items) {
+          if(!d.queues[match.id]?.length) d.responses[`/matches/${match.id}`]=match;
+        }
+      }
       const matchId = /^\/matches\/([^/]+)$/.exec(path)?.[1];
       if (!(matchId && d.queues[matchId]?.length)) d.responses[path] = value;
       if (path === "/matches")
@@ -112,6 +124,11 @@ class PortalOffline {
         throw new Error(
           "Not saved on this device yet. Open this while online first.",
         );
+    }
+    if (path.startsWith("/v2/matches?")) {
+      const d=this.read(), ids=new Set(value.items.map(m=>m.id));
+      const missing=Object.keys(d.queues).filter(id=>!ids.has(id)).map(id=>d.responses[`/matches/${id}`]).filter(Boolean);
+      return {...value,items:[...value.items,...missing].map(m=>this.decorate(m)).concat(Object.values(d.local))};
     }
     if (path === "/matches") {
       const d = this.read(),
@@ -198,6 +215,7 @@ class PortalOffline {
       );
     data.responses[`/matches/${id}`] = base;
     queue.push({
+      requestId: crypto.randomUUID(),
       body,
       baseState: match.state,
       baseTurn: match.turn_of_player_indices,
@@ -231,11 +249,10 @@ class PortalOffline {
           this.network = true;
           let accepted = false;
           if (remote.move_count > body.expected_move_count) {
-            const history = await this.request("GET", `/matches/${id}/moves`, {
-              user: account,
-            });
+            const paged = typeof StoragePages !== "undefined" && await StoragePages.enabled();
+            const history = await this.request("GET", paged ? `/v2/matches/${id}/history?start=${body.expected_move_count}&limit=1` : `/matches/${id}/moves`, {user: account});
             guard();
-            const previous = history[body.expected_move_count];
+            const previous = paged ? history.items[0] : history[body.expected_move_count];
             accepted =
               previous?.made_by_user_id === account.id &&
               ("move" in body
@@ -270,6 +287,7 @@ class PortalOffline {
             ? remote
             : await this.request("POST", `/matches/${id}/moves`, {
                 user: account,
+                requestId: item.requestId,
                 body,
               });
           guard();

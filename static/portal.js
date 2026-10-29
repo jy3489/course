@@ -9,11 +9,12 @@
 
 const $ = (id) => document.getElementById(id);
 const POLL_MS = 2000;
-async function portalTransport(method, path, { body, user } = {}) {
+async function portalTransport(method, path, { body, user, requestId } = {}) {
   const controller = new AbortController(),
     timer = setTimeout(() => controller.abort(), 6000);
   try {
     const headers = {};
+    if (requestId) headers["Idempotency-Key"] = requestId;
     if (user) {
       headers["X-User-Id"] = user.id;
       headers["X-User-Password"] = user.password;
@@ -306,6 +307,10 @@ async function ensureDetails() {
   state.myMatches.forEach(collect);
   state.openMatches.forEach(collect);
   if (state.match) collect(state.match);
+  // Keep only visible data plus a small recent cache as users traverse pages.
+  for (const [cache, needed] of [[state.gameCache,gameKeys],[state.nameCache,userIds],[state.pictureCache,userIds]]) {
+    for (const key of cache.keys()) if (cache.size > 128 && !needed.has(key)) cache.delete(key);
+  }
   await Promise.all([
     ...[...userIds]
       .filter((id) => !state.nameCache.has(id) || !state.pictureCache.get(id))
@@ -356,13 +361,17 @@ async function refreshLocked() {
     if (!user) $("token-wallet").hidden = true;
     await offline.sync();
     const [games, myMatches, openMatches] = await Promise.all([
-      portalRequest("GET", "/games"),
-      user ? portalRequest("GET", "/matches", { user }) : [],
-      portalRequest("GET", "/matches/open"),
+      StoragePages.list(portalRequest, "/games", {user}),
+      user ? StoragePages.list(portalRequest, "/matches", {user}) : [],
+      StoragePages.list(portalRequest, "/matches/open", {user}),
     ]);
     state.games = games;
     state.myMatches = myMatches;
     state.openMatches = openMatches;
+    if (state.detailGameId && !state.games.some(game=>game.id===state.detailGameId)) {
+      try { state.games.push(await portalRequest("GET", `/games/${encodeURIComponent(state.detailGameId)}`)); }
+      catch (error) { if(error.status!==404) throw error; }
+    }
     if (state.selectedId) {
       try {
         state.match = await portalRequest(
@@ -490,6 +499,10 @@ function renderLists() {
     }
   }
   renderGameSearch();
+  StoragePages.controls("/games", user, $("game-results"), refresh);
+  StoragePages.controls("/games", user, $("game-library"), refresh);
+  StoragePages.controls("/matches", user, $("group-over"), refresh);
+  StoragePages.controls("/matches/open", user, $("open-matches"), refresh);
   updateMatchSetup();
 }
 
@@ -514,8 +527,8 @@ async function joinRandomMatch() {
   renderLibrary();
   try {
     const [openMatches, games] = await Promise.all([
-      portalRequest("GET", "/matches/open"),
-      portalRequest("GET", "/games"),
+      StoragePages.list(portalRequest,"/matches/open",{user}),
+      StoragePages.list(portalRequest,"/games",{user}),
     ]);
     state.openMatches = openMatches;
     state.games = games;
@@ -665,6 +678,10 @@ function onGameSearchInput() {
   $("new-game").value = "";
   renderGameSearch();
   updateMatchSetup();
+  if (StoragePages.search("/games", me(), state.gameSearchQuery)) {
+    clearTimeout(state.catalogSearchTimer);
+    state.catalogSearchTimer = setTimeout(refresh, 300);
+  }
 }
 
 function onGameSearchKey(event) {
@@ -1138,6 +1155,16 @@ async function browseHistory(direction) {
   if (!match || !match.move_count) return;
   if (direction === "live") state.replay = null;
   else try {
+    if (await StoragePages.enabled() && !match.localMode) {
+      const current = state.replay?.id === match.id ? state.replay.index : match.move_count;
+      let index = Math.max(0, Math.min(match.move_count, current + direction));
+      const data = await portalRequest("GET", `/v2/matches/${match.id}/history?start=${Math.max(0,index-1)}&limit=1`, {user:me()});
+      if (state.match?.id !== match.id) return;
+      const minimum = data.initial_turn_player_indices === null ? 1 : 0;
+      index = Math.max(minimum,index);
+      const move = index === 0 ? {new_state:data.initial_state,next_turn_player_indices:data.initial_turn_player_indices} : data.items[0];
+      if (move) state.replay = {id:match.id,index,minimum,move};
+    } else {
     const data = await portalRequest("GET", `/matches/${match.id}/history`, {user: me()});
     const moves = data.moves;
     const minimum = data.initial_turn_player_indices === null ? 1 : 0;
@@ -1147,6 +1174,7 @@ async function browseHistory(direction) {
     const move = index === 0 ? {new_state: data.initial_state, next_turn_player_indices: data.initial_turn_player_indices} : moves[index - 1];
     if (!move) return;
     state.replay = {id: match.id, index, minimum, move};
+    }
   } catch (error) { showMessage(`History unavailable: ${error.message}`, "error"); return; }
   renderHistory();await syncGame();
 }
