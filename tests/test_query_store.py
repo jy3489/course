@@ -83,6 +83,27 @@ def test_cursor_pages_are_complete_and_bound_to_query(store):
         store.page("users", cursor=first.next_cursor, scope="someone-else")
 
 
+def test_referred_users_paginate_and_bind_cursor_to_caller(store):
+    api = api_for(store)
+    owner = api.new_user("owner")
+    other = api.new_user("other")
+    invited = [api.new_user(f"invited {i}") for i in range(3)]
+    for uid in invited:
+        store.put_user(replace(store.get_user(uid), invited_by_user_id=owner))
+    path = "/v2/users/me/referred-users?limit=2"
+    first = api.ok("GET", path, as_user=owner)
+    second = api.ok("GET", path, as_user=owner, params={"cursor": first["next_cursor"]})
+    assert {u["id"] for u in first["items"] + second["items"]} == set(invited)
+    assert second["next_cursor"] is None
+    assert (
+        api.request(
+            "GET", path, as_user=other, params={"cursor": first["next_cursor"]}
+        ).status_code
+        == 400
+    )
+    assert all("password" not in user for user in first["items"])
+
+
 def test_referrals_and_linked_identity_survive_restart(store):
     api = api_for(store)
     alice = api.new_user("alice")

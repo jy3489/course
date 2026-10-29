@@ -44,6 +44,8 @@ integration tests must pass before upgrading that SDK.
 
 * `/v2/games`: published catalog, optional single word-prefix `q` (2–24 characters).
 * `/v2/builder/games` and `/v2/game-drafts`: authenticated owner's records.
+* `/v2/users/me/referred-users`: authenticated user's direct sign-ups, paginated.
+  The existing referral screen and invite list still need to adopt bounded APIs.
 * `/v2/matches`: authenticated membership; optional status/game filters.
 * `/v2/matches/open`: public joinable matches, including mid-game joins; current
   game publication is checked before returning a row.

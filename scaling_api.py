@@ -103,6 +103,29 @@ def install(app, *, debug_tools):
             "next_cursor": result.next_cursor,
         }
 
+    @app.get("/v2/users/me/referred-users")
+    def referred_users(
+        platform: Platform,
+        caller_id: CallerId,
+        limit: int = Query(50, ge=1, le=100),
+        cursor: str | None = None,
+    ):
+        result = page(
+            store_of(platform),
+            "users",
+            filters=[
+                ("invited_by_user_id", "==", caller_id),
+                ("replaced_by_user_id", "==", None),
+            ],
+            limit=limit,
+            cursor=cursor,
+            scope=caller_id,
+        )
+        return {
+            "items": [UserOut.of(user) for user in result.items],
+            "next_cursor": result.next_cursor,
+        }
+
     @app.get("/v2/matches/open")
     def open_matches(
         platform: Platform,
