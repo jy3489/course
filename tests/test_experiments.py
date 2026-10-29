@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from game_platform.api import create_app
 from game_platform.json_file_store import JsonFileStore
+from game_platform.models import ExperimentAssignment
 from game_platform.service import GamePlatform
 from game_platform.tests.helpers import Api
 
@@ -202,6 +203,73 @@ def test_admin_can_create_campaign_and_skin_variants() -> None:
     assert skin["key"] == "student-skin"
 
 
+def test_admin_can_delete_variants_and_their_experiment_data() -> None:
+    api = Api()
+    platform = api.client.app.state.platform
+    user_id = api.new_user("assigned skin user")
+    experiment, variant = platform.add_experiment_variant(
+        experiment_id="ui-skins", name="Temporary skin", key="temporary-skin"
+    )
+    platform._store.put_experiment_assignment(
+        ExperimentAssignment(
+            user_id=user_id,
+            experiment_id=experiment.id,
+            variant_id=variant.id,
+            assigned_at=dt.datetime.now(dt.timezone.utc),
+        )
+    )
+    platform._record_experiment_event(
+        experiment_id=experiment.id,
+        variant_id=variant.id,
+        kind="signup",
+        user_id=user_id,
+    )
+    campaign = api.ok(
+        "POST",
+        "/admin/experiments/campaign-links",
+        json={"name": "Temporary campaign", "key": "temporary-campaign"},
+    )
+    api.client.get("/c/temporary-campaign")
+
+    skin_delete = api.request(
+        "DELETE",
+        f"/admin/experiments/{experiment.id}/variants/{variant.id}",
+    )
+    assert skin_delete.status_code == 204
+    assert (
+        platform._store.get_experiment_assignment(
+            user_id=user_id, experiment_id=experiment.id
+        )
+        is None
+    )
+    assert not any(
+        event.experiment_id == experiment.id and event.variant_id == variant.id
+        for event in platform._store.list_experiment_events()
+    )
+
+    campaign_delete = api.request(
+        "DELETE",
+        f"/admin/experiments/ad-campaigns/variants/{campaign['variant_id']}",
+    )
+    assert campaign_delete.status_code == 204
+    campaign_stats = api.ok("GET", "/admin/experiments")["campaign_experiment"]
+    assert all(
+        item["variant_id"] != campaign["variant_id"]
+        for item in campaign_stats["variants"]
+    )
+    assert not any(
+        event.variant_id == campaign["variant_id"]
+        for event in platform._store.list_experiment_events()
+    )
+    assert (
+        api.request(
+            "DELETE",
+            f"/admin/experiments/{experiment.id}/variants/{variant.id}",
+        ).status_code
+        == 404
+    )
+
+
 def test_experiment_records_survive_json_store_restart(tmp_path) -> None:
     path = tmp_path / "data.json"
     store = JsonFileStore(path)
@@ -262,3 +330,10 @@ def test_experiment_admin_endpoints_require_master_password() -> None:
         auth=("admin", "secret"),
         json={"name": "New campaign", "key": "new-campaign"},
     ).status_code == 201
+    assert client.delete(
+        "/admin/experiments/ui-skins/variants/missing"
+    ).status_code == 401
+    assert client.delete(
+        "/admin/experiments/ui-skins/variants/missing",
+        auth=("admin", "secret"),
+    ).status_code == 404

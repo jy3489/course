@@ -1262,6 +1262,19 @@ def admin_create_skin_variant(
     }
 
 
+@debug_router.delete(
+    "/admin/experiments/{experiment_id}/variants/{variant_id}",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.NO_CONTENT,
+)
+def admin_delete_experiment_variant(
+    platform: Platform, experiment_id: str, variant_id: str
+) -> None:
+    platform.delete_experiment_variant(
+        experiment_id=experiment_id, variant_id=variant_id
+    )
+
+
 @debug_router.patch(
     "/admin/experiments/{experiment_id}",
     dependencies=[MasterPassword],
