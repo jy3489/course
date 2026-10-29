@@ -243,6 +243,7 @@ class PhoneStart(_Request):
     model_config = _example({"phone_number": "+15551234567"})
 
     phone_number: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    delivery_method: Literal["sms", "call"] = "sms"
 
 
 class EmailStart(_Request):
@@ -281,6 +282,7 @@ class AuthConfigOut(BaseModel):
 
     google_client_id: str
     phone_login_enabled: bool
+    phone_call_enabled: bool = False
     email_login_enabled: bool
 
 
@@ -1225,6 +1227,45 @@ class ReferralsOut(BaseModel):
     sign_ups: int
     referred_users: list[UserOut]
     invites: list[InviteOut]
+
+
+class ExperimentVariantCreate(_Request):
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+    key: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+            max_length=50,
+            pattern=r"^[a-z0-9][a-z0-9-]*$",
+        ),
+    ]
+
+
+class CampaignLinkCreate(ExperimentVariantCreate):
+    budget_usd: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] = 100
+
+
+class CampaignSpendUpdate(_Request):
+    spend_usd: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+
+
+class ExperimentActiveUpdate(_Request):
+    active: StrictBool
+
+
+class ExperimentVariantOut(BaseModel):
+    variant_id: str
+    name: str
+    key: str
+
+
+class SkinAssignmentOut(BaseModel):
+    variant_id: str
+    name: str
+    key: str
 
 
 class HealthOut(BaseModel):

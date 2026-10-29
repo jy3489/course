@@ -15,6 +15,8 @@ async function portalTransport(method, path, { body, user, requestId } = {}) {
   try {
     const headers = {};
     if (requestId) headers["Idempotency-Key"] = requestId;
+    const campaignCode = window.ExperimentCampaignCode?.();
+    if (campaignCode) headers["X-Campaign-Code"] = campaignCode;
     if (user) {
       headers["X-User-Id"] = user.id;
       headers["X-User-Password"] = user.password;
@@ -1529,7 +1531,9 @@ async function main() {
             registration?.waiting ||
             registration?.active;
           const enter = () =>
-            location.replace("/static/portal.html" + location.hash);
+            location.replace(
+              "/static/portal.html" + location.search + location.hash,
+            );
           if (worker?.state === "activated") enter();
           else
             worker?.addEventListener("statechange", () => {

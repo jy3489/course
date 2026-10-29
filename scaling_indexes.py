@@ -17,6 +17,7 @@ def index_config(namespace):
     if not namespace or not namespace.replace("_", "").replace("-", "").isalnum():
         raise ValueError("invalid namespace")
     queries = {
+        "experiment_events": [(["user_id", "experiment_id", "kind"], None)],
         "games": [
             (["deleted", "published"], None),
             (["owner_user_id", "deleted"], None),

@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from game_platform.json_file_store import JsonFileStore
+from game_platform.json_file_store import FORMAT_VERSION, JsonFileStore
 from game_platform.tests.helpers import Api
 
 CONTENT = {
@@ -116,7 +116,7 @@ def test_private_drafts_survive_restart_and_old_data_loads(tmp_path: Path):
     draft = create_draft(api, owner)
     password = api.passwords_by_user_id[owner]
     store.close()
-    assert json.loads(path.read_text())["format_version"] == 10
+    assert json.loads(path.read_text())["format_version"] == FORMAT_VERSION
     restarted = JsonFileStore(path)
     try:
         client = Api(store=restarted)

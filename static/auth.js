@@ -183,6 +183,7 @@ const Auth = (() => {
     configPromise ??= apiRequest("GET", "/auth/config").catch(() => ({
       google_client_id: "",
       phone_login_enabled: false,
+      phone_call_enabled: false,
       email_login_enabled: false,
     }));
     return configPromise;
@@ -301,7 +302,7 @@ const Auth = (() => {
           .catch((error) => dialogFailed(dialog, error));
       }
       if (config.phone_login_enabled) {
-        methods.append(codeMethod(dialog, "phone", I18n.t("ui.auth.phone", {}, "Phone number"), "+15551234567", "/auth/phone", "phone_number", I18n.t("ui.auth.text_me_code", {}, "Text me a code")));
+        methods.append(codeMethod(dialog, "phone", I18n.t("ui.auth.phone", {}, "Phone number"), "+15551234567", "/auth/phone", "phone_number", I18n.t("ui.auth.text_me_code", {}, "Text me a code"), config.phone_call_enabled));
       }
       if (config.email_login_enabled) {
         methods.append(codeMethod(dialog, "email", I18n.t("ui.auth.email", {}, "Email"), "player@example.com", "/auth/email", "email", I18n.t("ui.auth.email_me_code", {}, "Email me a code")));
@@ -334,18 +335,21 @@ const Auth = (() => {
   }
 
   /** A phone/email code form. Posts to [base]/start then [base]/verify. */
-  function codeMethod(dialog, kind, label, placeholder, base, field, sendLabel) {
+  function codeMethod(dialog, kind, label, placeholder, base, field, sendLabel, canCall = false) {
     const input = el("input", { type: kind === "phone" ? "tel" : "email", placeholder, "aria-label": label });
     const codeInput = el("input", { inputmode: "numeric", placeholder: "123456", "aria-label": I18n.t("ui.auth.code", {}, "Code"), hidden: true, style: "width: 120px" });
     const message = el("div", { class: "message" });
     let verificationId = null;
 
-    const send = async () => {
+    const send = async (channel = "sms") => {
       message.textContent = "";
       message.className = "message";
       try {
         const started = await apiRequest("POST", `${base}/start`, {
-          body: { [field]: input.value },
+          body: {
+            [field]: input.value,
+            ...(kind === "phone" ? { delivery_method: channel } : {}),
+          },
         });
         verificationId = started.verification_id;
         codeInput.hidden = false;
@@ -358,7 +362,18 @@ const Auth = (() => {
         dialogFailed({ message }, error);
       }
     };
-    const sendButton = el("button", { type: "button", textContent: sendLabel, onclick: send });
+    const sendButton = el("button", {
+      type: "button",
+      textContent: sendLabel,
+      onclick: () => send("sms"),
+    });
+    const callButton = kind === "phone" && canCall
+      ? el("button", {
+          type: "button",
+          textContent: "Call me with a code",
+          onclick: () => send("call"),
+        })
+      : null;
     const verifyButton = el("button", { type: "button", class: "primary", textContent: I18n.t("ui.auth.verify", {}, "Verify"), hidden: true });
     verifyButton.onclick = async () => {
       message.textContent = "";
@@ -376,7 +391,12 @@ const Auth = (() => {
     };
     return el("div", { class: "auth-method" },
       el("label", { class: "inline" }, `${label} `, input),
-      el("div", { class: "inline-row" }, sendButton, codeInput, verifyButton),
+      el("div", { class: "inline-row" },
+        sendButton,
+        ...(callButton ? [callButton] : []),
+        codeInput,
+        verifyButton
+      ),
       message
     );
   }
@@ -419,6 +439,7 @@ const Auth = (() => {
   function renderMenu(container) {
     const account = current();
     const all = accounts();
+    const panelWasOpen = container.querySelector(".auth-menu-panel")?.hidden === false;
     container.replaceChildren();
     const button = el("button", {
       type: "button",
@@ -429,8 +450,9 @@ const Auth = (() => {
       account ? account.display_name : I18n.t("ui.auth.log_in", {}, "Log in")
     );
     const panel = el("div", { class: "auth-menu-panel", hidden: true });
-    panel.inert = true;
-    panel.setAttribute("aria-hidden", "true");
+    panel.hidden = !panelWasOpen;
+    panel.inert = !panelWasOpen;
+    panel.setAttribute("aria-hidden", String(!panelWasOpen));
     const hidePanel = () => {
       panel.inert = true;
       panel.setAttribute("aria-hidden", "true");

@@ -10,7 +10,7 @@ from game_platform.api import create_app
 from game_platform.config import AuthConfig, EmailAuthConfig, GoogleAuthConfig
 from game_platform.service import GamePlatform
 from game_platform.store import InMemoryStore
-from game_platform.tests.helpers import Api
+from game_platform.tests.helpers import Api, FakeClock
 
 
 class RecordingSender:
@@ -204,7 +204,7 @@ def test_the_tree_survives_inviter_loops_in_the_data() -> None:
     # A loop can't be made through the API, but the stats must still end if the
     # data ever holds one.
     store = InMemoryStore()
-    platform = GamePlatform(store=store)
+    platform = GamePlatform(store=store, clock=FakeClock())
     ann = platform.create_user(display_name="ann")
     bob = platform.create_user(display_name="bob", invited_by_user_id=ann.id)
     store.put_user(replace(ann, invited_by_user_id=bob.id))

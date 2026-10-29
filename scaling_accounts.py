@@ -50,6 +50,7 @@ MERGE_STAGES = (
     "match_moves",
     "push_subscriptions",
     "invites",
+    "experiment_assignments",
     "finalize",
 )
 
@@ -61,6 +62,8 @@ DELETE_STAGES = (
     "push_subscriptions",
     "invites",
     "invitees",
+    "experiment_assignments",
+    "experiment_events",
     "finalize",
 )
 
@@ -80,6 +83,8 @@ def _load_or_create(store, run_id, kind, **fields):
     with store.atomic():
         job = store.raw_get(ref)
         if job is None:
+            if any(value is None for value in fields.values()):
+                raise ValueError("account IDs are required to start a new job")
             job = {
                 "kind": kind,
                 "stages": {},
@@ -92,8 +97,10 @@ def _load_or_create(store, run_id, kind, **fields):
             raise ValueError(f"run {run_id!r} is a {job.get('kind')} job, not {kind}")
         else:
             for name, value in fields.items():
-                if job.get(name) not in (None, value):
-                    raise ValueError(f"run {run_id!r} already targets {job.get(name)!r}")
+                if value is not None and job.get(name) not in (None, value):
+                    raise ValueError(
+                        f"run {run_id!r} already targets {job.get(name)!r}"
+                    )
         return job
 
 
@@ -177,7 +184,6 @@ def _merge_step(store, job, ref):
 
 def _merge_stage_record(store, ref, stage, state, source_id, into_id):
     """Rewrite one record for [stage]; True when no records remain."""
-    kind, filters, apply = _merge_stage_plan(stage, source_id, into_id)
     with store.atomic():
         job = store.raw_get(ref)
         state = job.get("stages", {}).get(stage, {})
@@ -185,6 +191,7 @@ def _merge_stage_record(store, ref, stage, state, source_id, into_id):
             return True
         if stage == "match_moves":
             return _merge_match_moves(store, ref, job, state, source_id, into_id)
+        kind, filters, apply = _merge_stage_plan(stage, source_id, into_id)
         docs = store._query(kind, filters, limit=1, after=state.get("last_id"))
         if not docs:
             _save_stage(store, ref, job, stage, {**state, "complete": True})
@@ -231,7 +238,9 @@ def _merge_match_moves(store, ref, job, state, source_id, into_id):
     count = (row or {}).get("move_count", 0)
     if record is not None and start < count:
         stop = min(start + 100, count)
-        moves = record.moves[start:stop] if isinstance(record.moves, MoveHistory) else ()
+        moves = (
+            record.moves[start:stop] if isinstance(record.moves, MoveHistory) else ()
+        )
         # record.moves is a lazy MoveHistory over the same transaction.
         for index in range(start, stop):
             move = moves[index - start]
@@ -254,7 +263,11 @@ def _merge_match_moves(store, ref, job, state, source_id, into_id):
                 ref,
                 job,
                 "match_moves",
-                {"last_id": state.get("last_id"), "match_doc_id": doc.id, "move_start": stop},
+                {
+                    "last_id": state.get("last_id"),
+                    "match_doc_id": doc.id,
+                    "move_start": stop,
+                },
             )
             return False
     _save_stage(
@@ -281,6 +294,12 @@ class _SharedActiveMatch(Exception):
 
 
 def _merge_stage_plan(stage, source_id, into_id):
+    if stage == "experiment_assignments":
+        return (
+            stage,
+            (),
+            lambda store, record: _merge_assignment(store, record, source_id, into_id),
+        )
     if stage == "check_matches":
         return (
             "matches",
@@ -336,6 +355,21 @@ def _merge_stage_plan(stage, source_id, into_id):
             lambda store, record: _merge_invite(store, record, source_id, into_id),
         )
     raise ValueError(f"unknown merge stage {stage}")
+
+
+def _merge_assignment(store, record, source_id, into_id):
+    if record.user_id != source_id:
+        return
+    if (
+        store.get_experiment_assignment(
+            user_id=into_id, experiment_id=record.experiment_id
+        )
+        is None
+    ):
+        store.put_experiment_assignment(replace(record, user_id=into_id))
+    store.delete_experiment_assignment(
+        user_id=source_id, experiment_id=record.experiment_id
+    )
 
 
 def _merge_match(store, record, source_id, into_id):
@@ -409,6 +443,8 @@ def _merge_finalize(store, job):
             invited_by = source_inviter
     into = replace(
         into,
+        token_balance=into.token_balance + source.token_balance,
+        last_token_grant_day=max(filter(None, (into.last_token_grant_day, source.last_token_grant_day)), default=None),
         linked_accounts=(*into.linked_accounts, *moved),
         replaced_user_ids=_dedupe((*into.replaced_user_ids, *absorbed)),
         saved_game_ids=_dedupe((*into.saved_game_ids, *source.saved_game_ids)),
@@ -428,6 +464,7 @@ def _merge_finalize(store, job):
                 replaced_by_user_id=into.id,
                 linked_accounts=(),
                 replaced_user_ids=(),
+                token_balance=0,
                 updated_at=_now(),
             )
         else:
@@ -473,7 +510,11 @@ def merge_users(store, *, run_id, source_id=None, into_id=None, max_records=100)
             advanced = _merge_step(store, job, ref)
         except _SharedActiveMatch:
             _fail_shared_match(store, ref)
-            return {"complete": False, "failed": "shared_active_match", "processed": processed}
+            return {
+                "complete": False,
+                "failed": "shared_active_match",
+                "processed": processed,
+            }
         processed += 1
         if not advanced:
             job = store.raw_get(ref)
@@ -546,7 +587,9 @@ def _delete_stage_record(store, ref, stage, state, user_id):
             counts = job.get("counts", {})
             counts[stage] = counts.get(stage, 0) + 1
             job = {**job, "counts": counts}
-        _save_stage(store, ref, job, stage, {**state, "last_id": doc.id, "complete": False})
+        _save_stage(
+            store, ref, job, stage, {**state, "last_id": doc.id, "complete": False}
+        )
         return True
 
 
@@ -575,7 +618,9 @@ def _delete_owned_record(store, ref, state, user_id):
             return True
         invites = store._query("invites", [("match_id", "==", record.id)], limit=1)
         if invites:
-            invite = store._decode("invites", invites[0].to_dict(), invites[0].reference)
+            invite = store._decode(
+                "invites", invites[0].to_dict(), invites[0].reference
+            )
             if invite is not None:
                 store.delete_invite(invite.token)
             # Stay on the same match until its invites are gone.
@@ -647,6 +692,19 @@ def _delete_leave_record(store, ref, state, user_id, platform):
 
 
 def _delete_stage_plan(stage, user_id):
+    if stage in ("experiment_assignments", "experiment_events"):
+
+        def remove(store, record, state):
+            if record.user_id != user_id:
+                return
+            if stage == "experiment_assignments":
+                store.delete_experiment_assignment(
+                    user_id=user_id, experiment_id=record.experiment_id
+                )
+            else:
+                store.delete_experiment_event(record.id)
+
+        return stage, (), remove
     if stage == "games":
         return (
             "games",
@@ -679,7 +737,11 @@ def _delete_stage_plan(stage, user_id):
             (),
             lambda store, record, state: (
                 store.put_user(
-                    replace(record, invited_by_user_id=state.get("new_inviter"), updated_at=_now())
+                    replace(
+                        record,
+                        invited_by_user_id=state.get("new_inviter"),
+                        updated_at=_now(),
+                    )
                 )
                 if record.id != user_id and _inviter_of(store, record) == user_id
                 else None

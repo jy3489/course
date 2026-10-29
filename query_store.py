@@ -18,6 +18,9 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from pydantic import TypeAdapter
 
 from game_platform.models import (
+    Experiment,
+    ExperimentAssignment,
+    ExperimentEvent,
     AgentConversation,
     AgentConversationEntry,
     Game,
@@ -34,6 +37,9 @@ from game_platform.move_history import MoveHistory
 from game_platform.paging import Page, decode_cursor, encode_cursor, page_size
 
 TYPES = {
+    "experiments": Experiment,
+    "experiment_assignments": ExperimentAssignment,
+    "experiment_events": ExperimentEvent,
     "users": User,
     "game_versions": Game,
     "games": Game,
@@ -200,6 +206,51 @@ class QueryStore:
     def close(self):
         pass
 
+    def put_experiment(self, experiment):
+        self._put("experiments", experiment.id, experiment)
+
+    def list_experiments(self):
+        return self._list("experiments")
+
+    def put_experiment_assignment(self, assignment):
+        self._put(
+            "experiment_assignments",
+            json.dumps([assignment.user_id, assignment.experiment_id]),
+            assignment,
+        )
+
+    def get_experiment_assignment(self, *, user_id, experiment_id):
+        return self._get("experiment_assignments", json.dumps([user_id, experiment_id]))
+
+    def list_experiment_assignments(self):
+        return self._list("experiment_assignments")
+
+    def delete_experiment_assignment(self, *, user_id, experiment_id):
+        self._delete("experiment_assignments", json.dumps([user_id, experiment_id]))
+
+    def put_experiment_event(self, event):
+        self._put("experiment_events", event.id, event)
+
+    def list_experiment_events(self):
+        return self._list("experiment_events")
+
+    def delete_experiment_event(self, event_id):
+        self._delete("experiment_events", event_id)
+
+    def experiment_signups(self, user_ids, experiment_id):
+        return [
+            event
+            for uid in user_ids
+            for event in self._list(
+                "experiment_events",
+                [
+                    ("user_id", "==", uid),
+                    ("experiment_id", "==", experiment_id),
+                    ("kind", "==", "signup"),
+                ],
+            )
+        ]
+
     def flush(self):
         pass  # Every successful operation has already committed.
 
@@ -235,10 +286,28 @@ class QueryStore:
             raise conflict(
                 "result exceeds 100 records; use the paginated API or an administrative job"
             )
+        rows = {d.reference.path: (d.reference, d.to_dict()) for d in docs}
+        uow = getattr(self._local, "uow", None)
+        if uow:
+            prefix = self.collection(kind).id + "/"
+            for path, (ref, data) in uow["writes"].items():
+                if path.startswith(prefix) and "/" not in path[len(prefix) :]:
+                    rows.pop(path, None)
+                    if data and all(
+                        data.get(field) == value
+                        if op == "=="
+                        else value in (data.get(field) or [])
+                        for field, op, value in filters
+                    ):
+                        rows[path] = (ref, data)
+        if len(rows) > LEGACY_LIMIT:
+            raise conflict(
+                "result exceeds 100 records; use the paginated API or an administrative job"
+            )
         return [
-            x
-            for d in docs
-            if (x := self._decode(kind, d.to_dict(), d.reference)) is not None
+            record
+            for ref, data in rows.values()
+            if (record := self._decode(kind, data, ref)) is not None
         ]
 
     def _decode(self, kind, data, ref, *, detail=True):

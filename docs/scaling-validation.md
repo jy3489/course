@@ -120,3 +120,26 @@ locally after the change (491 passed, 8 skipped). The emulator workflow in
 CI is the verification of record for these tests; they were not run to
 completion on the author's local VM, whose network intercepts localhost
 HTTP/2 connections to the emulator.
+
+## CI repair and integration with current main
+
+Fixed both failures from run 40938388023: dispatch `match_moves` before the
+ordinary merge-stage planner, and accept omitted account IDs when resuming an
+existing job while still rejecting changed targets. New jobs require explicit
+IDs. Merge finalization now transfers token balances and the last daily-grant
+date atomically, and clears the source balance.
+
+Merged main at 0362408, preserving campaign headers, experiment scripts and
+storage pagination. Added query-store persistence/migration for experiments,
+assignments and events; maintenance jobs preserve assignments on merge and
+remove user-owned experiment records on deletion. Signup event deduplication
+uses direct IDs, and match-start attribution queries only the relevant users.
+The experiment aggregate report still uses the bounded legacy adapter and needs
+an offline scalable reporting path once it exceeds 100 records; storage stats
+remain available if that independent experiment report fails.
+
+Local verification: full backend suite with the emulator enabled, 538 passed;
+final emulator suite, 29 passed; web unit suite, 152 passed; desktop/mobile
+Playwright scaling and experiment integration checks, 6 passed. The flaky
+invite-cycle fixture now uses a controlled clock. CI runs on pull requests and
+pushes to main, avoiding duplicate push/PR runs on feature-branch updates.

@@ -171,7 +171,7 @@ def test_a_version_1_file_is_migrated_to_turn_sets(tmp_path: Path) -> None:
 
     # Rewrite the file in the old layout: single-index turns, format version 1.
     file = json.loads(path.read_text())
-    assert file["format_version"] == 10
+    assert file["format_version"] == 11
     file["format_version"] = 1
     match = file["data"]["matches"][0]
     turn = match.pop("turn_of_player_indices")
@@ -195,9 +195,9 @@ def test_an_unreadable_file_is_rejected_rather_than_overwritten(tmp_path: Path) 
         JsonFileStore(path)
 
     path.write_text(
-        '{"format_version": 11, "data": {"users": [], "game_versions": [], '
+        '{"format_version": 12, "data": {"users": [], "game_versions": [], '
         '"deleted_game_ids": [], "matches": []}}'
     )
     with pytest.raises(ValueError) as error:
         JsonFileStore(path)
-    assert str(error.value) == f"{path} has format version 11, expected 10"
+    assert str(error.value) == f"{path} has format version 12, expected 11"

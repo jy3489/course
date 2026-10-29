@@ -31,6 +31,8 @@ be swapped for a database. The server binary uses `JsonFileStore`
 | `api.py`     | FastAPI routes and `create_app`                                 |
 | `main.py`    | Server binary (`game_platform_server`)                          |
 | `static/`    | Web pages: portal, builder, API console and data browser        |
+| `docs/ab-experiments.md` | A/B experiment framework, student skin and campaign workflow |
+| `docs/ui-skin-guide.md` | Creating, previewing, contributing and accessing UI skins |
 | `games/`     | The example games' code: tic-tac-toe, poker and a debug game    |
 | `data.example.json` | Example data: 8 users, the 3 games and 23 matches        |
 | `example_data.py`, `example_data/` | How `data.example.json` is generated     |

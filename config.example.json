@@ -37,7 +37,9 @@
       "provider": "log",
       "twilio_account_sid": "",
       "twilio_auth_token": "",
-      "twilio_from_number": ""
+      "twilio_verify_service_sid": "",
+      "twilio_from_number": "",
+      "twilio_voice_enabled": false
     },
     "email": {
       "provider": "log",

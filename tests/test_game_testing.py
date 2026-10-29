@@ -8,6 +8,7 @@ seeds of failing walks are stored on the game and replayed first next
 time, as regression seeds.
 """
 
+import game_platform.game_testing as game_testing
 from game_platform.game_testing import test_server_code as run_game_tests
 from game_platform.models import GameRules
 from game_platform.tests.helpers import Api
@@ -83,13 +84,6 @@ NONDETERMINISTIC_GAME = GOOD_GAME.replace(
     1,
 )
 
-SLOW_GAME = GOOD_GAME.replace(
-    "const count = state.count + 1;",
-    "let x = 0; for (let i = 0; i < 1000000; i++) x += i;\n"
-    "    const count = state.count + 1;",
-).replace("const over = count >= 10;", "const over = count >= 100;")
-
-
 # The tester itself.
 
 
@@ -151,9 +145,11 @@ def test_a_non_deterministic_game_fails():
     assert "non-deterministic" in failure.message
 
 
-def test_a_too_slow_game_is_reported_too_slow():
+def test_no_walk_completed_within_the_budget_is_reported_too_slow(monkeypatch):
+    clock_values = iter((0.0, 0.3))
+    monkeypatch.setattr(game_testing.time, "monotonic", lambda: next(clock_values))
     report = run_game_tests(
-        SLOW_GAME, rules=RULES, run_seed=7, budget_seconds=0.3
+        GOOD_GAME, rules=RULES, run_seed=7, budget_seconds=0.3
     )
     assert not report.passed
     assert report.too_slow

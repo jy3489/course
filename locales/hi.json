@@ -199,6 +199,12 @@
   "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
   "error.payouts_total_pot": "payouts must total the token pot",
   "error.no_tokens_for_payout": "no tokens available for payout",
+  "error.experiment_not_found": "प्रयोग नहीं मिला",
+  "error.experiment_variant_key_invalid": "वेरिएंट कुंजी में 1 से 50 तक छोटे अक्षर, अंक या हाइफ़न होने चाहिए",
+  "error.experiment_variant_key_conflict": "इस कुंजी वाला वेरिएंट पहले से मौजूद है",
+  "error.campaign_budget_invalid": "अभियान का बजट $0 और $100 के बीच होना चाहिए",
+  "error.campaign_link_not_found": "अभियान लिंक नहीं मिला",
+  "error.campaign_spend_invalid": "खर्च $0 और अभियान के बजट के बीच होना चाहिए",
 
   "ui.section.finished": "पूरे हुए",
   "ui.match.computer_name": "कंप्यूटर {number}",

@@ -90,6 +90,7 @@ def test_auth_config_reports_the_enabled_login_methods() -> None:
     assert api.ok("GET", "/auth/config") == {
         "google_client_id": "g-client",
         "phone_login_enabled": True,
+        "phone_call_enabled": False,
         "email_login_enabled": True,
     }
 
@@ -98,6 +99,7 @@ def test_auth_config_is_all_disabled_by_default() -> None:
     assert Api().ok("GET", "/auth/config") == {
         "google_client_id": "",
         "phone_login_enabled": False,
+        "phone_call_enabled": False,
         "email_login_enabled": False,
     }
 

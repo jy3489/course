@@ -64,11 +64,13 @@ class GoogleAuthConfig(_Section):
 class SmsAuthConfig(_Section):
     # How login codes are texted. "log" writes them to the server log (development
     # only); "twilio" sends real texts (https://www.twilio.com).
-    provider: Literal["log", "twilio"] = "log"
+    provider: Literal["log", "twilio", "verify"] = "log"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
+    twilio_verify_service_sid: str = ""
     # The Twilio number texts come from, in E.164 format, e.g. +15551234567.
     twilio_from_number: str = ""
+    twilio_voice_enabled: bool = False
 
 
 class EmailAuthConfig(_Section):

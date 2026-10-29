@@ -133,6 +133,9 @@ def migrate(source, destination, *, source_prefix="", batch_records=None):
                 )
             else:
                 method = {
+                    "experiments": "put_experiment",
+                    "experiment_assignments": "put_experiment_assignment",
+                    "experiment_events": "put_experiment_event",
                     "users": "put_user",
                     "game_drafts": "put_game_draft",
                     "push_subscriptions": "put_push_subscription",

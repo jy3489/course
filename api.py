@@ -36,6 +36,8 @@ from game_platform.schemas import (
     RefactorGameResultOut,
     RefactorJobOut,
     CatalogOut,
+    CampaignLinkCreate,
+    CampaignSpendUpdate,
     LocaleOut,
     LocalesOut,
     AgentChatResponse,
@@ -43,6 +45,8 @@ from game_platform.schemas import (
     AuthConfigOut,
     AuthResponse,
     EmailStart,
+    ExperimentActiveUpdate,
+    ExperimentVariantCreate,
     GameCreate,
     GameDraftSave,
     GameDraftPublish,
@@ -73,6 +77,7 @@ from game_platform.schemas import (
     PushConfigOut,
     PushSubscribe,
     PushSubscriptionOut,
+    SkinAssignmentOut,
     QuickMatchRequest,
     ReferralsOut,
     UserCreate,
@@ -83,6 +88,8 @@ from game_platform.schemas import (
     VerifyCode,
 )
 from game_platform.service import (
+    CAMPAIGN_EXPERIMENT_ID,
+    SKIN_EXPERIMENT_ID,
     UNSET,
     VERIFICATION_TTL_SECONDS,
     ConflictError,
@@ -99,7 +106,7 @@ from game_platform.model_api import ModelApiClient
 from game_platform.models import LinkedAccountKind
 from game_platform.oauth import ProviderError, verify_google_id_token
 from game_platform.push import vapid_public_key
-from game_platform.senders import CodeSender, LogSender, SenderError
+from game_platform.senders import CodeSender, LogSender, SenderError, TwilioVerifyClient
 
 _STATUS_OF_ERROR: Final[tuple[tuple[type[PlatformError], HTTPStatus], ...]] = (
     (UnauthorizedError, HTTPStatus.UNAUTHORIZED),
@@ -166,6 +173,15 @@ def health(platform: Platform, request: Request, response: Response) -> HealthOu
     )
 
 
+@router.get("/c/{campaign_code}")
+def campaign_link(platform: Platform, campaign_code: str) -> RedirectResponse:
+    platform.record_campaign_click(campaign_code=campaign_code)
+    return RedirectResponse(
+        f"/portal?{urlencode({'campaign': campaign_code})}",
+        status_code=HTTPStatus.FOUND,
+    )
+
+
 def _match_out(
     platform: GamePlatform, match: Match, caller_id: str | None = None
 ) -> MatchOut:
@@ -182,7 +198,11 @@ def _match_out(
 
 
 @router.post("/users", status_code=HTTPStatus.CREATED)
-def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
+def create_user(
+    platform: Platform,
+    body: UserCreate,
+    x_campaign_code: Annotated[str | None, Header()] = None,
+) -> UserWithPasswordOut:
     """Returns the new user's password, which authenticated requests need. Apart from
     the debug tools, this is the only place the API returns it."""
     user = platform.create_user(
@@ -190,6 +210,7 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
         locale=body.locale,
         invited_by_user_id=body.invited_by_user_id,
         invite_token=body.invite_token,
+        campaign_code=x_campaign_code,
     )
     return UserWithPasswordOut.of_user(user)
 
@@ -201,6 +222,18 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
 def list_saved_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
     """The caller's library of saved games, most recently saved first."""
     return [GameOut.of(g) for g in platform.list_saved_games(caller_id=caller_id)]
+
+
+@router.get("/users/me/experiments/skin")
+def user_skin_assignment(
+    platform: Platform, caller_id: CallerId
+) -> SkinAssignmentOut | None:
+    variant = platform.assign_skin(user_id=caller_id)
+    if variant is None:
+        return None
+    return SkinAssignmentOut(
+        variant_id=variant.id, name=variant.name, key=variant.key
+    )
 
 
 @router.put("/users/me/saved-games/{game_id}")
@@ -288,6 +321,7 @@ def auth_config(request: Request) -> AuthConfigOut:
     return AuthConfigOut(
         google_client_id=config.google.client_id,
         phone_login_enabled=config.sms.provider != "log",
+        phone_call_enabled=config.sms.provider == "verify" or (config.sms.provider == "twilio" and config.sms.twilio_voice_enabled),
         email_login_enabled=config.email.provider != "log",
     )
 
@@ -308,6 +342,7 @@ def _login_or_link(
     picture_url: str = "",
     as_user_id: str | None,
     invited_by_user_id: str | None = None,
+    campaign_code: str | None = None,
 ) -> AuthResponse:
     user, merged_from = platform.login_with_linked_account(
         kind=kind,
@@ -317,6 +352,7 @@ def _login_or_link(
         picture_url=picture_url,
         as_user_id=as_user_id,
         invited_by_user_id=invited_by_user_id,
+        campaign_code=campaign_code,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -327,6 +363,7 @@ def auth_google(
     request: Request,
     caller_id: OptionalCallerId,
     body: GoogleLogin,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     """Logs in with a Google ID token from the website's Sign in with Google button.
     Pass the caller's headers to link Google to the current account instead."""
@@ -350,6 +387,7 @@ def auth_google(
         picture_url=picture_url,
         as_user_id=caller_id,
         invited_by_user_id=body.invited_by_user_id,
+        campaign_code=x_campaign_code,
     )
 
 
@@ -357,18 +395,37 @@ def auth_google(
 def phone_start(
     platform: Platform, request: Request, body: PhoneStart
 ) -> VerificationStarted:
-    """Texts a login code to [body.phone_number]."""
-    if _auth_config_of(request).sms.provider == "log":
+    config = _auth_config_of(request).sms
+    if config.provider == "log":
         raise HTTPException(
             HTTPStatus.NOT_IMPLEMENTED, "phone login is not configured"
         )
-    verification_id, code, normalized = platform.start_verification(
+    if body.delivery_method == "call" and config.provider == "twilio" and not config.twilio_voice_enabled:
+        raise HTTPException(
+            HTTPStatus.NOT_IMPLEMENTED, "phone login is not configured"
+        )
+
+    verification_id, local_code, number = platform.start_verification(
         kind="phone", identifier=body.phone_number
     )
     try:
-        request.app.state.sms_sender.send_login_code(normalized, code)
+        if config.provider == "verify":
+            client = request.app.state.verify_client
+            if client is None:
+                raise SenderError("Twilio Verify is not configured")
+            client.start_verification(number, body.delivery_method)
+        else:
+            sender = (
+                request.app.state.voice_sender
+                if body.delivery_method == "call"
+                else request.app.state.sms_sender
+            )
+            sender.send_login_code(number, local_code)
     except SenderError as error:
-        raise HTTPException(HTTPStatus.BAD_GATEWAY, str(error)) from error
+        raise HTTPException(
+            HTTPStatus.BAD_GATEWAY, str(error)
+        ) from error
+
     return VerificationStarted(
         verification_id=verification_id,
         expires_in_seconds=VERIFICATION_TTL_SECONDS,
@@ -377,18 +434,44 @@ def phone_start(
 
 @auth_router.post("/phone/verify")
 def phone_verify(
-    platform: Platform, caller_id: OptionalCallerId, body: VerifyCode
+    platform: Platform, request: Request,
+    caller_id: OptionalCallerId, body: VerifyCode,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
-    """Logs in with a texted code. Pass the caller's headers to link the number to the
-    current account instead."""
-    user, merged_from = platform.verify_code(
-        verification_id=body.verification_id,
-        code=body.code,
-        display_name=body.display_name,
-        as_user_id=caller_id,
-        invited_by_user_id=body.invited_by_user_id,
+    if _auth_config_of(request).sms.provider == "verify":
+        number = platform.pending_external_phone(body.verification_id)
+        client = request.app.state.verify_client
+        if client is None:
+            raise HTTPException(
+                HTTPStatus.BAD_GATEWAY, "Twilio Verify is not configured"
+            )
+        try:
+            approved = client.check_verification(number, body.code.strip())
+        except SenderError as error:
+            raise HTTPException(
+                HTTPStatus.BAD_GATEWAY, str(error)
+            ) from error
+
+        user, merged_from = platform.finish_external_phone(
+            body.verification_id,
+            approved=approved,
+            display_name=body.display_name,
+            as_user_id=caller_id,
+            invited_by_user_id=body.invited_by_user_id,
+            campaign_code=x_campaign_code,
+        )
+    else:
+        user, merged_from = platform.verify_code(
+            verification_id=body.verification_id,
+            code=body.code,
+            display_name=body.display_name,
+            as_user_id=caller_id,
+            invited_by_user_id=body.invited_by_user_id,
+            campaign_code=x_campaign_code,
+        )
+    return AuthResponse.of(
+        user, merged_from_user_id=merged_from
     )
-    return AuthResponse.of(user, merged_from_user_id=merged_from)
 
 
 @auth_router.post("/email/start")
@@ -415,7 +498,10 @@ def email_start(
 
 @auth_router.post("/email/verify")
 def email_verify(
-    platform: Platform, caller_id: OptionalCallerId, body: VerifyCode
+    platform: Platform,
+    caller_id: OptionalCallerId,
+    body: VerifyCode,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     """Logs in with an emailed code. Pass the caller's headers to link the address to
     the current account instead."""
@@ -425,6 +511,7 @@ def email_verify(
         display_name=body.display_name,
         as_user_id=caller_id,
         invited_by_user_id=body.invited_by_user_id,
+        campaign_code=x_campaign_code,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -1114,6 +1201,92 @@ def admin_stats(platform: Platform) -> dict[str, JsonValue]:
     return platform.stats()
 
 
+@debug_router.get("/admin/experiments", dependencies=[MasterPassword])
+def admin_experiment_stats(platform: Platform) -> dict[str, JsonValue]:
+    return platform.experiment_stats()
+
+
+@debug_router.post(
+    "/admin/experiments/campaign-links",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.CREATED,
+)
+def admin_create_campaign_link(
+    platform: Platform, request: Request, body: CampaignLinkCreate
+) -> dict[str, JsonValue]:
+    _, variant = platform.add_experiment_variant(
+        experiment_id=CAMPAIGN_EXPERIMENT_ID,
+        name=body.name,
+        key=body.key,
+        budget_usd=body.budget_usd,
+    )
+    base_url = (
+        request.app.state.public_base_url.rstrip("/")
+        or str(request.base_url).rstrip("/")
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "key": variant.key,
+        "url": f"{base_url}/c/{variant.key}",
+        "budget_usd": variant.budget_usd,
+    }
+
+
+@debug_router.patch(
+    "/admin/experiments/campaign-links/{variant_id}",
+    dependencies=[MasterPassword],
+)
+def admin_set_campaign_spend(
+    platform: Platform, variant_id: str, body: CampaignSpendUpdate
+) -> dict[str, JsonValue]:
+    variant = platform.set_campaign_spend(
+        variant_id=variant_id, spend_usd=body.spend_usd
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "budget_usd": variant.budget_usd,
+        "spend_usd": variant.spend_usd,
+    }
+
+
+@debug_router.post(
+    "/admin/experiments/skin-variants",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.CREATED,
+)
+def admin_create_skin_variant(
+    platform: Platform, body: ExperimentVariantCreate
+) -> dict[str, JsonValue]:
+    _, variant = platform.add_experiment_variant(
+        experiment_id=SKIN_EXPERIMENT_ID, name=body.name, key=body.key
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "key": variant.key,
+    }
+
+
+@debug_router.patch(
+    "/admin/experiments/{experiment_id}",
+    dependencies=[MasterPassword],
+)
+def admin_set_experiment_active(
+    platform: Platform, experiment_id: str, body: ExperimentActiveUpdate
+) -> dict[str, JsonValue]:
+    experiment = platform.set_experiment_active(
+        experiment_id=experiment_id, active=body.active
+    )
+    return {
+        "id": experiment.id,
+        "name": experiment.name,
+        "kind": experiment.kind,
+        "active": experiment.active,
+    }
+
+
 @debug_router.get("/admin/invites", dependencies=[MasterPassword])
 def admin_invites(platform: Platform) -> dict[str, JsonValue]:
     """The invite tree: who brought whom, with direct and total (transitive)
@@ -1554,6 +1727,8 @@ def create_app(
     auth_config: AuthConfig | None = None,
     push_config: PushConfig | None = None,
     sms_sender: CodeSender | None = None,
+    voice_sender: CodeSender | None = None,
+    verify_client: TwilioVerifyClient | None = None,
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
     public_base_url: str = "",
@@ -1599,6 +1774,8 @@ def create_app(
     app.state.auth_config = auth_config if auth_config is not None else AuthConfig()
     app.state.push_config = push_config if push_config is not None else PushConfig()
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()
+    app.state.voice_sender = voice_sender if voice_sender is not None else LogSender()
+    app.state.verify_client = verify_client
     app.state.email_sender = email_sender if email_sender is not None else LogSender()
     app.include_router(router)
     from game_platform.scaling_api import install as install_scaling_api

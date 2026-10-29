@@ -611,14 +611,22 @@ def test_merge_job_resumes_and_rewrites_everything(store):
     from game_platform.scaling_accounts import merge_users
 
     api = api_for(store)
-    alice, bob, carol = api.new_user("alice"), api.new_user("bob"), api.new_user("carol")
+    alice, bob, carol = (
+        api.new_user("alice"),
+        api.new_user("bob"),
+        api.new_user("carol"),
+    )
     game = api.new_game(owner=alice)
     match = api.new_match(owner=alice, game_id=game, joiners=[carol], start=True)
-    assert api.move(match, as_user=alice, next_turn=1, state={"pot": 1}).status_code == 201
+    assert (
+        api.move(match, as_user=alice, next_turn=1, state={"pot": 1}).status_code == 201
+    )
     source = store.get_user(alice)
+    store.put_user(replace(store.get_user(bob), token_balance=11))
     store.put_user(
         replace(
             source,
+            token_balance=17,
             invited_by_user_id=carol,
             linked_accounts=(
                 LinkedAccount(
@@ -648,6 +656,8 @@ def test_merge_job_resumes_and_rewrites_everything(store):
     assert store.get_user(alice).replaced_by_user_id == bob
     assert store.get_user(alice).linked_accounts == ()
     survivor = store.get_user(bob)
+    assert survivor.token_balance == 28
+    assert store.get_user(alice).token_balance == 0
     assert [a.identifier for a in survivor.linked_accounts] == ["alice@example.com"]
     assert survivor.invited_by_user_id == carol
     assert store.find_linked_account("email", "alice@example.com").id == bob
@@ -663,7 +673,11 @@ def test_merge_job_waits_for_shared_active_match_without_mutating(store):
     game = api.new_game(owner=alice)
     api.new_match(owner=alice, game_id=game, joiners=[bob], start=True)
     result = _run_until_complete(
-        merge_users, store=store, run_id="merge-2", source_id=alice, into_id=bob,
+        merge_users,
+        store=store,
+        run_id="merge-2",
+        source_id=alice,
+        into_id=bob,
         max_records=3,
     )
     assert result["failed"] == "shared_active_match"
@@ -675,7 +689,11 @@ def test_delete_job_resumes_and_removes_the_user(store):
     from game_platform.scaling_accounts import delete_user
 
     api = api_for(store)
-    carol, dave, erin = api.new_user("carol"), api.new_user("dave"), api.new_user("erin")
+    carol, dave, erin = (
+        api.new_user("carol"),
+        api.new_user("dave"),
+        api.new_user("erin"),
+    )
     game = api.new_game(owner=carol)
     owned_match = api.new_match(owner=carol, game_id=game)
     other_game = api.new_game(owner=erin)
@@ -686,8 +704,12 @@ def test_delete_job_resumes_and_removes_the_user(store):
     code = store.get_user(carol).referral_code
     platform = ScalablePlatform(store=store, computer_move_delay_seconds=0)
     result = _run_until_complete(
-        delete_user, store=store, run_id="delete-1", user_id=carol,
-        max_records=2, platform=platform,
+        delete_user,
+        store=store,
+        run_id="delete-1",
+        user_id=carol,
+        max_records=2,
+        platform=platform,
     )
     assert result["complete"]
     assert store.get_user(carol) is None
@@ -700,3 +722,24 @@ def test_delete_job_resumes_and_removes_the_user(store):
     if code:
         assert store.user_for_referral(code) is None
     assert delete_user(store, run_id="delete-1", max_records=1)["processed"] == 0
+    assert not any(x.user_id == carol for x in store.list_experiment_assignments())
+    assert not any(x.user_id == carol for x in store.list_experiment_events())
+
+
+def test_experiment_hooks_do_not_scan_all_users_or_events(store):
+    api = api_for(store)
+    with (
+        patch.object(
+            store, "list_users", side_effect=AssertionError("global users scan")
+        ),
+        patch.object(
+            store,
+            "list_experiment_events",
+            side_effect=AssertionError("global events scan"),
+        ),
+    ):
+        owner = api.new_user("owner")
+        other = api.new_user("other")
+        api.new_match(
+            owner=owner, game_id=api.new_game(owner=owner), joiners=[other], start=True
+        )
