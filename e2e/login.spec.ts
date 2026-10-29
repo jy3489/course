@@ -24,6 +24,9 @@ test.describe('Guest login (real server)', () => {
     await expect(menu).toBeVisible();
 
     await menu.click();
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event('i18n-changed')),
+    );
     await expect(page.getByText(`Logged in as ${name}`)).toBeVisible();
     await page.getByRole('button', { name: `Log out ${name}` }).click();
     await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();

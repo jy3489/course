@@ -10,7 +10,9 @@ from game_platform.tests.helpers import Api
 
 
 def _build() -> Snapshot:
-    return example_data.build(json.loads(example_data.OPERATIONS_FILE.read_text()))
+    return example_data.build(
+        json.loads(example_data.OPERATIONS_FILE.read_text(encoding="utf-8"))
+    )
 
 
 def test_the_example_data_file_is_up_to_date() -> None:

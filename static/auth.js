@@ -439,6 +439,7 @@ const Auth = (() => {
   function renderMenu(container) {
     const account = current();
     const all = accounts();
+    const panelWasOpen = container.querySelector(".auth-menu-panel")?.hidden === false;
     container.replaceChildren();
     const button = el("button", {
       type: "button",
@@ -449,8 +450,9 @@ const Auth = (() => {
       account ? account.display_name : I18n.t("ui.auth.log_in", {}, "Log in")
     );
     const panel = el("div", { class: "auth-menu-panel", hidden: true });
-    panel.inert = true;
-    panel.setAttribute("aria-hidden", "true");
+    panel.hidden = !panelWasOpen;
+    panel.inert = !panelWasOpen;
+    panel.setAttribute("aria-hidden", String(!panelWasOpen));
     const hidePanel = () => {
       panel.inert = true;
       panel.setAttribute("aria-hidden", "true");
