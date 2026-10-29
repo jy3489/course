@@ -1,0 +1,4 @@
+# Local settings (has the control page's password), fake accounts and error screenshots.
+config.json
+fake_users.jsonl
+runs/
