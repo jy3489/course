@@ -55,6 +55,12 @@ def export_namespace(store, output):
         if progress.get("complete"):
             if not path.exists() or path.stat().st_size != progress["offset"]:
                 raise ValueError("completed export file is missing or has changed size")
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != progress.get("sha256"):
+                raise ValueError("completed export file checksum does not match")
             continue
         with path.open("r+b" if path.exists() else "w+b") as stream:
             if stream.seek(0, 2) < progress["offset"]:

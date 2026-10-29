@@ -512,3 +512,16 @@ def test_export_does_not_include_an_overlapping_namespace(store, tmp_path):
         "must-not-export" in path.read_text(encoding="utf-8")
         for path in tmp_path.glob("*.jsonl")
     )
+
+
+def test_completed_export_detects_same_size_corruption(store, tmp_path):
+    from game_platform.scaling_maintenance import export_namespace
+
+    api_for(store).new_user("export user")
+    export_namespace(store, tmp_path)
+    path = tmp_path / (store.namespace + "_users.jsonl")
+    data = path.read_bytes()
+    assert data
+    path.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+    with pytest.raises(ValueError, match="checksum"):
+        export_namespace(store, tmp_path)
