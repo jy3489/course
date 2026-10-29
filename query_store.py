@@ -383,10 +383,36 @@ class QueryStore:
                 for a in range(start, stop, 100)
                 for move in self._read_moves(ref, a, min(a + 100, stop))
             ]
-        getattr(self._local, "uow", None)
+        refs = [
+            ref.collection("moves").document(f"{i:012}") for i in range(start, stop)
+        ]
+        uow = getattr(self._local, "uow", None)
+        pending = [
+            r
+            for r in refs
+            if not uow or (r.path not in uow["writes"] and r.path not in uow["reads"])
+        ]
+        fetched = (
+            {
+                snap.reference.path: snap.to_dict()
+                for snap in self.client.get_all(
+                    pending, transaction=uow["tx"] if uow else None
+                )
+            }
+            if pending
+            else {}
+        )
+        if uow:
+            uow["reads"].update(fetched)
         result = []
-        for i in range(start, stop):
-            data = self.raw_get(ref.collection("moves").document(f"{i:012}"))
+        for move_ref in refs:
+            data = (
+                uow["writes"][move_ref.path][1]
+                if uow and move_ref.path in uow["writes"]
+                else uow["reads"].get(move_ref.path)
+                if uow
+                else fetched.get(move_ref.path)
+            )
             if data is None:
                 raise RuntimeError("missing persisted move")
             result.append(MOVE_ADAPTER.validate_json(data["json"]))

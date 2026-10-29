@@ -58,6 +58,24 @@ def test_restart_and_second_instance_read_committed_move_without_loading_history
     assert second.get_match(match).moves[0].new_state == record.state
 
 
+def test_history_page_uses_one_batch_and_preserves_move_order(store):
+    from game_platform.scaling_tools import seed
+
+    seed(
+        store,
+        run_id="batch-history",
+        users=1,
+        games=1,
+        matches=1,
+        moves_per_match=5,
+        max_writes=1000,
+    )
+    match = store.get_match("synthetic-batch-history-match-0")
+    with patch.object(store.client, "get_all", wraps=store.client.get_all) as batch:
+        assert [move.move_number for move in match.moves[:5]] == [1, 2, 3, 4, 5]
+        assert batch.call_count == 1
+
+
 def test_operation_rolls_back_all_writes(store):
     api = api_for(store)
     alice = api.new_user("alice")
