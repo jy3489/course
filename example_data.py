@@ -12,6 +12,7 @@ import datetime as dt
 import itertools
 import json
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -77,7 +78,13 @@ def build(operations: Iterable[Mapping[str, Any]]) -> Snapshot:
             raise ValueError(
                 f"operation {number} {dict(operation)} failed: {error}"
             ) from error
-    return store.snapshot()
+    snapshot = store.snapshot()
+    return replace(
+        snapshot,
+        experiments=(),
+        experiment_assignments=(),
+        experiment_events=(),
+    )
 
 
 def _apply(

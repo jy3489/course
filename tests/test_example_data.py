@@ -18,6 +18,23 @@ def test_the_example_data_file_is_up_to_date() -> None:
     assert read_snapshot(example_data.DEFAULT_OUTPUT) == _build()
 
 
+def test_example_data_does_not_include_runtime_experiment_tracking() -> None:
+    snapshot = example_data.build(
+        [
+            {
+                "op": "create_user",
+                "id": "user1",
+                "display_name": "user1",
+                "password": "user1",
+            }
+        ]
+    )
+
+    assert snapshot.experiments == ()
+    assert snapshot.experiment_assignments == ()
+    assert snapshot.experiment_events == ()
+
+
 def test_the_example_data_covers_many_match_states() -> None:
     snapshot = _build()
     users = {user.id: user.password for user in snapshot.users}
