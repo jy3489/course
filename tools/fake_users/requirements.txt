@@ -1,0 +1,7 @@
+# The fake user generator (tools/fake_users). Separate from the server's requirements.
+playwright==1.49.1
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+# For the tests.
+pytest>=8
+httpx>=0.27

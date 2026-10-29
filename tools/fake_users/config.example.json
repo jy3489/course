@@ -1,0 +1,29 @@
+{
+  "control_password": "change-me",
+  "control_host": "127.0.0.1",
+  "control_port": 8090,
+  "allow_remote_target": false,
+  "max_browsers": null,
+  "accounts_file": "fake_users.jsonl",
+  "runs_dir": "runs",
+  "settings": {
+    "target_url": "http://127.0.0.1:8000",
+    "max_users": 5,
+    "users_per_hour": 120.0,
+    "think_min_seconds": 1.0,
+    "think_max_seconds": 4.0,
+    "mix_vs_computer": 50,
+    "mix_with_friends": 30,
+    "mix_quick_match": 20,
+    "speed_match_percent": 20,
+    "invite_link_percent": 30,
+    "leave_probability": 0.03,
+    "max_moves_per_match": 40,
+    "another_match_probability": 0.4,
+    "move_tries": 12,
+    "lobby_wait_seconds": 45.0,
+    "skip_games": [
+      "Debug"
+    ]
+  }
+}
