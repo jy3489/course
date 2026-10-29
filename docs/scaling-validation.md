@@ -64,6 +64,20 @@ independent API processes bound to loopback ports 8100 and 8101:
 The shared VM already hosted another demo service on port 8000, so the rehearsal
 used separate ports. Its existing service was not stopped or replaced.
 
+## Ian's HTTP benchmark
+
+Ian's `scale_benchmark.py` on `origin/feature/scaling` measures staged HTTP
+throughput, latency and errors. `benchmark.query-requests.example.json` supplies
+a read-only paginated request mix for query mode. Its match endpoint requires an
+authenticated synthetic user, with credentials kept in a private headers file.
+Confirm `/storage/capabilities` reports pagination enabled before using this mix;
+Ian's current demo configuration uses snapshot mode. Run the benchmark from a
+separate machine against an explicitly isolated deployment. Keep the same dataset,
+mix and stages when comparing instances, and record the results and write budget.
+The example exercises first-page reads only; it does not measure writes, full
+pagination, realistic user activity, or peak capacity. No staged cloud benchmark
+has yet been run with this mix.
+
 ## Outstanding operational steps
 
 The temporary `game-platform-scaling-a` and `game-platform-scaling-b` services
