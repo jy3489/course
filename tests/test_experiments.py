@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from game_platform.api import create_app
 from game_platform.json_file_store import JsonFileStore
+from game_platform.models import GameRules
 from game_platform.service import GamePlatform
 from game_platform.tests.helpers import Api
 
@@ -21,6 +22,26 @@ def test_skin_assignment_is_stable_and_hashes_across_variants() -> None:
         for index in range(100)
     }
     assert assignments == {"classic", "aurora", "sunset"}
+
+
+def test_signup_experiment_events_do_not_consume_generated_ids() -> None:
+    ids = iter(("user-1", "game-1"))
+    platform = GamePlatform(new_id=lambda: next(ids))
+    user = platform.create_user(display_name="alice")
+
+    game = platform.create_game(
+        caller_id=user.id,
+        name="game",
+        description="",
+        rules=GameRules(
+            allowed_player_counts=(1,),
+            allows_leave_mid_match=False,
+            allows_join_mid_match=False,
+        ),
+        code="",
+    )
+
+    assert game.id == "game-1"
 
 
 def test_skin_assignment_merge_keeps_survivor_then_inherits_source() -> None:

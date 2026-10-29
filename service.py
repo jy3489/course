@@ -8,6 +8,7 @@ import collections
 import datetime as dt
 import hashlib
 import hmac
+import json
 import math
 import re
 import secrets
@@ -546,8 +547,13 @@ class GamePlatform:
         )
         if duplicate is not None:
             return duplicate
+        event_identity = json.dumps(
+            [experiment_id, variant_id, kind, user_id, match_id],
+            separators=(",", ":"),
+        )
+        event_id = hashlib.sha256(event_identity.encode()).hexdigest()
         event = ExperimentEvent(
-            id=self._new_id(),
+            id=f"experiment-event:{event_id}",
             experiment_id=experiment_id,
             variant_id=variant_id,
             kind=kind,

@@ -198,6 +198,12 @@
   "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
   "error.payouts_total_pot": "payouts must total the token pot",
   "error.no_tokens_for_payout": "no tokens available for payout",
+  "error.experiment_not_found": "experimento no encontrado",
+  "error.experiment_variant_key_invalid": "la clave de variante debe tener entre 1 y 50 letras minúsculas, dígitos o guiones",
+  "error.experiment_variant_key_conflict": "ya existe una variante con esa clave",
+  "error.campaign_budget_invalid": "el presupuesto de la campaña debe estar entre $0 y $100",
+  "error.campaign_link_not_found": "enlace de campaña no encontrado",
+  "error.campaign_spend_invalid": "el gasto debe estar entre $0 y el presupuesto de la campaña",
 
   "ui.section.finished": "Terminadas",
   "ui.match.computer_name": "Ordenador {number}",
