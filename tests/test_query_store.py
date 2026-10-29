@@ -260,6 +260,28 @@ def test_seed_resume_is_idempotent_and_budget_is_checked_before_writes(store):
     assert store.counts() == counts
 
 
+def test_seed_resume_does_not_reset_existing_user(store):
+    from game_platform.scaling_tools import seed
+
+    args = dict(
+        run_id="resume-user",
+        users=2,
+        games=1,
+        matches=0,
+        moves_per_match=0,
+        max_writes=1000,
+    )
+    seed(store, **args)
+    user = store.get_user("synthetic-resume-user-user-1")
+    store.put_user(replace(user, token_balance=17))
+    # Simulate an older checkpoint left behind after this user was written.
+    manifest = store.ref("seed_runs", "resume-user")
+    saved = store.raw_get(manifest)
+    store.raw_put(manifest, {**saved, "users_done": 1, "complete": False})
+    seed(store, **args)
+    assert store.get_user(user.id).token_balance == 17
+
+
 def test_snapshot_migration_preserves_history_and_resumes(store):
     from game_platform.firestore_store import import_snapshot
     from game_platform.scaling_tools import migrate

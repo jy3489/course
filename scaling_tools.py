@@ -189,16 +189,23 @@ def seed(store, *, run_id, users, games, matches, moves_per_match, max_writes):
 
     for i in range(prior.get("users_done", 0), users):
         uid = identity("user", i)
-        store.put_user(
-            User(
-                id=uid,
-                display_name=f"Synthetic {i}",
-                password=hashlib.sha256(uid.encode()).hexdigest(),
-                referral_code=hashlib.sha256((uid + "ref").encode()).hexdigest()[:16],
-                created_at=base,
-                updated_at=base,
-            )
-        )
+        # A crash can occur between creating a user and saving the checkpoint.
+        # Never reset a previously generated user (including its token balance)
+        # when resuming that range.
+        with store.atomic():
+            if store.get_user(uid) is None:
+                store.put_user(
+                    User(
+                        id=uid,
+                        display_name=f"Synthetic {i}",
+                        password=hashlib.sha256(uid.encode()).hexdigest(),
+                        referral_code=hashlib.sha256(
+                            (uid + "ref").encode()
+                        ).hexdigest()[:16],
+                        created_at=base,
+                        updated_at=base,
+                    )
+                )
         if i % 100 == 0:
             store.raw_put(manifest, {"settings": settings, "users_done": i + 1})
     for i in range(prior.get("games_done", 0), games):
