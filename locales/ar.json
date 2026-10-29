@@ -1,4 +1,5 @@
 {
+  "error.merge_shared_active_match": "انتظر انتهاء المباريات المشتركة قبل دمج هذين الحسابين",
   "error.unauthorized": "ترويستا X-User-Id / X-User-Password مفقودتان أو غير صالحتين",
   "error.master_password_required": "كلمة المرور الرئيسية مطلوبة (أي اسم مستخدم)",
   "error.user_not_found": "لم يتم العثور على المستخدم",

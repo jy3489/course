@@ -1,4 +1,5 @@
 {
+  "error.merge_shared_active_match": "Warte, bis gemeinsame Spiele beendet sind, bevor du diese Konten zusammenführst",
   "error.unauthorized": "die Header X-User-Id / X-User-Password fehlen oder sind ungültig",
   "error.master_password_required": "das Master-Passwort ist erforderlich (beliebiger Benutzername)",
   "error.user_not_found": "Benutzer nicht gefunden",

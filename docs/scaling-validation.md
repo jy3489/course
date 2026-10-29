@@ -101,3 +101,7 @@ regression suite passed 152 tests. Account tests passed 35 tests, including
 preserving opaque game player IDs after merges and refusing shared active-match
 merges before mutation. These account fixes cover the existing service; query-mode
 account migration/deletion workflows remain disabled and unfinished.
+
+The subsequent full Linux run passed 490 tests and skipped 33, with one failure:
+the new shared-match merge error lacked translations. Added the message to all
+eight locale catalogs; the complete localization suite then passed 46 tests.
