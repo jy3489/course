@@ -7,11 +7,10 @@ Run before enabling query storage. Waits for each build to finish successfully.
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 
-from google.api_core.exceptions import AlreadyExists
+from game_platform.scaling_indexes import index_config
+from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import firestore_admin_v1 as admin
 from google.protobuf.field_mask_pb2 import FieldMask
-
-from game_platform.scaling_indexes import index_config
 
 
 def deploy(*, project, database, namespace, credentials=None):
@@ -43,6 +42,41 @@ def deploy(*, project, database, namespace, credentials=None):
         if definition.get("ttl"):
             field.ttl_config = admin.Field.TtlConfig()
             paths.append("ttl_config")
+        # Reapplying unchanged overrides can trigger another lengthy field/TTL
+        # operation. Preserve ready indexes instead of rebuilding every field.
+        try:
+            existing = client.get_field(request={"name": field.name})
+        except NotFound:
+            existing = None
+        if existing is not None:
+
+            def signature(index):
+                return (
+                    int(index.query_scope),
+                    tuple(
+                        (f.field_path, int(f.order), int(f.array_config))
+                        for f in index.fields
+                        if f.field_path != "__name__"
+                    ),
+                )
+
+            actual = sorted(signature(index) for index in existing.index_config.indexes)
+            desired = sorted(signature(index) for index in indexes)
+            ready = all(
+                index.state == admin.Index.State.READY
+                for index in existing.index_config.indexes
+            )
+            ttl_ready = (
+                not definition.get("ttl")
+                or existing.ttl_config.state == admin.Field.TtlConfig.State.ACTIVE
+            )
+            if (
+                not existing.index_config.uses_ancestor_config
+                and actual == desired
+                and ready
+                and ttl_ready
+            ):
+                return None
         return client.update_field(
             request={"field": field, "update_mask": FieldMask(paths=paths)}
         )

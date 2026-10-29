@@ -8,9 +8,11 @@ resumable; do not reuse it after the source changes.
 import datetime as dt
 
 
-def rebuild(store, *, run_id, max_records=100):
+def rebuild(store, *, run_id, max_records=100, as_of=None):
     if not run_id or not 1 <= max_records <= 1000:
         raise ValueError("run ID and a record budget of 1..1000 are required")
+    if as_of is not None:
+        as_of = dt.date.fromisoformat(as_of).isoformat()
     report = store.ref("dashboard_runs", run_id)
     processed = 0
     for kind in ("users", "games", "matches"):
@@ -21,8 +23,11 @@ def rebuild(store, *, run_id, max_records=100):
                     "counts": {},
                     "days": {},
                 }
+                if as_of is not None and state.get("anchor", as_of) != as_of:
+                    raise ValueError("report date changed while resuming")
                 state.setdefault(
-                    "anchor", dt.datetime.now(dt.timezone.utc).date().isoformat()
+                    "anchor",
+                    as_of or dt.datetime.now(dt.timezone.utc).date().isoformat(),
                 )
                 if state.get("complete"):
                     return {"complete": True, "processed": processed}

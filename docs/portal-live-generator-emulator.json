@@ -1,0 +1,24 @@
+{
+  "active_users": 0,
+  "sessions_started": 4,
+  "sessions_finished": 4,
+  "accounts_created": 4,
+  "referral_signups": 1,
+  "matches_created": 6,
+  "matches_joined": 0,
+  "matches_finished": 1,
+  "moves": 23,
+  "leaves": 3,
+  "couldnt_move": 3,
+  "speed_matches": 2,
+  "skipped_games": 0,
+  "errors": 0,
+  "actions_per_minute": 17,
+  "response_ms": {
+    "median": 16,
+    "p95": 50,
+    "samples": 1027
+  },
+  "last_errors": [],
+  "uptime_seconds": 121
+}

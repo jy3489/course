@@ -162,7 +162,17 @@ def migrate(source, destination, *, source_prefix="", batch_records=None):
             if batch_records and completed >= batch_records:
                 return {"complete": False, "processed": completed}
         checkpoint.set({**(checkpoint.get().to_dict() or {}), "complete": True})
-    return {"complete": True, "processed": completed, "counts": destination.counts()}
+    from game_platform.scaling_library import normalize
+
+    libraries = normalize(
+        destination, run_id="snapshot-migration", max_records=batch_records or 100
+    )
+    return {
+        "complete": libraries["complete"],
+        "processed": completed,
+        "library_steps": libraries["processed"],
+        "counts": destination.counts(),
+    }
 
 
 def seed(store, *, run_id, users, games, matches, moves_per_match, max_writes):
@@ -331,6 +341,9 @@ def main():
             "activity",
             "merge",
             "delete-user",
+            "libraries",
+            "experiment-dashboard",
+            "referral-dashboard",
         ],
     )
     parser.add_argument("--from-user", help="merge: the user merged away")
@@ -343,6 +356,7 @@ def main():
     parser.add_argument("--source-prefix", default="")
     parser.add_argument("--source-writers-stopped", action="store_true")
     parser.add_argument("--run-id", default="capacity-1")
+    parser.add_argument("--as-of", help="dashboard window end date, YYYY-MM-DD")
     parser.add_argument("--users", type=int, default=100)
     parser.add_argument("--games", type=int, default=10)
     parser.add_argument("--matches", type=int, default=1000)
@@ -370,6 +384,9 @@ def main():
             "activity",
             "merge",
             "delete-user",
+            "libraries",
+            "experiment-dashboard",
+            "referral-dashboard",
         )
         and args.database == "(default)"
         and not os.environ.get("FIRESTORE_EMULATOR_HOST")
@@ -389,6 +406,24 @@ def main():
             store,
             source_prefix=args.source_prefix,
         )
+    elif args.command == "referral-dashboard":
+        if not args.source_writers_stopped:
+            parser.error("referral report requires stopped source writers")
+        from game_platform.scaling_referrals import rebuild
+
+        result = rebuild(store, run_id=args.run_id, max_records=args.limit)
+    elif args.command == "experiment-dashboard":
+        if not args.source_writers_stopped:
+            parser.error("experiment report requires stopped source writers")
+        from game_platform.scaling_experiment_report import rebuild
+
+        result = rebuild(store, run_id=args.run_id, max_records=args.limit)
+    elif args.command == "libraries":
+        if not args.source_writers_stopped:
+            parser.error("library normalization requires stopped writers")
+        from game_platform.scaling_library import normalize
+
+        result = normalize(store, run_id=args.run_id, max_records=args.limit)
     elif args.command == "activity":
         if not args.source_writers_stopped:
             parser.error("historical activity requires stopped destination writers")
@@ -407,7 +442,9 @@ def main():
             parser.error("dashboard rebuild requires stopped source writers")
         from game_platform.scaling_dashboard import rebuild
 
-        result = rebuild(store, run_id=args.run_id, max_records=args.limit)
+        result = rebuild(
+            store, run_id=args.run_id, max_records=args.limit, as_of=args.as_of
+        )
     elif args.command == "seed":
         result = seed(
             store,

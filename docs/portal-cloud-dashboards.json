@@ -1,0 +1,304 @@
+{
+  "database": "game-platform-scaling",
+  "namespace": "scaling_v1",
+  "dashboard": {
+    "generated_at": "2026-10-29T22:42:37.707630+00:00",
+    "counts": {
+      "games": 73,
+      "games_live": 73,
+      "moves": 2413,
+      "matches_ongoing": 2,
+      "matches_over": 1135,
+      "matches": 1137,
+      "users": 170
+    },
+    "days": {
+      "2026-09-16": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-28": {
+        "matches": 34,
+        "users": 2
+      },
+      "2026-09-29": {
+        "matches": 34,
+        "users": 2
+      },
+      "2026-09-05": {
+        "matches": 45,
+        "users": 1
+      },
+      "2026-09-20": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-25": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-04": {
+        "matches": 44,
+        "users": 1
+      },
+      "2026-09-30": {
+        "matches": 33,
+        "users": 1
+      },
+      "2026-09-11": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-17": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-18": {
+        "matches": 34,
+        "users": 2
+      },
+      "2026-09-01": {
+        "games": 69,
+        "matches": 58,
+        "users": 122
+      },
+      "2026-09-19": {
+        "matches": 33,
+        "users": 2
+      },
+      "2026-09-14": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-24": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-08": {
+        "matches": 44,
+        "users": 2
+      },
+      "2026-09-03": {
+        "matches": 45,
+        "users": 1
+      },
+      "2026-09-10": {
+        "matches": 35,
+        "users": 2
+      },
+      "2026-09-02": {
+        "matches": 53,
+        "users": 4
+      },
+      "2026-09-21": {
+        "matches": 34,
+        "users": 2
+      },
+      "2026-09-13": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-06": {
+        "matches": 45,
+        "users": 1
+      },
+      "2026-09-07": {
+        "matches": 45,
+        "users": 2
+      },
+      "2026-09-12": {
+        "matches": 33,
+        "users": 1
+      },
+      "2026-09-22": {
+        "matches": 34,
+        "users": 1
+      },
+      "2026-09-27": {
+        "matches": 34,
+        "users": 2
+      },
+      "2026-09-23": {
+        "matches": 33,
+        "users": 2
+      },
+      "2026-09-09": {
+        "matches": 45,
+        "users": 2
+      },
+      "2026-09-26": {
+        "matches": 33,
+        "users": 1
+      },
+      "2026-09-15": {
+        "matches": 33,
+        "users": 2
+      }
+    },
+    "anchor": "2026-09-30"
+  },
+  "experiments": {
+    "generated_at": "2026-10-29T22:42:50.257404+00:00",
+    "consistency": "offline snapshot",
+    "skin_experiment": {
+      "id": "ui-skins",
+      "name": "UI skin pilot",
+      "active": true,
+      "variants": [
+        {
+          "assigned": 21,
+          "clicks": 0,
+          "signups": 21,
+          "match_starts": 10,
+          "users_started_match": 10,
+          "returning_active_users": 0,
+          "variant_id": "skin-classic",
+          "name": "Classic",
+          "key": "classic",
+          "link": null,
+          "budget_usd": null,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 47.6,
+          "return_rate": 0.0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        },
+        {
+          "assigned": 17,
+          "clicks": 0,
+          "signups": 17,
+          "match_starts": 11,
+          "users_started_match": 11,
+          "returning_active_users": 0,
+          "variant_id": "skin-aurora",
+          "name": "Aurora",
+          "key": "aurora",
+          "link": null,
+          "budget_usd": null,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 64.7,
+          "return_rate": 0.0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        },
+        {
+          "assigned": 17,
+          "clicks": 0,
+          "signups": 17,
+          "match_starts": 12,
+          "users_started_match": 12,
+          "returning_active_users": 0,
+          "variant_id": "skin-sunset",
+          "name": "Sunset",
+          "key": "sunset",
+          "link": null,
+          "budget_usd": null,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 70.6,
+          "return_rate": 0.0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        }
+      ]
+    },
+    "campaign_experiment": {
+      "id": "ad-campaigns",
+      "name": "Advertisement campaign pilot",
+      "active": true,
+      "variants": [
+        {
+          "assigned": 0,
+          "clicks": 0,
+          "signups": 0,
+          "match_starts": 0,
+          "users_started_match": 0,
+          "returning_active_users": 0,
+          "variant_id": "campaign-students-a",
+          "name": "Student campaign A",
+          "key": "students-a",
+          "link": "/c/students-a",
+          "budget_usd": 100.0,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 0,
+          "return_rate": 0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        },
+        {
+          "assigned": 0,
+          "clicks": 0,
+          "signups": 0,
+          "match_starts": 0,
+          "users_started_match": 0,
+          "returning_active_users": 0,
+          "variant_id": "campaign-students-b",
+          "name": "Student campaign B",
+          "key": "students-b",
+          "link": "/c/students-b",
+          "budget_usd": 100.0,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 0,
+          "return_rate": 0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        },
+        {
+          "assigned": 0,
+          "clicks": 0,
+          "signups": 0,
+          "match_starts": 0,
+          "users_started_match": 0,
+          "returning_active_users": 0,
+          "variant_id": "campaign-students-c",
+          "name": "Student campaign C",
+          "key": "students-c",
+          "link": "/c/students-c",
+          "budget_usd": 100.0,
+          "spend_usd": 0.0,
+          "signup_rate": 0,
+          "match_start_rate": 0,
+          "return_rate": 0,
+          "cost_per_signup_usd": null,
+          "cost_per_match_user_usd": null,
+          "cost_per_returning_user_usd": null
+        }
+      ]
+    }
+  },
+  "referrals": {
+    "generated_at": "2026-10-29T22:43:23.848995+00:00",
+    "summary": {
+      "biggest_tree": 4,
+      "longest_chain": 3,
+      "invited_users": 3,
+      "cycles_broken": 0,
+      "inviters": 3,
+      "users": 170
+    }
+  },
+  "counts": {
+    "users_total": 170,
+    "matches_total": 1137,
+    "matches_ongoing": 2,
+    "experiment_events_total": 88,
+    "moves_total": 2413,
+    "game_versions_total": 73,
+    "matches_over": 1135,
+    "experiment_assignments_total": 55,
+    "games_live": 73,
+    "games_total": 73,
+    "matches_waiting_for_players": 0,
+    "experiments_total": 2
+  },
+  "referral_page_verified": true
+}

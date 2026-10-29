@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import replace
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Response
 from game_platform.schemas import GameSummaryOut, GameDraftOut, UserOut, MoveOut
 
 
@@ -158,6 +158,48 @@ def install(app, *, debug_tools):
             "next_cursor": result.next_cursor,
         }
 
+    @app.get("/v2/users/me/saved-games")
+    def saved_games(
+        platform: Platform,
+        caller_id: CallerId,
+        limit: int = Query(50, ge=1, le=100),
+        cursor: str | None = None,
+    ):
+        store = store_of(platform)
+        if platform._require_user(caller_id).saved_game_ids:
+            raise HTTPException(409, "legacy library requires offline normalization")
+        result = page(
+            store,
+            "libraries",
+            filters=[("user_id", "==", caller_id)],
+            limit=limit,
+            cursor=cursor,
+            scope=caller_id,
+        )
+        items = []
+        for entry in result.items:
+            ref = store.ref("games", entry.game_id)
+            game = store._decode("games", store.raw_get(ref), ref, detail=False)
+            if (
+                game
+                and not game.deleted
+                and (game.published or game.owner_user_id == caller_id)
+            ):
+                items.append(GameSummaryOut.of(game))
+        return {"items": items, "next_cursor": result.next_cursor}
+
+    @app.put("/v2/users/me/saved-games/{game_id}")
+    def save_game(platform: Platform, caller_id: CallerId, game_id: str):
+        store_of(platform)
+        platform.set_saved_game(caller_id=caller_id, game_id=game_id, saved=True)
+        return Response(status_code=204)
+
+    @app.delete("/v2/users/me/saved-games/{game_id}")
+    def unsave_game(platform: Platform, caller_id: CallerId, game_id: str):
+        store_of(platform)
+        platform.set_saved_game(caller_id=caller_id, game_id=game_id, saved=False)
+        return Response(status_code=204)
+
     @app.get("/v2/matches/open")
     def open_matches(
         platform: Platform,
@@ -247,6 +289,49 @@ def install(app, *, debug_tools):
         }
 
     if debug_tools:
+
+        @app.get(
+            "/v2/admin/referrals/summary",
+            dependencies=[MasterPassword],
+            include_in_schema=False,
+        )
+        def referral_summary(platform: Platform):
+            from game_platform.scaling_referrals import report
+
+            try:
+                _, job, _ = report(store_of(platform))
+                return {
+                    "summary": job["summary"],
+                    "generated_at": job["generated_at"],
+                    "consistency": "offline snapshot",
+                }
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+        @app.get(
+            "/v2/admin/referrals/users",
+            dependencies=[MasterPassword],
+            include_in_schema=False,
+        )
+        def referral_users(
+            platform: Platform,
+            parent_id: str | None = Query(None, max_length=512),
+            q: str = Query("", max_length=200),
+            limit: int = Query(50, ge=1, le=100),
+            cursor: str | None = None,
+        ):
+            from game_platform.scaling_referrals import users
+
+            try:
+                return users(
+                    store_of(platform),
+                    parent_id=parent_id,
+                    q=q,
+                    limit=limit,
+                    cursor=cursor,
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
         @app.get(
             "/v2/admin/{kind}", dependencies=[MasterPassword], include_in_schema=False

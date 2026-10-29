@@ -386,6 +386,7 @@ async function refresh() {
         );
       }
       if (experiments) $("content").append(
+        el("p", {textContent:`Experiment report built ${formatTime(experiments.generated_at)}`}),
         experimentTable("UI skin experiment", experiments.skin_experiment, "skin"),
         experimentTable("Advertisement campaigns", experiments.campaign_experiment, "campaign"),
         experimentManagement(),

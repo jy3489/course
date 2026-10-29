@@ -34,9 +34,11 @@ from game_platform.models import (
     WebPushSubscription,
 )
 from game_platform.move_history import MoveHistory
+from game_platform.scaling_library import LibraryEntry
 from game_platform.paging import Page, decode_cursor, encode_cursor, page_size
 
 TYPES = {
+    "libraries": LibraryEntry,
     "experiments": Experiment,
     "experiment_assignments": ExperimentAssignment,
     "experiment_events": ExperimentEvent,
@@ -370,6 +372,10 @@ class QueryStore:
                     "match_id",
                     "published",
                     "deleted",
+                    "experiment_id",
+                    "variant_id",
+                    "kind",
+                    "occurred_at",
                 )
                 if hasattr(record, name)
             }

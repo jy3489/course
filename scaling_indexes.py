@@ -45,6 +45,7 @@ def index_config(namespace):
         for fields in itertools.combinations(["status", "game_id"], count):
             queries["matches"].append((list(fields), "visible_to"))
     singles = {
+        "libraries": {"user_id": "order"},
         "games": {"deleted": "order", "published": "order", "owner_user_id": "order"},
         "game_versions": {"owner_user_id": "order"},
         "matches": {
@@ -81,8 +82,25 @@ def index_config(namespace):
                     "indexes": [],
                 }
             )
-    for group in ("body", "moves", "entries"):
+    for group in ("body", "moves", "entries", "unique_users", "variants", "config"):
         overrides.append({"collectionGroup": group, "fieldPath": "*", "indexes": []})
+    overrides.append(
+        {"collectionGroup": "referral_nodes", "fieldPath": "*", "indexes": []}
+    )
+    for field in ("ready", "processed", "parent_id", "total_invites", "search_tokens"):
+        index = {"queryScope": "COLLECTION"}
+        index.update(
+            {"arrayConfig": "CONTAINS"}
+            if field == "search_tokens"
+            else {"order": "DESCENDING" if field == "total_invites" else "ASCENDING"}
+        )
+        overrides.append(
+            {
+                "collectionGroup": "referral_nodes",
+                "fieldPath": field,
+                "indexes": [index],
+            }
+        )
     indexes = []
     for kind, shapes in queries.items():
         for fields, array in shapes:

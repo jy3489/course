@@ -48,6 +48,13 @@ integration tests must pass before upgrading that SDK.
   direct sign-ups and invite summaries, paginated. Existing screens still need to
   adopt these APIs. Individual invite acceptance histories remain embedded and
   must be split before large histories are supported.
+* `/v2/users/me/saved-games`: paginated saved-game summaries, with PUT/DELETE
+  `/v2/users/me/saved-games/{id}` returning 204. Saves live in separate `libraries`
+  documents, not a growing user array. Lists use scattered ID order. Old list
+  endpoints retain their 100-record guard. Migration resumes library normalization;
+  existing query namespaces can run `scaling_tools libraries --source-writers-stopped`
+  repeatedly with a stable run ID until complete. Account jobs handle normalized
+  libraries. Portal/Builder owners should use the versioned API for library UI.
 * `/v2/matches`: authenticated membership; optional status/game filters.
 * `/v2/matches/open`: public joinable matches, including mid-game joins; current
   game publication is checked before returning a row.
@@ -55,6 +62,10 @@ integration tests must pass before upgrading that SDK.
   with `next_start`, `total` and the player's view of the initial state.
 * `/v2/admin/{kind}`: master-password-protected administrative pages when debug
   tools are enabled; credentials and game source are not included in summaries.
+* `/v2/admin/referrals/summary` and `/v2/admin/referrals/users`: report summary,
+  descending leaderboard, child pages (`parent_id`, empty for roots), and one
+  name-prefix/full-user-ID/referral-code search (`q`). All require master access.
+  The Invites backoffice negotiates this mode and loads one branch/page at a time.
 
 Cursors are opaque query-bound positions ordered by scattered document ID, not
 chronological snapshots. Concurrent changes can affect a later page. They confer
@@ -69,6 +80,16 @@ search engine. Legacy lists fail explicitly above 100 records. Legacy unbounded
 history and whole-database HTTP export are disabled in query mode.
 
 Stats reads 64 transactional counter shards and reports near-real-time counts.
+The offline `experiment-dashboard` command builds A/B metrics using persistent
+distinct-user sets, with bounded memory and atomic publication. Its schema matches
+the existing dashboard; the build timestamp is visible. Run it repeatedly with
+stopped writers and a stable run ID until complete; queries do not scan all users
+or events. `referral-dashboard` similarly uses a persistent leaf queue to aggregate
+transitive counts and tree height. Cycles are cut deterministically in the report
+without changing source accounts. It publishes a snapshot only when complete.
+Both commands accept `--limit` as a per-invocation record-step budget. Deploy the
+updated `referral_nodes` child indexes before using the latter. Reports and their
+deduplication/queue records require an administrative retention policy.
 The offline `dashboard` command adds a resumable report of total records, moves,
 match statuses and new users/games/matches per day for a fixed 30-day window.
 The stats page displays the report's build time. It does not claim a consistent
@@ -187,11 +208,11 @@ This release is not yet a replacement for every snapshot-mode feature:
   platform, invitees repointed, reservations released). Compatible client
   flows for starting these jobs from the UI, and signing in when two existing
   accounts need merging, remain to be implemented.
-* Saved libraries, invite acceptances, linked-account arrays and some error/context
+* Invite acceptances, linked-account arrays and some error/context
   endpoints still use bounded legacy representations. Records reject payloads
   above 800 KB; these features need their own child-record and pagination designs.
-* Daily creation reports are available as offline snapshots. Per-game analytics,
-  broad referral traversal and automated reconciliation jobs are not implemented.
+* Daily creation, A/B and transitive referral reports are available as offline
+  snapshots. Per-game analytics and automated reconciliation jobs are not implemented.
   HTTP global exports are replaced by an offline CLI.
 * QuickJS runs inside the semantic transaction. Move computation outside locks,
   with revision revalidation, remains a contention optimization. Job due-time

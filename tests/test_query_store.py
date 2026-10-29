@@ -236,6 +236,7 @@ def test_two_instances_racing_a_move_commit_only_once(store):
         owner=alice, game_id=api.new_game(owner=alice), joiners=[bob], start=True
     )
     barrier = threading.Barrier(2)
+    conflicts = []
 
     def attempt(n):
         other = QueryStore(store.client, namespace=store.namespace)
@@ -251,12 +252,13 @@ def test_two_instances_racing_a_move_commit_only_once(store):
                 request_id=str(n),
             )
             return "committed"
-        except ConflictError:
+        except ConflictError as error:
+            conflicts.append((str(error), repr(error.__cause__)))
             return "conflict"
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(attempt, [1, 2]))
-    assert sorted(results) == ["committed", "conflict"]
+    assert sorted(results) == ["committed", "conflict"], conflicts
     assert len(store.get_match(match).moves) == 1
     assert store.counts()["moves_total"] == 1
 
@@ -595,6 +597,28 @@ def test_historical_activity_runs_quickjs_and_resumes_without_duplicates(store):
             assert match.moves[-1].new_state == match.state
 
 
+def test_dashboard_historical_window_keeps_anchor_on_resume(store):
+    import datetime as dt
+    from game_platform.scaling_dashboard import rebuild, current
+
+    api = api_for(store)
+    uid = api.new_user("historical")
+    store.put_user(
+        replace(
+            store.get_user(uid),
+            created_at=dt.datetime(2026, 9, 15, tzinfo=dt.timezone.utc),
+        )
+    )
+    assert not rebuild(store, run_id="september", max_records=1, as_of="2026-09-30")[
+        "complete"
+    ]
+    with pytest.raises(ValueError, match="date changed"):
+        rebuild(store, run_id="september", as_of="2026-10-01")
+    assert rebuild(store, run_id="september", as_of="2026-09-30")["complete"]
+    assert current(store)["anchor"] == "2026-09-30"
+    assert current(store)["days"]["2026-09-15"]["users"] == 1
+
+
 def _run_until_complete(fn, **kwargs):
     result = None
     for _ in range(1000):
@@ -743,3 +767,208 @@ def test_experiment_hooks_do_not_scan_all_users_or_events(store):
         api.new_match(
             owner=owner, game_id=api.new_game(owner=owner), joiners=[other], start=True
         )
+
+
+def test_portal_catalog_copies_existing_sources_without_regeneration(store):
+    import datetime as dt
+    from pathlib import Path
+    from game_platform.scaling_portal_server import copy_catalog, MonthClock
+
+    clock = MonthClock("2026-09")
+    with pytest.raises(ValueError):
+        clock.set_day(dt.date(2026, 10, 1))
+    catalog = copy_catalog(store, run_id="copies", copies=2, now=clock())
+    assert len(catalog) == 4
+    counts = store.counts()
+    assert copy_catalog(store, run_id="copies", copies=2, now=clock()) == catalog
+    assert store.counts() == counts
+    base = Path(__file__).parents[1] / "games"
+    for item in catalog:
+        game = store.get_game(item["id"])
+        assert game.code == (base / (item["kind"] + ".html")).read_text(
+            encoding="utf-8"
+        )
+        assert game.server_code == (base / (item["kind"] + ".server.js")).read_text(
+            encoding="utf-8"
+        )
+
+
+def test_campaign_signup_metadata_is_queryable_for_match_attribution(store):
+    from game_platform.service import CAMPAIGN_EXPERIMENT_ID
+
+    api = api_for(store)
+    user = api.new_user("campaign user")
+    platform = api.client.app.state.platform
+    campaign = platform._active_experiment(CAMPAIGN_EXPERIMENT_ID)
+    platform.record_new_user(user_id=user, campaign_code=campaign.variants[0].key)
+    events = store.experiment_signups({user}, CAMPAIGN_EXPERIMENT_ID)
+    assert len(events) == 1 and events[0].user_id == user
+
+
+def test_large_library_pages_do_not_grow_the_user_record(store):
+    api = api_for(store)
+    owner, other = api.new_user("library owner"), api.new_user("other")
+    game = store.get_game(api.new_game(owner=owner))
+    ids = set()
+    for i in range(105):
+        gid = f"library-game-{i}"
+        store.add_game_version(replace(game, id=gid))
+        assert (
+            api.request(
+                "PUT", f"/v2/users/me/saved-games/{gid}", as_user=owner
+            ).status_code
+            == 204
+        )
+        ids.add(gid)
+    assert store.get_user(owner).saved_game_ids == ()
+    assert api.request("GET", "/users/me/saved-games", as_user=owner).status_code == 409
+    found, cursor = set(), None
+    while True:
+        result = api.ok(
+            "GET",
+            "/v2/users/me/saved-games",
+            as_user=owner,
+            params={"cursor": cursor} if cursor else None,
+        )
+        assert len(result["items"]) <= 50
+        assert all("code" not in game for game in result["items"])
+        found.update(game["id"] for game in result["items"])
+        cursor = result["next_cursor"]
+        if not cursor:
+            break
+    assert found == ids
+    assert api.ok("GET", "/v2/users/me/saved-games", as_user=other)["items"] == []
+    api.request("DELETE", "/v2/users/me/saved-games/library-game-0", as_user=owner)
+    assert store.counts()["libraries_total"] == 104
+
+
+def test_library_normalization_and_account_jobs_preserve_saved_games(store):
+    from game_platform.scaling_library import normalize
+    from game_platform.scaling_accounts import merge_users, delete_user
+
+    api = api_for(store)
+    owner, target = api.new_user("owner"), api.new_user("target")
+    game = api.new_game(owner=owner)
+    store.put_user(replace(store.get_user(owner), saved_game_ids=(game,)))
+    assert (
+        api.request("GET", "/v2/users/me/saved-games", as_user=owner).status_code == 409
+    )
+    _run_until_complete(normalize, store=store, run_id="normalize", max_records=1)
+    assert store.get_user(owner).saved_game_ids == ()
+    assert (
+        api.ok("GET", "/v2/users/me/saved-games", as_user=owner)["items"][0]["id"]
+        == game
+    )
+    _run_until_complete(
+        merge_users,
+        store=store,
+        run_id="library-merge",
+        source_id=owner,
+        into_id=target,
+        max_records=2,
+    )
+    assert (
+        api.ok("GET", "/v2/users/me/saved-games", as_user=target)["items"][0]["id"]
+        == game
+    )
+    assert (
+        api.ok("GET", "/v2/users/me/saved-games", as_user=owner)["items"][0]["id"]
+        == game
+    )
+    _run_until_complete(
+        delete_user, store=store, run_id="library-delete", user_id=target, max_records=2
+    )
+    assert store.counts()["libraries_total"] == 0
+
+
+def test_offline_experiment_report_matches_legacy_metrics_and_resumes(store):
+    from game_platform.scaling_experiment_report import rebuild, current
+    from game_platform.service import GamePlatform, CAMPAIGN_EXPERIMENT_ID
+
+    api = api_for(store)
+    owner, other = api.new_user("owner"), api.new_user("other")
+    platform = api.client.app.state.platform
+    campaign = platform._active_experiment(CAMPAIGN_EXPERIMENT_ID)
+    platform.record_campaign_click(campaign_code=campaign.variants[0].key)
+    platform.record_campaign_click(campaign_code=campaign.variants[0].key)
+    platform.record_new_user(user_id=owner, campaign_code=campaign.variants[0].key)
+    api.new_match(
+        owner=owner, game_id=api.new_game(owner=owner), joiners=[other], start=True
+    )
+    expected = GamePlatform(store=store).experiment_stats()
+    assert current(store) is None
+    assert rebuild(store, run_id="metrics", max_records=1)["complete"] is False
+    assert current(store) is None
+    _run_until_complete(rebuild, store=store, run_id="metrics", max_records=2)
+    actual = current(store)
+    for name in ("skin_experiment", "campaign_experiment"):
+        assert actual[name] == expected[name]
+    assert rebuild(store, run_id="metrics", max_records=1)["processed"] == 0
+    with (
+        patch.object(
+            store, "list_users", side_effect=AssertionError("global users scan")
+        ),
+        patch.object(
+            store,
+            "list_experiment_events",
+            side_effect=AssertionError("global events scan"),
+        ),
+    ):
+        assert platform.experiment_stats() == actual
+
+
+def test_referral_report_is_resumable_and_pages_children_and_search(store):
+    from game_platform.scaling_referrals import rebuild, report, users
+
+    api = api_for(store)
+    root, child, grandchild = [
+        api.new_user(name)
+        for name in ("Root person", "Child person", "Grandchild person")
+    ]
+    store.put_user(replace(store.get_user(child), invited_by_user_id=root))
+    store.put_user(replace(store.get_user(grandchild), invited_by_user_id=child))
+    assert not rebuild(store, run_id="referrals", max_records=1)["complete"]
+    with pytest.raises(ValueError):
+        report(store)
+    _run_until_complete(rebuild, store=store, run_id="referrals", max_records=1)
+    _, job, _ = report(store)
+    assert job["summary"] == {
+        "users": 3,
+        "invited_users": 2,
+        "inviters": 2,
+        "biggest_tree": 3,
+        "longest_chain": 2,
+        "cycles_broken": 0,
+    }
+    first = users(store, limit=1)
+    assert first["items"][0]["id"] == root and first["items"][0]["total_invites"] == 2
+    assert users(store, parent_id=root)["items"][0]["id"] == child
+    assert users(store, q="grand")["items"][0]["id"] == grandchild
+    assert (
+        users(store, q=store.get_user(child).referral_code)["items"][0]["id"] == child
+    )
+    with pytest.raises(ValueError):
+        users(store, parent_id=child, cursor=first["next_cursor"])
+    assert api.ok("GET", "/v2/admin/referrals/summary")["summary"]["users"] == 3
+    assert (
+        api.ok("GET", "/v2/admin/referrals/users", params={"parent_id": root})["items"][
+            0
+        ]["id"]
+        == child
+    )
+
+
+def test_referral_report_breaks_cycles_without_changing_source_users(store):
+    from game_platform.scaling_referrals import rebuild, report, users
+
+    api = api_for(store)
+    a, b = api.new_user("a"), api.new_user("b")
+    store.put_user(replace(store.get_user(a), invited_by_user_id=b))
+    store.put_user(replace(store.get_user(b), invited_by_user_id=a))
+    _run_until_complete(rebuild, store=store, run_id="cycle", max_records=1)
+    _, job, _ = report(store)
+    assert job["summary"]["cycles_broken"] == 1
+    assert job["summary"]["biggest_tree"] == 2
+    assert len(users(store, parent_id="")["items"]) == 1
+    assert store.get_user(a).invited_by_user_id == b
+    assert store.get_user(b).invited_by_user_id == a

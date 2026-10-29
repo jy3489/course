@@ -51,6 +51,7 @@ MERGE_STAGES = (
     "push_subscriptions",
     "invites",
     "experiment_assignments",
+    "libraries",
     "finalize",
 )
 
@@ -64,6 +65,7 @@ DELETE_STAGES = (
     "invitees",
     "experiment_assignments",
     "experiment_events",
+    "libraries",
     "finalize",
 )
 
@@ -294,6 +296,12 @@ class _SharedActiveMatch(Exception):
 
 
 def _merge_stage_plan(stage, source_id, into_id):
+    if stage == "libraries":
+        return (
+            stage,
+            [("user_id", "==", source_id)],
+            lambda store, record: _merge_library(store, record, source_id, into_id),
+        )
     if stage == "experiment_assignments":
         return (
             stage,
@@ -372,6 +380,17 @@ def _merge_assignment(store, record, source_id, into_id):
     )
 
 
+def _merge_library(store, record, source_id, into_id):
+    from game_platform.scaling_library import identity
+
+    if record.user_id != source_id:
+        return
+    target = identity(into_id, record.game_id)
+    if store._get("libraries", target) is None:
+        store._put("libraries", target, replace(record, user_id=into_id))
+    store._delete("libraries", identity(source_id, record.game_id))
+
+
 def _merge_match(store, record, source_id, into_id):
     updated = record
     if record.owner_user_id == source_id:
@@ -444,7 +463,10 @@ def _merge_finalize(store, job):
     into = replace(
         into,
         token_balance=into.token_balance + source.token_balance,
-        last_token_grant_day=max(filter(None, (into.last_token_grant_day, source.last_token_grant_day)), default=None),
+        last_token_grant_day=max(
+            filter(None, (into.last_token_grant_day, source.last_token_grant_day)),
+            default=None,
+        ),
         linked_accounts=(*into.linked_accounts, *moved),
         replaced_user_ids=_dedupe((*into.replaced_user_ids, *absorbed)),
         saved_game_ids=_dedupe((*into.saved_game_ids, *source.saved_game_ids)),
@@ -692,6 +714,18 @@ def _delete_leave_record(store, ref, state, user_id, platform):
 
 
 def _delete_stage_plan(stage, user_id):
+    if stage == "libraries":
+        from game_platform.scaling_library import identity
+
+        return (
+            stage,
+            [("user_id", "==", user_id)],
+            lambda store, record, state: (
+                store._delete(stage, identity(user_id, record.game_id))
+                if record.user_id == user_id
+                else None
+            ),
+        )
     if stage in ("experiment_assignments", "experiment_events"):
 
         def remove(store, record, state):

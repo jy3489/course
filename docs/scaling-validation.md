@@ -75,14 +75,15 @@ Ian's current demo configuration uses snapshot mode. Run the benchmark from a
 separate machine against an explicitly isolated deployment. Keep the same dataset,
 mix and stages when comparing instances, and record the results and write budget.
 The example exercises first-page reads only; it does not measure writes, full
-pagination, realistic user activity, or peak capacity. No staged cloud benchmark
-has yet been run with this mix.
+pagination, realistic user activity, or peak capacity. A subsequent staged cloud
+run is recorded below and in `portal-http-benchmark.json`.
 
 ## Outstanding operational steps
 
 The temporary `game-platform-scaling-a` and `game-platform-scaling-b` services
 were stopped after testing; the shared `game-platform-scaling` demo remains active.
-Remote log collection and process RSS measurement remain outstanding.
+The subsequent private portal harness's measured peak cgroup memory was
+85,880,832 bytes. This does not measure production or a sustained large workload.
 
 Full migration reconciliation, recovery/rollback rehearsal, sustained load,
 larger capacity milestones and the remaining feature gates are still outstanding.
@@ -134,12 +135,71 @@ storage pagination. Added query-store persistence/migration for experiments,
 assignments and events; maintenance jobs preserve assignments on merge and
 remove user-owned experiment records on deletion. Signup event deduplication
 uses direct IDs, and match-start attribution queries only the relevant users.
-The experiment aggregate report still uses the bounded legacy adapter and needs
-an offline scalable reporting path once it exceeds 100 records; storage stats
-remain available if that independent experiment report fails.
+The experiment aggregate report initially used the bounded legacy adapter. The
+subsequent offline report described below replaces that aggregate path.
 
 Local verification: full backend suite with the emulator enabled, 538 passed;
 final emulator suite, 29 passed; web unit suite, 152 passed; desktop/mobile
 Playwright scaling and experiment integration checks, 6 passed. The flaky
 invite-cycle fixture now uses a controlled clock. CI runs on pull requests and
 pushes to main, avoiding duplicate push/PR runs on feature-branch updates.
+
+## Portal activity and bounded reports (October 29, latest)
+
+The required synthetic month was exercised through the actual portal on the
+separate named cloud database, namespace `scaling_v1`. The completed run created
+44 guest accounts and 30 completed matches across September 1–30: 14 two-human
+matches and 16 human-versus-computer matches, including 7 early departures.
+There were 372 UI actions and 192 committed moves (136 human, 56 computer),
+with zero page errors, server 5xx responses or failed actions. Games were exact
+copies of shipped sources; no AI/model API was called. A second two-day run
+created four guests through referral links, producing a three-level chain.
+See `portal-activity.md`, `portal-activity-cloud.json` and
+`portal-friends-cloud.json` for reproducible steps and sanitized evidence.
+
+Ian's actual `scale_benchmark.py` exercised health, paged catalog and authenticated
+match reads against the same test deployment through a private SSH tunnel.
+At 1/2/4 concurrent clients, throughput was 6.7/13.4/19.4 requests per second,
+p95 latency was 187.70/205.23/263.81 ms, and there were zero request errors.
+Each stage lasted ten seconds. This short remote read benchmark is not a peak
+capacity or sustained production load result; its full output is in
+`portal-http-benchmark.json`. The private harness was stopped afterward, while
+the existing shared demo service remained active.
+
+Saved libraries now use individual records, including resumable migration and
+merge/deletion handling. A/B reports use persistent distinct-user markers;
+referral reports use a persistent leaf queue with paged leaderboard, children
+and search. All report builders require stopped source writers and publish only
+complete snapshots. Historical activity dashboards can explicitly anchor their
+30-day window to September 30 rather than the real date.
+
+Final verification results and the completed cloud report snapshots are recorded
+with the follow-up validation below. The 10-million-user, billion-match,
+100,000-game target has not been physically demonstrated. That larger paid run
+requires an approved spending cap and staged capacity gates.
+
+Cloud follow-up: all 13 composite indexes and 60 field overrides finished ready.
+The offline reports completed against 170 users, 73 live games, 1,137 matches
+and 2,413 moves. The referral snapshot correctly reports three inviters, three
+invited users, longest chain 3 and biggest tree 4. Every match history was then
+validated across all 12 pages; summed match/move totals matched the sharded
+counters. See `portal-cloud-dashboards.json` and
+`portal-cloud-history-validation.json`.
+
+Final backend regression: 548 passed with the emulator enabled. Web unit tests:
+152 passed. Full desktop/mobile browser regression: 76 passed, 1 skipped with
+two workers. A preceding run with default local parallelism timed out once in
+the pagination scenario; ten repeated desktop/mobile runs then passed, followed
+by the complete bounded-concurrency suite. Marcelle's newly merged generator
+unit/control tests passed 24 tests; its real-browser compatibility rehearsal
+is separate from the cloud month fixture.
+
+The completed two-minute real-browser compatibility run of Marcelle's generator
+against the isolated emulator harness recorded four guest accounts, one referral
+signup, six created matches, 23 moves, three departures and two speed matches,
+with zero errors. Its generic click adapter gave up on three turns and left;
+this is recorded as `couldnt_move`, not hidden as a completed game. Counters
+come from her generator and are not identical to the deterministic runner's
+server-verified completed-match counts. The sanitized health snapshot is
+`portal-live-generator-emulator.json`. An initial rehearsal found the harness's
+missing referral redirect; the final result follows that repair.

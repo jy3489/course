@@ -132,6 +132,58 @@ class ScalablePlatform(GamePlatform):
             "snapshot export is disabled in query mode; use the streaming export command"
         )
 
+    def set_saved_game(self, *, caller_id, game_id, saved):
+        from game_platform.scaling_library import LibraryEntry, identity
+
+        with self._store.atomic():
+            user = self._require_user(caller_id)
+            if user.saved_game_ids:
+                raise ConflictError(
+                    "normalize this legacy library with the offline libraries command first"
+                )
+            key = identity(caller_id, game_id)
+            if saved:
+                game = self._get_live_game(game_id)
+                if not game.published and game.owner_user_id != caller_id:
+                    raise NotFoundError("game not found")
+                if self._store._get("libraries", key) is None:
+                    self._store._put(
+                        "libraries",
+                        key,
+                        LibraryEntry(
+                            user_id=caller_id, game_id=game_id, saved_at=self._clock()
+                        ),
+                    )
+            elif self._store._get("libraries", key) is not None:
+                self._store._delete("libraries", key)
+
+    def _saved_games(self, user):
+        if user.saved_game_ids:
+            raise ConflictError(
+                "normalize this legacy library with the offline libraries command first"
+            )
+        games = [
+            self._store.get_game(entry.game_id)
+            for entry in self._store._list("libraries", [("user_id", "==", user.id)])
+        ]
+        return [
+            game
+            for game in games
+            if game
+            and not game.deleted
+            and (game.published or game.owner_user_id == user.id)
+        ]
+
+    def save_game(self, *, caller_id, game_id):
+        with self._store.atomic():
+            self.set_saved_game(caller_id=caller_id, game_id=game_id, saved=True)
+            return self._saved_games(self._require_user(caller_id))
+
+    def unsave_game(self, *, caller_id, game_id):
+        with self._store.atomic():
+            self.set_saved_game(caller_id=caller_id, game_id=game_id, saved=False)
+            return self._saved_games(self._require_user(caller_id))
+
     def invite_stats(self):
         raise ConflictError(
             "the global referral tree is unavailable in query mode; use paginated referrals or an offline export"
@@ -265,6 +317,16 @@ class ScalablePlatform(GamePlatform):
             "consistency": "shards read independently; near-real-time",
             "snapshot": current(self._store),
         }
+
+    def experiment_stats(self):
+        from game_platform.scaling_experiment_report import current
+
+        report = current(self._store)
+        if report is None:
+            raise ConflictError(
+                "build an offline experiment-dashboard report before viewing experiment statistics"
+            )
+        return report
 
     def run_due_jobs(self, limit=10):
         from google.cloud.firestore_v1.base_query import FieldFilter
