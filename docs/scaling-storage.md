@@ -170,10 +170,23 @@ explicit named test database. CI includes a dedicated emulator workflow.
 
 This release is not yet a replacement for every snapshot-mode feature:
 
-* Account merging and bulk account deletion are rejected before mutation. Their
-  resumable identity/access migration workflows and compatible client flows
-  remain to be implemented. This also affects signing in when two existing
-  accounts need merging.
+* Account merging and account deletion do not run inside HTTP requests in
+  query mode; the service rejects them before mutation and points at the
+  resumable maintenance jobs in `scaling_accounts.py`. With source writers
+  stopped, run `scaling_tools merge --run-id RUN --from-user SRC --into-user DST`
+  or `scaling_tools delete-user --run-id RUN --user-id UID` (along with the
+  normal project/database/namespace flags) repeatedly until `complete` is
+  true. Each run rewrites a bounded number of records, one record and its
+  progress checkpoint per transaction, and resumes by run ID after a crash.
+  Merge mirrors the snapshot semantics (games, drafts, match seats with
+  stable logic player IDs, move authors, invites, linked-account
+  reservations; the source is marked replaced, never deleted) and refuses
+  before any mutation when both accounts share a match that is not over.
+  Deletion mirrors `admin_delete_user` (owned games soft-deleted, owned
+  matches deleted with their invites, other live matches left through the
+  platform, invitees repointed, reservations released). Compatible client
+  flows for starting these jobs from the UI, and signing in when two existing
+  accounts need merging, remain to be implemented.
 * Saved libraries, invite acceptances, linked-account arrays and some error/context
   endpoints still use bounded legacy representations. Records reject payloads
   above 800 KB; these features need their own child-record and pagination designs.

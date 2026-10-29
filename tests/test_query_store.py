@@ -593,3 +593,110 @@ def test_historical_activity_runs_quickjs_and_resumes_without_duplicates(store):
         if match.moves:
             assert all(move.move is not None for move in match.moves)
             assert match.moves[-1].new_state == match.state
+
+
+def _run_until_complete(fn, **kwargs):
+    result = None
+    for _ in range(1000):
+        result = fn(**kwargs)
+        if result.get("complete") or result.get("failed"):
+            return result
+    raise AssertionError(f"job did not finish: {result}")
+
+
+def test_merge_job_resumes_and_rewrites_everything(store):
+    import datetime as dt
+
+    from game_platform.models import LinkedAccount
+    from game_platform.scaling_accounts import merge_users
+
+    api = api_for(store)
+    alice, bob, carol = api.new_user("alice"), api.new_user("bob"), api.new_user("carol")
+    game = api.new_game(owner=alice)
+    match = api.new_match(owner=alice, game_id=game, joiners=[carol], start=True)
+    assert api.move(match, as_user=alice, next_turn=1, state={"pot": 1}).status_code == 201
+    source = store.get_user(alice)
+    store.put_user(
+        replace(
+            source,
+            invited_by_user_id=carol,
+            linked_accounts=(
+                LinkedAccount(
+                    kind="email",
+                    identifier="alice@example.com",
+                    linked_at=dt.datetime.now(dt.timezone.utc),
+                ),
+            ),
+        )
+    )
+    calls = 0
+    result = None
+    for _ in range(1000):
+        calls += 1
+        result = merge_users(
+            store, run_id="merge-1", source_id=alice, into_id=bob, max_records=1
+        )
+        if result["complete"]:
+            break
+    assert result and result["complete"] and calls > 1  # resumable, not one shot
+    assert store.get_game(game).owner_user_id == bob
+    merged = store.get_match(match)
+    seat = merged.seat_of(bob)
+    assert seat is not None and seat.logic_player_id == alice
+    assert merged.seat_of(alice) is None and merged.owner_user_id == bob
+    assert [move.made_by_user_id for move in merged.moves] == [bob]
+    assert store.get_user(alice).replaced_by_user_id == bob
+    assert store.get_user(alice).linked_accounts == ()
+    survivor = store.get_user(bob)
+    assert [a.identifier for a in survivor.linked_accounts] == ["alice@example.com"]
+    assert survivor.invited_by_user_id == carol
+    assert store.find_linked_account("email", "alice@example.com").id == bob
+    # A completed job is a no-op when re-run.
+    assert merge_users(store, run_id="merge-1", max_records=1)["processed"] == 0
+
+
+def test_merge_job_waits_for_shared_active_match_without_mutating(store):
+    from game_platform.scaling_accounts import merge_users
+
+    api = api_for(store)
+    alice, bob = api.new_user("alice"), api.new_user("bob")
+    game = api.new_game(owner=alice)
+    api.new_match(owner=alice, game_id=game, joiners=[bob], start=True)
+    result = _run_until_complete(
+        merge_users, store=store, run_id="merge-2", source_id=alice, into_id=bob,
+        max_records=3,
+    )
+    assert result["failed"] == "shared_active_match"
+    assert store.get_game(game).owner_user_id == alice
+    assert store.get_user(alice).replaced_by_user_id is None
+
+
+def test_delete_job_resumes_and_removes_the_user(store):
+    from game_platform.scaling_accounts import delete_user
+
+    api = api_for(store)
+    carol, dave, erin = api.new_user("carol"), api.new_user("dave"), api.new_user("erin")
+    game = api.new_game(owner=carol)
+    owned_match = api.new_match(owner=carol, game_id=game)
+    other_game = api.new_game(owner=erin)
+    shared_match = api.new_match(
+        owner=erin, game_id=other_game, joiners=[carol], start=True
+    )
+    store.put_user(replace(store.get_user(dave), invited_by_user_id=carol))
+    code = store.get_user(carol).referral_code
+    platform = ScalablePlatform(store=store, computer_move_delay_seconds=0)
+    result = _run_until_complete(
+        delete_user, store=store, run_id="delete-1", user_id=carol,
+        max_records=2, platform=platform,
+    )
+    assert result["complete"]
+    assert store.get_user(carol) is None
+    assert store.get_game(game).deleted
+    assert store.get_match(owned_match) is None
+    # Carol leaving Erin's live match ends it (the game forbids mid-match
+    # leaves), exactly as the snapshot admin deletion does via leave_match.
+    assert store.get_match(shared_match).status == "over"
+    assert store.get_user(dave).invited_by_user_id is None
+    if code:
+        assert store.user_for_referral(code) is None
+    assert delete_user(store, run_id="delete-1", max_records=1)["processed"] == 0

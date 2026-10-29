@@ -105,3 +105,18 @@ account migration/deletion workflows remain disabled and unfinished.
 The subsequent full Linux run passed 490 tests and skipped 33, with one failure:
 the new shared-match merge error lacked translations. Added the message to all
 eight locale catalogs; the complete localization suite then passed 46 tests.
+
+## Account merge / deletion jobs (added later on October 29)
+
+`scaling_accounts.py` implements the resumable merge and deletion workflows
+that the first release rejected in-request. Emulator tests cover a merge
+resumed one record at a time (games, match seats with stable logic player
+IDs, move authors, linked-account reservations and the replaced-source
+record), the shared-active-match refusal leaving every record untouched, and
+a deletion resumed two records at a time (owned game soft-deleted, owned
+match deleted, a live match left through the platform, invitees repointed,
+referral reservation released). The full non-emulator backend suite passed
+locally after the change (491 passed, 8 skipped). The emulator workflow in
+CI is the verification of record for these tests; they were not run to
+completion on the author's local VM, whose network intercepts localhost
+HTTP/2 connections to the emulator.
