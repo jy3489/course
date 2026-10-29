@@ -86,6 +86,12 @@ _KINDS: Final = (
     _Kind(field="invites", key=lambda invite: invite.token),
     _Kind(field="game_version_errors", key=lambda error: error.id),
     _Kind(field="game_test_seeds", key=lambda record: record.game_id),
+    _Kind(field="experiments", key=lambda experiment: experiment.id),
+    _Kind(
+        field="experiment_assignments",
+        key=lambda assignment: f"{assignment.user_id}@{assignment.experiment_id}",
+    ),
+    _Kind(field="experiment_events", key=lambda event: event.id),
 )
 assert {kind.field for kind in _KINDS} == {
     field.name for field in dataclasses.fields(Snapshot)
@@ -112,8 +118,24 @@ _ITEM_ADAPTERS: Final = {
 def _sorted_like_in_memory_store(snapshot_fields: dict[str, list[Any]]) -> None:
     """Puts loaded records back in the order [InMemoryStore] lists them (insertion
     order, which follows creation times), since Firestore returns documents by id."""
-    for field in ("users", "matches", "game_drafts", "push_subscriptions"):
+    for field in (
+        "users",
+        "matches",
+        "game_drafts",
+        "push_subscriptions",
+        "experiments",
+    ):
         snapshot_fields[field].sort(key=_created)
+    snapshot_fields["experiment_assignments"].sort(
+        key=lambda assignment: (
+            assignment.assigned_at,
+            assignment.user_id,
+            assignment.experiment_id,
+        )
+    )
+    snapshot_fields["experiment_events"].sort(
+        key=lambda event: (event.occurred_at, event.id)
+    )
     snapshot_fields["invites"].sort(key=lambda invite: (invite.created_at, invite.token))
     first_created = {
         game.id: game.created_at

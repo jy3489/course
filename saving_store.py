@@ -13,6 +13,9 @@ import threading
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
+    Experiment,
+    ExperimentAssignment,
+    ExperimentEvent,
     Game,
     GameDraft,
     GameTestSeeds,
@@ -291,4 +294,53 @@ class SavingStore:
     def delete_invite(self, token: str) -> None:
         with self._lock:
             self._inner.delete_invite(token)
+            self._set_dirty()
+
+    def put_experiment(self, experiment: Experiment) -> None:
+        with self._lock:
+            self._inner.put_experiment(experiment)
+            self._set_dirty()
+
+    def list_experiments(self) -> list[Experiment]:
+        with self._lock:
+            return self._inner.list_experiments()
+
+    def put_experiment_assignment(self, assignment: ExperimentAssignment) -> None:
+        with self._lock:
+            self._inner.put_experiment_assignment(assignment)
+            self._set_dirty()
+
+    def get_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None:
+        with self._lock:
+            return self._inner.get_experiment_assignment(
+                user_id=user_id, experiment_id=experiment_id
+            )
+
+    def list_experiment_assignments(self) -> list[ExperimentAssignment]:
+        with self._lock:
+            return self._inner.list_experiment_assignments()
+
+    def delete_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> None:
+        with self._lock:
+            self._inner.delete_experiment_assignment(
+                user_id=user_id, experiment_id=experiment_id
+            )
+            self._set_dirty()
+
+    def put_experiment_event(self, event: ExperimentEvent) -> None:
+        with self._lock:
+            self._inner.put_experiment_event(event)
+            self._set_dirty()
+
+    def list_experiment_events(self) -> list[ExperimentEvent]:
+        with self._lock:
+            return self._inner.list_experiment_events()
+
+    def delete_experiment_event(self, event_id: str) -> None:
+        with self._lock:
+            self._inner.delete_experiment_event(event_id)
             self._set_dirty()

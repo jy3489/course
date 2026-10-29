@@ -1229,6 +1229,45 @@ class ReferralsOut(BaseModel):
     invites: list[InviteOut]
 
 
+class ExperimentVariantCreate(_Request):
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+    key: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+            max_length=50,
+            pattern=r"^[a-z0-9][a-z0-9-]*$",
+        ),
+    ]
+
+
+class CampaignLinkCreate(ExperimentVariantCreate):
+    budget_usd: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] = 100
+
+
+class CampaignSpendUpdate(_Request):
+    spend_usd: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+
+
+class ExperimentActiveUpdate(_Request):
+    active: StrictBool
+
+
+class ExperimentVariantOut(BaseModel):
+    variant_id: str
+    name: str
+    key: str
+
+
+class SkinAssignmentOut(BaseModel):
+    variant_id: str
+    name: str
+    key: str
+
+
 class HealthOut(BaseModel):
     """For uptime checks and load balancers: 200 with "ok", or 503 with "degraded"."""
 

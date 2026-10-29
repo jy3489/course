@@ -11,6 +11,9 @@ from typing import Protocol
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
+    Experiment,
+    ExperimentAssignment,
+    ExperimentEvent,
     Game,
     GameDraft,
     GameTestSeeds,
@@ -137,6 +140,28 @@ class Store(Protocol):
 
     def delete_invite(self, token: str) -> None: ...
 
+    def put_experiment(self, experiment: Experiment) -> None: ...
+
+    def list_experiments(self) -> list[Experiment]: ...
+
+    def put_experiment_assignment(self, assignment: ExperimentAssignment) -> None: ...
+
+    def get_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None: ...
+
+    def list_experiment_assignments(self) -> list[ExperimentAssignment]: ...
+
+    def delete_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> None: ...
+
+    def put_experiment_event(self, event: ExperimentEvent) -> None: ...
+
+    def list_experiment_events(self) -> list[ExperimentEvent]: ...
+
+    def delete_experiment_event(self, event_id: str) -> None: ...
+
 
 @dataclass(frozen=True, kw_only=True)
 class Snapshot:
@@ -164,6 +189,10 @@ class Snapshot:
     # Optional so existing data files load without a migration. Failed
     # random-walk test seeds per game, replayed as regression seeds.
     game_test_seeds: tuple[GameTestSeeds, ...] = ()
+    # Optional so existing data files load without an experiment framework.
+    experiments: tuple[Experiment, ...] = ()
+    experiment_assignments: tuple[ExperimentAssignment, ...] = ()
+    experiment_events: tuple[ExperimentEvent, ...] = ()
 
 
 class InMemoryStore:
@@ -185,6 +214,9 @@ class InMemoryStore:
         self._invites: dict[str, Invite] = {}
         self._game_version_errors: list[GameVersionError] = []
         self._game_test_seeds: dict[str, GameTestSeeds] = {}
+        self._experiments: dict[str, Experiment] = {}
+        self._experiment_assignments: dict[tuple[str, str], ExperimentAssignment] = {}
+        self._experiment_events: dict[str, ExperimentEvent] = {}
 
     @classmethod
     def of_snapshot(cls, snapshot: Snapshot) -> "InMemoryStore":
@@ -208,6 +240,12 @@ class InMemoryStore:
         store._game_version_errors.extend(snapshot.game_version_errors)
         for record in snapshot.game_test_seeds:
             store.put_game_test_seeds(record)
+        for experiment in snapshot.experiments:
+            store.put_experiment(experiment)
+        for assignment in snapshot.experiment_assignments:
+            store.put_experiment_assignment(assignment)
+        for event in snapshot.experiment_events:
+            store.put_experiment_event(event)
         return store
 
     def snapshot(self) -> Snapshot:
@@ -229,7 +267,43 @@ class InMemoryStore:
             invites=tuple(self._invites.values()),
             game_version_errors=tuple(self._game_version_errors),
             game_test_seeds=tuple(self._game_test_seeds.values()),
+            experiments=tuple(self._experiments.values()),
+            experiment_assignments=tuple(self._experiment_assignments.values()),
+            experiment_events=tuple(self._experiment_events.values()),
         )
+
+    def put_experiment(self, experiment: Experiment) -> None:
+        self._experiments[experiment.id] = experiment
+
+    def list_experiments(self) -> list[Experiment]:
+        return list(self._experiments.values())
+
+    def put_experiment_assignment(self, assignment: ExperimentAssignment) -> None:
+        self._experiment_assignments[
+            (assignment.user_id, assignment.experiment_id)
+        ] = assignment
+
+    def get_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None:
+        return self._experiment_assignments.get((user_id, experiment_id))
+
+    def list_experiment_assignments(self) -> list[ExperimentAssignment]:
+        return list(self._experiment_assignments.values())
+
+    def delete_experiment_assignment(
+        self, *, user_id: str, experiment_id: str
+    ) -> None:
+        self._experiment_assignments.pop((user_id, experiment_id), None)
+
+    def put_experiment_event(self, event: ExperimentEvent) -> None:
+        self._experiment_events[event.id] = event
+
+    def list_experiment_events(self) -> list[ExperimentEvent]:
+        return list(self._experiment_events.values())
+
+    def delete_experiment_event(self, event_id: str) -> None:
+        self._experiment_events.pop(event_id, None)
 
     def put_user(self, user: User) -> None:
         self._users[user.id] = user

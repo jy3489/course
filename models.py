@@ -20,6 +20,10 @@ EndReason = Literal["finished", "player_left", "timed_out"]
 
 
 LinkedAccountKind = Literal["google", "phone", "email"]
+ExperimentKind = Literal["skin", "campaign"]
+ExperimentEventKind = Literal[
+    "click", "signup", "match_start", "returning_active"
+]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -82,6 +86,46 @@ class User:
     last_token_grant_day: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExperimentVariant:
+    id: str
+    name: str
+    key: str
+    budget_usd: float | None = None
+    spend_usd: float = 0.0
+
+
+@dataclass(frozen=True, kw_only=True)
+class Experiment:
+    id: str
+    name: str
+    kind: ExperimentKind
+    active: bool
+    variants: tuple[ExperimentVariant, ...]
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExperimentAssignment:
+    user_id: str
+    experiment_id: str
+    variant_id: str
+    assigned_at: dt.datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExperimentEvent:
+    id: str
+    experiment_id: str
+    variant_id: str
+    kind: ExperimentEventKind
+    user_id: str | None
+    occurred_at: dt.datetime
+    match_id: str | None = None
+    count: int = 1
 
 
 @dataclass(frozen=True, kw_only=True)

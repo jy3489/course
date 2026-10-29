@@ -13,6 +13,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Game platform · Statistics</title>
     <link rel="stylesheet" href="/static/common.css?v=8" />
+    <link rel="stylesheet" href="/static/experiments.css?v=1" />
     <script>
       // Framed mode for the /admin tabs: hide this page's own top bar.
       if (new URLSearchParams(location.search).has("frame")) {
@@ -153,6 +154,53 @@
       #error {
         color: var(--color-error);
       }
+
+      .table-scroll {
+        overflow-x: auto;
+      }
+
+      .experiment-results {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .experiment-panel {
+        min-width: 0;
+      }
+
+      .experiment-manager {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: var(--space-md);
+        margin-top: var(--space-md);
+      }
+
+      .experiment-form {
+        display: grid;
+        gap: var(--space-sm);
+        padding: var(--space-md);
+        background: var(--color-bg-1);
+        border: 1px solid var(--color-border-2);
+        border-radius: var(--radius-md);
+      }
+
+      .experiment-form label {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .experiment-form [role="status"] {
+        overflow-wrap: anywhere;
+      }
+
+      .spend-form {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+      }
+
+      .spend-form input {
+        width: 90px;
+      }
     </style>
   </head>
   <body>
@@ -173,6 +221,7 @@
       <div id="content"></div>
     </main>
     <script src="/static/common.js?v=2"></script>
+    <script src="/static/experiments.js?v=1"></script>
     <script src="/static/stats.js?v=3"></script>
   </body>
 </html>

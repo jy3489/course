@@ -36,6 +36,8 @@ from game_platform.schemas import (
     RefactorGameResultOut,
     RefactorJobOut,
     CatalogOut,
+    CampaignLinkCreate,
+    CampaignSpendUpdate,
     LocaleOut,
     LocalesOut,
     AgentChatResponse,
@@ -43,6 +45,8 @@ from game_platform.schemas import (
     AuthConfigOut,
     AuthResponse,
     EmailStart,
+    ExperimentActiveUpdate,
+    ExperimentVariantCreate,
     GameCreate,
     GameDraftSave,
     GameDraftPublish,
@@ -73,6 +77,7 @@ from game_platform.schemas import (
     PushConfigOut,
     PushSubscribe,
     PushSubscriptionOut,
+    SkinAssignmentOut,
     QuickMatchRequest,
     ReferralsOut,
     UserCreate,
@@ -83,6 +88,8 @@ from game_platform.schemas import (
     VerifyCode,
 )
 from game_platform.service import (
+    CAMPAIGN_EXPERIMENT_ID,
+    SKIN_EXPERIMENT_ID,
     UNSET,
     VERIFICATION_TTL_SECONDS,
     ConflictError,
@@ -166,6 +173,15 @@ def health(platform: Platform, request: Request, response: Response) -> HealthOu
     )
 
 
+@router.get("/c/{campaign_code}")
+def campaign_link(platform: Platform, campaign_code: str) -> RedirectResponse:
+    platform.record_campaign_click(campaign_code=campaign_code)
+    return RedirectResponse(
+        f"/portal?{urlencode({'campaign': campaign_code})}",
+        status_code=HTTPStatus.FOUND,
+    )
+
+
 def _match_out(
     platform: GamePlatform, match: Match, caller_id: str | None = None
 ) -> MatchOut:
@@ -182,7 +198,11 @@ def _match_out(
 
 
 @router.post("/users", status_code=HTTPStatus.CREATED)
-def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
+def create_user(
+    platform: Platform,
+    body: UserCreate,
+    x_campaign_code: Annotated[str | None, Header()] = None,
+) -> UserWithPasswordOut:
     """Returns the new user's password, which authenticated requests need. Apart from
     the debug tools, this is the only place the API returns it."""
     user = platform.create_user(
@@ -190,6 +210,7 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
         locale=body.locale,
         invited_by_user_id=body.invited_by_user_id,
         invite_token=body.invite_token,
+        campaign_code=x_campaign_code,
     )
     return UserWithPasswordOut.of_user(user)
 
@@ -201,6 +222,18 @@ def create_user(platform: Platform, body: UserCreate) -> UserWithPasswordOut:
 def list_saved_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
     """The caller's library of saved games, most recently saved first."""
     return [GameOut.of(g) for g in platform.list_saved_games(caller_id=caller_id)]
+
+
+@router.get("/users/me/experiments/skin")
+def user_skin_assignment(
+    platform: Platform, caller_id: CallerId
+) -> SkinAssignmentOut | None:
+    variant = platform.assign_skin(user_id=caller_id)
+    if variant is None:
+        return None
+    return SkinAssignmentOut(
+        variant_id=variant.id, name=variant.name, key=variant.key
+    )
 
 
 @router.put("/users/me/saved-games/{game_id}")
@@ -309,6 +342,7 @@ def _login_or_link(
     picture_url: str = "",
     as_user_id: str | None,
     invited_by_user_id: str | None = None,
+    campaign_code: str | None = None,
 ) -> AuthResponse:
     user, merged_from = platform.login_with_linked_account(
         kind=kind,
@@ -318,6 +352,7 @@ def _login_or_link(
         picture_url=picture_url,
         as_user_id=as_user_id,
         invited_by_user_id=invited_by_user_id,
+        campaign_code=campaign_code,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -328,6 +363,7 @@ def auth_google(
     request: Request,
     caller_id: OptionalCallerId,
     body: GoogleLogin,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     """Logs in with a Google ID token from the website's Sign in with Google button.
     Pass the caller's headers to link Google to the current account instead."""
@@ -351,6 +387,7 @@ def auth_google(
         picture_url=picture_url,
         as_user_id=caller_id,
         invited_by_user_id=body.invited_by_user_id,
+        campaign_code=x_campaign_code,
     )
 
 
@@ -398,7 +435,8 @@ def phone_start(
 @auth_router.post("/phone/verify")
 def phone_verify(
     platform: Platform, request: Request,
-    caller_id: OptionalCallerId, body: VerifyCode
+    caller_id: OptionalCallerId, body: VerifyCode,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     if _auth_config_of(request).sms.provider == "verify":
         number = platform.pending_external_phone(body.verification_id)
@@ -420,6 +458,7 @@ def phone_verify(
             display_name=body.display_name,
             as_user_id=caller_id,
             invited_by_user_id=body.invited_by_user_id,
+            campaign_code=x_campaign_code,
         )
     else:
         user, merged_from = platform.verify_code(
@@ -428,6 +467,7 @@ def phone_verify(
             display_name=body.display_name,
             as_user_id=caller_id,
             invited_by_user_id=body.invited_by_user_id,
+            campaign_code=x_campaign_code,
         )
     return AuthResponse.of(
         user, merged_from_user_id=merged_from
@@ -458,7 +498,10 @@ def email_start(
 
 @auth_router.post("/email/verify")
 def email_verify(
-    platform: Platform, caller_id: OptionalCallerId, body: VerifyCode
+    platform: Platform,
+    caller_id: OptionalCallerId,
+    body: VerifyCode,
+    x_campaign_code: Annotated[str | None, Header()] = None,
 ) -> AuthResponse:
     """Logs in with an emailed code. Pass the caller's headers to link the address to
     the current account instead."""
@@ -468,6 +511,7 @@ def email_verify(
         display_name=body.display_name,
         as_user_id=caller_id,
         invited_by_user_id=body.invited_by_user_id,
+        campaign_code=x_campaign_code,
     )
     return AuthResponse.of(user, merged_from_user_id=merged_from)
 
@@ -1148,6 +1192,92 @@ def all_data(platform: Platform) -> AllDataOut:
 def admin_stats(platform: Platform) -> dict[str, JsonValue]:
     """Counts about users, games and matches (the backoffice's statistics page)."""
     return platform.stats()
+
+
+@debug_router.get("/admin/experiments", dependencies=[MasterPassword])
+def admin_experiment_stats(platform: Platform) -> dict[str, JsonValue]:
+    return platform.experiment_stats()
+
+
+@debug_router.post(
+    "/admin/experiments/campaign-links",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.CREATED,
+)
+def admin_create_campaign_link(
+    platform: Platform, request: Request, body: CampaignLinkCreate
+) -> dict[str, JsonValue]:
+    _, variant = platform.add_experiment_variant(
+        experiment_id=CAMPAIGN_EXPERIMENT_ID,
+        name=body.name,
+        key=body.key,
+        budget_usd=body.budget_usd,
+    )
+    base_url = (
+        request.app.state.public_base_url.rstrip("/")
+        or str(request.base_url).rstrip("/")
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "key": variant.key,
+        "url": f"{base_url}/c/{variant.key}",
+        "budget_usd": variant.budget_usd,
+    }
+
+
+@debug_router.patch(
+    "/admin/experiments/campaign-links/{variant_id}",
+    dependencies=[MasterPassword],
+)
+def admin_set_campaign_spend(
+    platform: Platform, variant_id: str, body: CampaignSpendUpdate
+) -> dict[str, JsonValue]:
+    variant = platform.set_campaign_spend(
+        variant_id=variant_id, spend_usd=body.spend_usd
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "budget_usd": variant.budget_usd,
+        "spend_usd": variant.spend_usd,
+    }
+
+
+@debug_router.post(
+    "/admin/experiments/skin-variants",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.CREATED,
+)
+def admin_create_skin_variant(
+    platform: Platform, body: ExperimentVariantCreate
+) -> dict[str, JsonValue]:
+    _, variant = platform.add_experiment_variant(
+        experiment_id=SKIN_EXPERIMENT_ID, name=body.name, key=body.key
+    )
+    return {
+        "variant_id": variant.id,
+        "name": variant.name,
+        "key": variant.key,
+    }
+
+
+@debug_router.patch(
+    "/admin/experiments/{experiment_id}",
+    dependencies=[MasterPassword],
+)
+def admin_set_experiment_active(
+    platform: Platform, experiment_id: str, body: ExperimentActiveUpdate
+) -> dict[str, JsonValue]:
+    experiment = platform.set_experiment_active(
+        experiment_id=experiment_id, active=body.active
+    )
+    return {
+        "id": experiment.id,
+        "name": experiment.name,
+        "kind": experiment.kind,
+        "active": experiment.active,
+    }
 
 
 @debug_router.get("/admin/invites", dependencies=[MasterPassword])

@@ -8,6 +8,7 @@ import collections
 import datetime as dt
 import hashlib
 import hmac
+import math
 import re
 import secrets
 import threading
@@ -23,6 +24,12 @@ from game_platform.avatars import random_user_avatar, computer_avatar
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
+    Experiment,
+    ExperimentAssignment,
+    ExperimentEvent,
+    ExperimentEventKind,
+    ExperimentKind,
+    ExperimentVariant,
     Game,
     GameDraft,
     GameRules,
@@ -129,6 +136,34 @@ PLAYER_LEFT_TIME_LIMIT_SECONDS: Final = 2.0
 # How many failed random-walk test seeds are kept per game and replayed
 # first on the next test run (regression seeds, Phase 5).
 MAX_STORED_TEST_SEEDS: Final = 20
+SKIN_EXPERIMENT_ID: Final = "ui-skins"
+CAMPAIGN_EXPERIMENT_ID: Final = "ad-campaigns"
+RETURNING_WINDOW: Final = dt.timedelta(days=7)
+PILOT_SKINS: Final = (
+    ExperimentVariant(id="skin-classic", name="Classic", key="classic"),
+    ExperimentVariant(id="skin-aurora", name="Aurora", key="aurora"),
+    ExperimentVariant(id="skin-sunset", name="Sunset", key="sunset"),
+)
+PILOT_CAMPAIGNS: Final = (
+    ExperimentVariant(
+        id="campaign-students-a",
+        name="Student campaign A",
+        key="students-a",
+        budget_usd=100,
+    ),
+    ExperimentVariant(
+        id="campaign-students-b",
+        name="Student campaign B",
+        key="students-b",
+        budget_usd=100,
+    ),
+    ExperimentVariant(
+        id="campaign-students-c",
+        name="Student campaign C",
+        key="students-c",
+        budget_usd=100,
+    ),
+)
 
 
 def _emulator_roster(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -331,6 +366,517 @@ class GamePlatform:
         self._user_ids_by_code: dict[str, str] = {}
         self._give_missing_referral_codes()
 
+    def _ensure_pilot_experiments(
+        self, *, created_at: dt.datetime | None = None
+    ) -> None:
+        with self._lock:
+            existing = {experiment.id for experiment in self._store.list_experiments()}
+            if SKIN_EXPERIMENT_ID not in existing:
+                now = created_at or self._clock()
+                self._store.put_experiment(
+                    Experiment(
+                        id=SKIN_EXPERIMENT_ID,
+                        name="UI skin pilot",
+                        kind="skin",
+                        active=True,
+                        variants=PILOT_SKINS,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            if CAMPAIGN_EXPERIMENT_ID not in existing:
+                now = created_at or self._clock()
+                self._store.put_experiment(
+                    Experiment(
+                        id=CAMPAIGN_EXPERIMENT_ID,
+                        name="Advertisement campaign pilot",
+                        kind="campaign",
+                        active=True,
+                        variants=PILOT_CAMPAIGNS,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+    def _active_experiment(self, experiment_id: str) -> Experiment:
+        self._ensure_pilot_experiments()
+        experiment = next(
+            (
+                experiment
+                for experiment in self._store.list_experiments()
+                if experiment.id == experiment_id
+            ),
+            None,
+        )
+        if experiment is None:
+            raise NotFoundError("experiment not found")
+        return experiment
+
+    def list_experiments(self) -> list[Experiment]:
+        self._ensure_pilot_experiments()
+        with self._lock:
+            return self._store.list_experiments()
+
+    def set_experiment_active(self, *, experiment_id: str, active: bool) -> Experiment:
+        with self._lock:
+            experiment = self._active_experiment(experiment_id)
+            updated = replace(
+                experiment, active=active, updated_at=self._clock()
+            )
+            self._store.put_experiment(updated)
+            return updated
+
+    def add_experiment_variant(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        key: str,
+        budget_usd: float | None = None,
+    ) -> tuple[Experiment, ExperimentVariant]:
+        with self._lock:
+            experiment = self._active_experiment(experiment_id)
+            if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,49}", key):
+                raise InvalidRequestError(
+                    "variant key must be 1-50 lowercase letters, digits or hyphens"
+                )
+            if any(variant.key == key for variant in experiment.variants):
+                raise ConflictError("a variant with that key already exists")
+            if experiment.kind == "campaign" and (
+                budget_usd is None
+                or not isinstance(budget_usd, (int, float))
+                or isinstance(budget_usd, bool)
+                or not math.isfinite(budget_usd)
+                or budget_usd < 0
+                or budget_usd > 100
+            ):
+                raise InvalidRequestError("campaign budget must be between $0 and $100")
+            variant = ExperimentVariant(
+                id=self._new_id(),
+                name=name.strip(),
+                key=key,
+                budget_usd=budget_usd,
+            )
+            updated = replace(
+                experiment,
+                variants=(*experiment.variants, variant),
+                updated_at=self._clock(),
+            )
+            self._store.put_experiment(updated)
+            return updated, variant
+
+    def set_campaign_spend(self, *, variant_id: str, spend_usd: float) -> ExperimentVariant:
+        with self._lock:
+            experiment = self._active_experiment(CAMPAIGN_EXPERIMENT_ID)
+            variant = next(
+                (item for item in experiment.variants if item.id == variant_id), None
+            )
+            if variant is None:
+                raise NotFoundError("campaign link not found")
+            if (
+                not isinstance(spend_usd, (int, float))
+                or isinstance(spend_usd, bool)
+                or not math.isfinite(spend_usd)
+                or spend_usd < 0
+                or (variant.budget_usd is not None and spend_usd > variant.budget_usd)
+            ):
+                raise InvalidRequestError("spend must be between $0 and the campaign budget")
+            updated_variant = replace(variant, spend_usd=float(spend_usd))
+            updated_experiment = replace(
+                experiment,
+                variants=tuple(
+                    updated_variant if item.id == variant_id else item
+                    for item in experiment.variants
+                ),
+                updated_at=self._clock(),
+            )
+            self._store.put_experiment(updated_experiment)
+            return updated_variant
+
+    def assign_skin(
+        self, *, user_id: str, assigned_at: dt.datetime | None = None
+    ) -> ExperimentVariant | None:
+        with self._lock:
+            self._ensure_pilot_experiments(created_at=assigned_at)
+            experiment = self._active_experiment(SKIN_EXPERIMENT_ID)
+            if not experiment.active or not experiment.variants:
+                return None
+            assignment = self._store.get_experiment_assignment(
+                user_id=user_id, experiment_id=experiment.id
+            )
+            by_id = {variant.id: variant for variant in experiment.variants}
+            if assignment is not None and assignment.variant_id in by_id:
+                return by_id[assignment.variant_id]
+            digest = hashlib.sha256(user_id.encode("utf-8")).digest()
+            variant = experiment.variants[
+                int.from_bytes(digest[:8], "big") % len(experiment.variants)
+            ]
+            self._store.put_experiment_assignment(
+                ExperimentAssignment(
+                    user_id=user_id,
+                    experiment_id=experiment.id,
+                    variant_id=variant.id,
+                    assigned_at=assigned_at or self._clock(),
+                )
+            )
+            return variant
+
+    def _record_experiment_event(
+        self,
+        *,
+        experiment_id: str,
+        variant_id: str,
+        kind: ExperimentEventKind,
+        user_id: str | None,
+        match_id: str | None = None,
+        occurred_at: dt.datetime | None = None,
+    ) -> ExperimentEvent:
+        events = self._store.list_experiment_events()
+        duplicate = next(
+            (
+                event
+                for event in events
+                if event.experiment_id == experiment_id
+                and event.variant_id == variant_id
+                and event.kind == kind
+                and event.user_id == user_id
+                and event.match_id == match_id
+            ),
+            None,
+        )
+        if duplicate is not None:
+            return duplicate
+        event = ExperimentEvent(
+            id=self._new_id(),
+            experiment_id=experiment_id,
+            variant_id=variant_id,
+            kind=kind,
+            user_id=user_id,
+            occurred_at=occurred_at or self._clock(),
+            match_id=match_id,
+        )
+        self._store.put_experiment_event(event)
+        return event
+
+    def record_campaign_click(self, *, campaign_code: str) -> None:
+        with self._lock:
+            experiment = self._active_experiment(CAMPAIGN_EXPERIMENT_ID)
+            if not experiment.active:
+                raise NotFoundError("campaign link not found")
+            variant = next(
+                (v for v in experiment.variants if v.key == campaign_code), None
+            )
+            if variant is None:
+                raise NotFoundError("campaign link not found")
+            now = self._clock()
+            event_id = f"click:{experiment.id}:{variant.id}:{now.date().isoformat()}"
+            existing = next(
+                (
+                    event
+                    for event in self._store.list_experiment_events()
+                    if event.id == event_id
+                ),
+                None,
+            )
+            if existing is None:
+                self._store.put_experiment_event(
+                    ExperimentEvent(
+                        id=event_id,
+                        experiment_id=experiment.id,
+                        variant_id=variant.id,
+                        kind="click",
+                        user_id=None,
+                        occurred_at=now,
+                    )
+                )
+            else:
+                self._store.put_experiment_event(
+                    replace(existing, count=existing.count + 1)
+                )
+
+    def record_new_user(
+        self,
+        *,
+        user_id: str,
+        campaign_code: str | None,
+        occurred_at: dt.datetime | None = None,
+    ) -> None:
+        with self._lock:
+            self._ensure_pilot_experiments(created_at=occurred_at)
+            variant = self.assign_skin(user_id=user_id, assigned_at=occurred_at)
+            experiment = self._active_experiment(SKIN_EXPERIMENT_ID)
+            if variant is not None:
+                self._record_experiment_event(
+                    experiment_id=experiment.id,
+                    variant_id=variant.id,
+                    kind="signup",
+                    user_id=user_id,
+                    occurred_at=occurred_at,
+                )
+            if campaign_code:
+                campaign = next(
+                    (
+                        item
+                        for item in self._store.list_experiments()
+                        if item.id == CAMPAIGN_EXPERIMENT_ID and item.active
+                    ),
+                    None,
+                )
+                campaign_variant = (
+                    next(
+                        (v for v in campaign.variants if v.key == campaign_code),
+                        None,
+                    )
+                    if campaign is not None
+                    else None
+                )
+                if campaign is not None and campaign_variant is not None:
+                    self._record_experiment_event(
+                        experiment_id=campaign.id,
+                        variant_id=campaign_variant.id,
+                        kind="signup",
+                        user_id=user_id,
+                        occurred_at=occurred_at,
+                    )
+
+    def record_match_start(self, *, user_id: str, match_id: str) -> None:
+        self._ensure_pilot_experiments()
+        with self._lock:
+            now = self._clock()
+            experiments = self._store.list_experiments()
+            skin = next(
+                (experiment for experiment in experiments if experiment.id == SKIN_EXPERIMENT_ID),
+                None,
+            )
+            if skin is not None and skin.active:
+                assignment = self._store.get_experiment_assignment(
+                    user_id=user_id, experiment_id=skin.id
+                )
+                skin_variant = (
+                    next(
+                        (variant for variant in skin.variants if assignment.variant_id == variant.id),
+                        None,
+                    )
+                    if assignment is not None
+                    else self.assign_skin(user_id=user_id, assigned_at=now)
+                )
+                if skin_variant is not None:
+                    self._record_experiment_event(
+                        experiment_id=skin.id,
+                        variant_id=skin_variant.id,
+                        kind="match_start",
+                        user_id=user_id,
+                        match_id=match_id,
+                        occurred_at=now,
+                    )
+            campaign = next(
+                (experiment for experiment in experiments if experiment.id == CAMPAIGN_EXPERIMENT_ID),
+                None,
+            )
+            users = {user.id: user for user in self._store.list_users()}
+            account = users.get(user_id)
+            survivor_ids = {
+                user_id,
+                *(account.replaced_user_ids if account is not None else ()),
+            }
+            events = self._store.list_experiment_events()
+            campaign_signups = (
+                [
+                    event
+                    for event in events
+                    if campaign is not None
+                    and event.experiment_id == campaign.id
+                    and event.kind == "signup"
+                    and event.user_id in survivor_ids
+                ]
+                if campaign is not None
+                else []
+            )
+            campaign_signup = max(
+                campaign_signups, key=lambda event: event.occurred_at, default=None
+            )
+            if campaign_signup is not None:
+                self._record_experiment_event(
+                    experiment_id=campaign.id,
+                    variant_id=campaign_signup.variant_id,
+                    kind="match_start",
+                    user_id=user_id,
+                    match_id=match_id,
+                    occurred_at=now,
+                )
+            signup_experiments = [
+                experiment
+                for experiment in (skin, campaign)
+                if experiment is not None
+            ]
+            for experiment in signup_experiments:
+                if not experiment.active:
+                    continue
+                signup_events = [
+                    event
+                    for event in events
+                    if event.experiment_id == experiment.id
+                    and event.kind == "signup"
+                    and event.user_id in survivor_ids
+                    and event.occurred_at + RETURNING_WINDOW <= now
+                    and event.occurred_at + RETURNING_WINDOW * 2 > now
+                ]
+                if signup_events:
+                    assignment = self._store.get_experiment_assignment(
+                        user_id=user_id, experiment_id=experiment.id
+                    )
+                    if experiment.id == CAMPAIGN_EXPERIMENT_ID:
+                        variant_id = (
+                            campaign_signup.variant_id
+                            if campaign_signup is not None
+                            else signup_events[0].variant_id
+                        )
+                    else:
+                        variant_id = (
+                            assignment.variant_id
+                            if assignment is not None
+                            else signup_events[0].variant_id
+                        )
+                    self._record_experiment_event(
+                        experiment_id=experiment.id,
+                        variant_id=variant_id,
+                        kind="returning_active",
+                        user_id=user_id,
+                        occurred_at=now,
+                    )
+
+    def experiment_stats(self) -> dict[str, JsonValue]:
+        self._ensure_pilot_experiments()
+        with self._lock:
+            experiments = self._store.list_experiments()
+            assignments = self._store.list_experiment_assignments()
+            events = self._store.list_experiment_events()
+            users = self._store.list_users()
+            now = self._clock()
+        user_by_id = {user.id: user for user in users}
+
+        def canonical(user_id: str | None) -> str | None:
+            user = user_by_id.get(user_id or "")
+            return (
+                user.replaced_by_user_id
+                if user is not None and user.replaced_by_user_id
+                else user_id
+            )
+
+        def report(experiment_id: str) -> list[JsonValue]:
+            experiment = next(
+                (item for item in experiments if item.id == experiment_id), None
+            )
+            if experiment is None:
+                return []
+            rows: list[JsonValue] = []
+            for variant in experiment.variants:
+                variant_assignments = [
+                    item
+                    for item in assignments
+                    if item.experiment_id == experiment.id
+                    and item.variant_id == variant.id
+                    and item.user_id in user_by_id
+                    and user_by_id[item.user_id].replaced_by_user_id is None
+                ]
+                variant_events = [
+                    item
+                    for item in events
+                    if item.experiment_id == experiment.id
+                    and item.variant_id == variant.id
+                ]
+                clicks = sum(
+                    item.count for item in variant_events if item.kind == "click"
+                )
+                signups = {
+                    canonical(item.user_id)
+                    for item in variant_events
+                    if item.kind == "signup"
+                } - {None}
+                started = {
+                    canonical(item.user_id)
+                    for item in variant_events
+                    if item.kind == "match_start"
+                } - {None}
+                returns = {
+                    canonical(item.user_id)
+                    for item in variant_events
+                    if item.kind == "returning_active"
+                } - {None}
+                rows.append(
+                    {
+                        "variant_id": variant.id,
+                        "name": variant.name,
+                        "key": variant.key,
+                        "link": f"/c/{variant.key}"
+                        if experiment.kind == "campaign"
+                        else None,
+                        "budget_usd": variant.budget_usd,
+                        "spend_usd": variant.spend_usd,
+                        "assigned": len(variant_assignments),
+                        "clicks": clicks,
+                        "signups": len(signups),
+                        "match_starts": sum(
+                            item.kind == "match_start" for item in variant_events
+                        ),
+                        "users_started_match": len(started),
+                        "returning_active_users": len(returns),
+                        "signup_rate": round(len(signups) * 100 / clicks, 1)
+                        if clicks
+                        else 0,
+                        "match_start_rate": round(len(started) * 100 / len(signups), 1)
+                        if signups
+                        else 0,
+                        "return_rate": round(len(returns) * 100 / len(signups), 1)
+                        if signups
+                        else 0,
+                        "cost_per_signup_usd": round(
+                            variant.spend_usd / len(signups), 2
+                        )
+                        if signups and variant.spend_usd
+                        else None,
+                        "cost_per_match_user_usd": round(
+                            variant.spend_usd / len(started), 2
+                        )
+                        if started and variant.spend_usd
+                        else None,
+                        "cost_per_returning_user_usd": round(
+                            variant.spend_usd / len(returns), 2
+                        )
+                        if returns and variant.spend_usd
+                        else None,
+                    }
+                )
+            return rows
+
+        return {
+            "generated_at": now.isoformat(),
+            "skin_experiment": {
+                "id": SKIN_EXPERIMENT_ID,
+                "name": next(
+                    (item.name for item in experiments if item.id == SKIN_EXPERIMENT_ID),
+                    "UI skin pilot",
+                ),
+                "active": next(
+                    (item.active for item in experiments if item.id == SKIN_EXPERIMENT_ID),
+                    False,
+                ),
+                "variants": report(SKIN_EXPERIMENT_ID),
+            },
+            "campaign_experiment": {
+                "id": CAMPAIGN_EXPERIMENT_ID,
+                "name": next(
+                    (item.name for item in experiments if item.id == CAMPAIGN_EXPERIMENT_ID),
+                    "Advertisement campaign pilot",
+                ),
+                "active": next(
+                    (item.active for item in experiments if item.id == CAMPAIGN_EXPERIMENT_ID),
+                    False,
+                ),
+                "variants": report(CAMPAIGN_EXPERIMENT_ID),
+            },
+        }
+
     # Users
 
     def create_user(
@@ -343,6 +889,7 @@ class GamePlatform:
         locale: str = "",
         invited_by_user_id: str | None = None,
         invite_token: str | None = None,
+        campaign_code: str | None = None,
     ) -> User:
         """[invited_by_user_id] is the user whose invite link brought this one here:
         their 5-digit referral code, or their user id (older links). Each new user
@@ -382,6 +929,11 @@ class GamePlatform:
                 updated_at=now,
             )
             self._store.put_user(user)
+            self.record_new_user(
+                user_id=user.id,
+                campaign_code=campaign_code,
+                occurred_at=user.created_at,
+            )
             return user
 
     def update_user(
@@ -601,6 +1153,7 @@ class GamePlatform:
         display_name: str | None = None,
         as_user_id: str | None = None,
         invited_by_user_id: str | None = None,
+        campaign_code: str | None = None,
     ) -> tuple[User, str | None]:
         with self._lock:
             entry = self._external_phone_pending(verification_id)
@@ -614,6 +1167,7 @@ class GamePlatform:
                 display_name=display_name or entry.identifier,
                 as_user_id=as_user_id,
                 invited_by_user_id=invited_by_user_id,
+                campaign_code=campaign_code,
             )
 
     def verify_code(
@@ -624,6 +1178,7 @@ class GamePlatform:
         display_name: str | None = None,
         as_user_id: str | None = None,
         invited_by_user_id: str | None = None,
+        campaign_code: str | None = None,
     ) -> tuple[User, str | None]:
         """Checks a login code, then logs the owner in (see
         [login_with_linked_account]). Returns (user, merged_from_user_id)."""
@@ -658,6 +1213,7 @@ class GamePlatform:
                 display_name=name,
                 as_user_id=as_user_id,
                 invited_by_user_id=invited_by_user_id,
+                campaign_code=campaign_code,
             )
 
     def login_with_linked_account(
@@ -670,6 +1226,7 @@ class GamePlatform:
         picture_url: str = "",
         as_user_id: str | None = None,
         invited_by_user_id: str | None = None,
+        campaign_code: str | None = None,
     ) -> tuple[User, str | None]:
         """Logs in with a verified Google subject, phone number or email.
 
@@ -698,6 +1255,7 @@ class GamePlatform:
                             picture_url=picture_url.strip(),
                             linked_accounts=(linked,),
                             invited_by_user_id=invited_by_user_id,
+                            campaign_code=campaign_code,
                         ),
                         None,
                     )
@@ -786,6 +1344,18 @@ class GamePlatform:
         if source.id == into.id:
             raise InvalidRequestError("cannot merge a user into itself")
         from_user_id, into_user_id = source.id, into.id
+        for assignment in self._store.list_experiment_assignments():
+            if assignment.user_id != from_user_id:
+                continue
+            if self._store.get_experiment_assignment(
+                user_id=into_user_id, experiment_id=assignment.experiment_id
+            ) is None:
+                self._store.put_experiment_assignment(
+                    replace(assignment, user_id=into_user_id)
+                )
+            self._store.delete_experiment_assignment(
+                user_id=from_user_id, experiment_id=assignment.experiment_id
+            )
         for game in self._store.list_all_game_versions():
             if game.owner_user_id == from_user_id:
                 self._store.put_game_version(
@@ -2180,14 +2750,16 @@ class GamePlatform:
                 # A v2 match starts itself: the game's newMatch decides the
                 # state and the first turn; the client's start values (kept
                 # for v1 games) are ignored.
-                return self._begin_v2_match(match, game)
+                started = self._begin_v2_match(match, game)
+                self.record_match_start(user_id=caller_id, match_id=started.id)
+                return started
             if not first_turn_player_indices:
                 raise InvalidRequestError(
                     "the first turn must name at least one player"
                 )
             self._check_player_indices(match, first_turn_player_indices)
             humans = self._fund_match_tokens(match)
-            return self._save(
+            started = self._save(
                 replace(
                     match,
                     status="ongoing",
@@ -2199,6 +2771,8 @@ class GamePlatform:
                     turn_started_at=self._clock() if match.turn_seconds else None,
                 )
             )
+            self.record_match_start(user_id=caller_id, match_id=started.id)
+            return started
 
     def leave_match(self, *, caller_id: str, match_id: str) -> Match:
         with self._lock:
@@ -3444,6 +4018,17 @@ class GamePlatform:
             # The people this user invited now count as invited by this user's own
             # inviter (or nobody), so everyone above keeps the credit.
             deleted = self._require_user(user_id)
+            deleted_ids = {user_id, *deleted.replaced_user_ids}
+            for account_id in deleted_ids:
+                for assignment in self._store.list_experiment_assignments():
+                    if assignment.user_id == account_id:
+                        self._store.delete_experiment_assignment(
+                            user_id=account_id,
+                            experiment_id=assignment.experiment_id,
+                        )
+                for event in self._store.list_experiment_events():
+                    if event.user_id == account_id:
+                        self._store.delete_experiment_event(event.id)
             new_inviter = self._inviter_of(deleted)
             for user in self._store.list_users():
                 if user.id != user_id and self._inviter_of(user) == user_id:
