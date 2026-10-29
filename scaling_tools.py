@@ -316,7 +316,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["init", "migrate", "seed", "counts", "export", "validate", "cleanup"],
+        choices=[
+            "init",
+            "migrate",
+            "seed",
+            "counts",
+            "export",
+            "validate",
+            "cleanup",
+            "dashboard",
+            "activity",
+        ],
     )
     parser.add_argument("--project", required=True)
     parser.add_argument("--database", required=True)
@@ -342,7 +352,7 @@ def main():
     )
     args = parser.parse_args()
     if (
-        args.command in ("init", "migrate", "seed", "cleanup")
+        args.command in ("init", "migrate", "seed", "cleanup", "dashboard", "activity")
         and args.database == "(default)"
         and not os.environ.get("FIRESTORE_EMULATOR_HOST")
     ):
@@ -361,6 +371,25 @@ def main():
             store,
             source_prefix=args.source_prefix,
         )
+    elif args.command == "activity":
+        if not args.source_writers_stopped:
+            parser.error("historical activity requires stopped destination writers")
+        from game_platform.scaling_activity import generate
+
+        result = generate(
+            store,
+            run_id=args.run_id,
+            users=args.users,
+            games=args.games,
+            matches=args.matches,
+            max_writes=args.max_writes,
+        )
+    elif args.command == "dashboard":
+        if not args.source_writers_stopped:
+            parser.error("dashboard rebuild requires stopped source writers")
+        from game_platform.scaling_dashboard import rebuild
+
+        result = rebuild(store, run_id=args.run_id, max_records=args.limit)
     elif args.command == "seed":
         result = seed(
             store,

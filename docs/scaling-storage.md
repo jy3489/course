@@ -69,8 +69,25 @@ search engine. Legacy lists fail explicitly above 100 records. Legacy unbounded
 history and whole-database HTTP export are disabled in query mode.
 
 Stats reads 64 transactional counter shards and reports near-real-time counts.
-It does not claim a consistent multi-shard snapshot, daily active-user metrics,
-rankings, or a global referral tree.
+The offline `dashboard` command adds a resumable report of total records, moves,
+match statuses and new users/games/matches per day for a fixed 30-day window.
+The stats page displays the report's build time. It does not claim a consistent
+multi-shard snapshot, daily active-user metrics, rankings, or a global referral tree.
+
+With source writers stopped, run `scaling_tools dashboard --run-id REPORT
+--limit 100` repeatedly (along with the normal project/database/namespace flags)
+until `complete` is true. The previous report stays visible until publication.
+Do not resume a report against changed source data. Reports use bounded memory
+and do not fetch match histories. Old report retention needs operator cleanup.
+
+`scaling_tools activity --source-writers-stopped --run-id RUN --users 100
+--games 10 --matches 1000 --max-writes 500000` generates a reproducible September
+2026 month through the real service and QuickJS rules. It includes private invites,
+human/computer mixtures, and waiting/ongoing/completed matches. It is an offline
+historical workload, not browser traffic, and currently uses one synthetic counter
+game family with no stakes or mid-match departures. Each match and its checkpoint
+commit together. Stop destination workers while generating historical jobs. Budget
+estimates are conservative operation estimates, not hard monetary limits.
 
 ## Isolated setup
 
@@ -160,8 +177,9 @@ This release is not yet a replacement for every snapshot-mode feature:
 * Saved libraries, invite acceptances, linked-account arrays and some error/context
   endpoints still use bounded legacy representations. Records reject payloads
   above 800 KB; these features need their own child-record and pagination designs.
-* Daily/game analytics, broad referral traversal and automated reconciliation
-  jobs are not implemented. HTTP global exports are replaced by an offline CLI.
+* Daily creation reports are available as offline snapshots. Per-game analytics,
+  broad referral traversal and automated reconciliation jobs are not implemented.
+  HTTP global exports are replaced by an offline CLI.
 * QuickJS runs inside the semantic transaction. Move computation outside locks,
   with revision revalidation, remains a contention optimization. Job due-time
   indexes and 64 counter shards need measured throughput limits before large

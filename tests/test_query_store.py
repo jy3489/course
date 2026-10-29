@@ -543,3 +543,53 @@ def test_completed_export_detects_same_size_corruption(store, tmp_path):
     path.write_bytes(bytes([data[0] ^ 1]) + data[1:])
     with pytest.raises(ValueError, match="checksum"):
         export_namespace(store, tmp_path)
+
+
+def test_dashboard_rebuild_resumes_and_publishes_only_complete_report(store):
+    from game_platform.scaling_dashboard import rebuild, current
+    from game_platform.scaling_tools import seed
+
+    seed(
+        store,
+        run_id="dashboard",
+        users=2,
+        games=1,
+        matches=3,
+        moves_per_match=2,
+        max_writes=1000,
+    )
+    with patch.object(store, "_read_moves", side_effect=AssertionError("history scan")):
+        result = rebuild(store, run_id="first", max_records=2)
+        assert not result["complete"] and current(store) is None
+        for _ in range(10):
+            result = rebuild(store, run_id="first", max_records=2)
+            assert result["processed"] <= 2
+            if result["complete"]:
+                break
+        assert result["complete"]
+        snapshot = current(store)
+        assert snapshot["counts"]["users"] == 2
+        assert snapshot["counts"]["matches"] == 3
+        assert snapshot["counts"]["moves"] == 6
+        assert rebuild(store, run_id="first", max_records=2)["processed"] == 0
+        rebuild(store, run_id="second", max_records=1)
+        assert current(store) == snapshot
+
+
+def test_historical_activity_runs_quickjs_and_resumes_without_duplicates(store):
+    from game_platform.scaling_activity import generate
+
+    args = dict(run_id="played", users=8, games=2, matches=20, max_writes=20000)
+    result = generate(store, **args)
+    assert result["complete"]
+    counts = store.counts()
+    assert counts["matches_total"] == 20 and counts["moves_total"] > 0
+    assert counts["matches_over"] > 0
+    generate(store, **args)
+    assert store.counts() == counts
+    page = store.page("matches", limit=100)
+    assert all(match.created_at.month == 9 for match in page.items)
+    for match in page.items:
+        if match.moves:
+            assert all(move.move is not None for move in match.moves)
+            assert match.moves[-1].new_state == match.state

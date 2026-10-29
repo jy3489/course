@@ -63,6 +63,7 @@ INTERNAL_COLLECTIONS = frozenset(
         "migration",
         "seed_runs",
         "token_ledger",
+        "dashboard_runs",
     }
 )
 COLLECTIONS = frozenset(TYPES) | INTERNAL_COLLECTIONS

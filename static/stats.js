@@ -187,6 +187,21 @@ async function refresh() {
     if (stats.schema_version === 2) {
       const rows=Object.entries(stats.counts).sort(([a],[b])=>a.localeCompare(b));
       $("content").replaceChildren(table("Database records",["Record type","Count"],rows));
+      if (stats.snapshot) {
+        const snapshot = stats.snapshot;
+        const anchor = new Date(`${snapshot.anchor}T00:00:00Z`);
+        const dates = Array.from({length:30}, (_, i) => {
+          const date = new Date(anchor);
+          date.setUTCDate(date.getUTCDate() - 29 + i);
+          return date.toISOString().slice(0,10);
+        });
+        $("content").append(
+          el("p", {textContent:`Historical report built ${formatTime(snapshot.generated_at)}`}),
+          ...["users", "games", "matches"].map(kind => barChart(
+            `New ${kind} per day`, dates.map(date => ({date, count:snapshot.days[date]?.[kind] ?? 0}))
+          )),
+        );
+      }
     } else render(stats);
     $("freshness").textContent = `Loaded ${formatTime(stats.generated_at)}`;
   } catch (error) {

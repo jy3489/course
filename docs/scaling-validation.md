@@ -86,3 +86,18 @@ Remote log collection and process RSS measurement remain outstanding.
 
 Full migration reconciliation, recovery/rollback rehearsal, sustained load,
 larger capacity milestones and the remaining feature gates are still outstanding.
+
+## Additional October 29 work
+
+A cloud milestone added 1,000 synthetic matches using a 30,000 estimated-write
+budget. At completion the isolated namespace contained 1,104 matches, 2,211 moves,
+114 users and 69 games. Twenty 50-item page reads measured median 40.7 ms and
+p95 51.79 ms; store construction measured 10.19 ms with 16,464 bytes Python
+allocation peak. This is not a load/concurrency or billion-match test.
+
+The new historical service/QuickJS activity generator and resumable dashboard
+publication tests passed with the storage/debug suite (52 passed). The web
+regression suite passed 152 tests. Account tests passed 35 tests, including
+preserving opaque game player IDs after merges and refusing shared active-match
+merges before mutation. These account fixes cover the existing service; query-mode
+account migration/deletion workflows remain disabled and unfinished.

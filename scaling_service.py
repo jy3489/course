@@ -252,11 +252,14 @@ class ScalablePlatform(GamePlatform):
                 logger.exception("push outbox delivery failed: %s", doc.id)
 
     def stats(self):
+        from game_platform.scaling_dashboard import current
+
         return {
             "schema_version": 2,
             "generated_at": self._clock().isoformat(),
             "counts": self._store.counts(),
             "consistency": "shards read independently; near-real-time",
+            "snapshot": current(self._store),
         }
 
     def run_due_jobs(self, limit=10):

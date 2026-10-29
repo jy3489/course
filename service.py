@@ -760,6 +760,9 @@ class GamePlatform:
         if source.id == into.id:
             raise InvalidRequestError("cannot merge a user into itself")
         from_user_id, into_user_id = source.id, into.id
+        for match in self._store.list_matches_involving(from_user_id):
+            if match.status != "over" and match.seat_of(from_user_id) is not None and match.seat_of(into_user_id) is not None:
+                raise ConflictError("wait until shared matches end before merging these accounts")
         for game in self._store.list_all_game_versions():
             if game.owner_user_id == from_user_id:
                 self._store.put_game_version(
@@ -775,7 +778,8 @@ class GamePlatform:
                 updated = replace(
                     updated,
                     seats=tuple(
-                        replace(seat, user_id=into_user_id)
+                        replace(seat, user_id=into_user_id,
+                                logic_player_id=match.player_id_of(seat))
                         if seat.user_id == from_user_id
                         else seat
                         for seat in updated.seats
@@ -2302,7 +2306,7 @@ class GamePlatform:
                 match,
                 "playerLeft",
                 match.state,
-                caller_id,
+                match.player_id_of(self._get_seat(match, caller_id)),
                 time_limit_seconds=PLAYER_LEFT_TIME_LIMIT_SECONDS,
             )
         except InvalidMoveError as error:
@@ -2695,7 +2699,7 @@ class GamePlatform:
             raise ForbiddenError("it is not your turn")
         try:
             result = self._call_logic(
-                game, match, "applyMove", match.state, caller_id, move
+                game, match, "applyMove", match.state, match.player_id_of(seat), move
             )
         except InvalidMoveError as error:
             raise InvalidRequestError(error.message) from error
