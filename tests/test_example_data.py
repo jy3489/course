@@ -10,12 +10,31 @@ from game_platform.tests.helpers import Api
 
 
 def _build() -> Snapshot:
-    return example_data.build(json.loads(example_data.OPERATIONS_FILE.read_text()))
+    return example_data.build(
+        json.loads(example_data.OPERATIONS_FILE.read_text(encoding="utf-8"))
+    )
 
 
 def test_the_example_data_file_is_up_to_date() -> None:
     # Regenerate with: python -m game_platform.example_data
     assert read_snapshot(example_data.DEFAULT_OUTPUT) == _build()
+
+
+def test_example_data_does_not_include_runtime_experiment_tracking() -> None:
+    snapshot = example_data.build(
+        [
+            {
+                "op": "create_user",
+                "id": "user1",
+                "display_name": "user1",
+                "password": "user1",
+            }
+        ]
+    )
+
+    assert snapshot.experiments == ()
+    assert snapshot.experiment_assignments == ()
+    assert snapshot.experiment_events == ()
 
 
 def test_the_example_data_covers_many_match_states() -> None:

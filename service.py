@@ -8,6 +8,7 @@ import collections
 import datetime as dt
 import hashlib
 import hmac
+import json
 import math
 import re
 import secrets
@@ -546,8 +547,13 @@ class GamePlatform:
         )
         if duplicate is not None:
             return duplicate
+        event_identity = json.dumps(
+            [experiment_id, variant_id, kind, user_id, match_id],
+            separators=(",", ":"),
+        )
+        event_id = hashlib.sha256(event_identity.encode()).hexdigest()
         event = ExperimentEvent(
-            id=self._new_id(),
+            id=f"experiment-event:{event_id}",
             experiment_id=experiment_id,
             variant_id=variant_id,
             kind=kind,
@@ -639,10 +645,11 @@ class GamePlatform:
                         occurred_at=occurred_at,
                     )
 
-    def record_match_start(self, *, user_id: str, match_id: str) -> None:
-        self._ensure_pilot_experiments()
+    def record_match_start(
+        self, *, user_id: str, match_id: str, occurred_at: dt.datetime
+    ) -> None:
+        self._ensure_pilot_experiments(created_at=occurred_at)
         with self._lock:
-            now = self._clock()
             experiments = self._store.list_experiments()
             skin = next(
                 (experiment for experiment in experiments if experiment.id == SKIN_EXPERIMENT_ID),
@@ -658,7 +665,9 @@ class GamePlatform:
                         None,
                     )
                     if assignment is not None
-                    else self.assign_skin(user_id=user_id, assigned_at=now)
+                    else self.assign_skin(
+                        user_id=user_id, assigned_at=occurred_at
+                    )
                 )
                 if skin_variant is not None:
                     self._record_experiment_event(
@@ -667,7 +676,7 @@ class GamePlatform:
                         kind="match_start",
                         user_id=user_id,
                         match_id=match_id,
-                        occurred_at=now,
+                        occurred_at=occurred_at,
                     )
             campaign = next(
                 (experiment for experiment in experiments if experiment.id == CAMPAIGN_EXPERIMENT_ID),
@@ -702,7 +711,7 @@ class GamePlatform:
                     kind="match_start",
                     user_id=user_id,
                     match_id=match_id,
-                    occurred_at=now,
+                    occurred_at=occurred_at,
                 )
             signup_experiments = [
                 experiment
@@ -718,8 +727,8 @@ class GamePlatform:
                     if event.experiment_id == experiment.id
                     and event.kind == "signup"
                     and event.user_id in survivor_ids
-                    and event.occurred_at + RETURNING_WINDOW <= now
-                    and event.occurred_at + RETURNING_WINDOW * 2 > now
+                    and event.occurred_at + RETURNING_WINDOW <= occurred_at
+                    and event.occurred_at + RETURNING_WINDOW * 2 > occurred_at
                 ]
                 if signup_events:
                     assignment = self._store.get_experiment_assignment(
@@ -742,7 +751,7 @@ class GamePlatform:
                         variant_id=variant_id,
                         kind="returning_active",
                         user_id=user_id,
-                        occurred_at=now,
+                        occurred_at=occurred_at,
                     )
 
     def experiment_stats(self) -> dict[str, JsonValue]:
@@ -2751,7 +2760,11 @@ class GamePlatform:
                 # state and the first turn; the client's start values (kept
                 # for v1 games) are ignored.
                 started = self._begin_v2_match(match, game)
-                self.record_match_start(user_id=caller_id, match_id=started.id)
+                self.record_match_start(
+                    user_id=caller_id,
+                    match_id=started.id,
+                    occurred_at=started.updated_at,
+                )
                 return started
             if not first_turn_player_indices:
                 raise InvalidRequestError(
@@ -2771,7 +2784,11 @@ class GamePlatform:
                     turn_started_at=self._clock() if match.turn_seconds else None,
                 )
             )
-            self.record_match_start(user_id=caller_id, match_id=started.id)
+            self.record_match_start(
+                user_id=caller_id,
+                match_id=started.id,
+                occurred_at=started.updated_at,
+            )
             return started
 
     def leave_match(self, *, caller_id: str, match_id: str) -> Match:

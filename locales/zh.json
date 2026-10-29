@@ -198,6 +198,12 @@
   "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
   "error.payouts_total_pot": "payouts must total the token pot",
   "error.no_tokens_for_payout": "no tokens available for payout",
+  "error.experiment_not_found": "未找到实验",
+  "error.experiment_variant_key_invalid": "变体键必须为 1 至 50 个小写字母、数字或连字符",
+  "error.experiment_variant_key_conflict": "已存在使用该键的变体",
+  "error.campaign_budget_invalid": "广告系列预算必须介于 $0 和 $100 之间",
+  "error.campaign_link_not_found": "未找到广告系列链接",
+  "error.campaign_spend_invalid": "支出必须介于 $0 和广告系列预算之间",
 
   "ui.section.finished": "已完成",
   "ui.match.computer_name": "电脑 {number}",

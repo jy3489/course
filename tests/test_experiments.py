@@ -1,5 +1,6 @@
 import datetime as dt
 
+from game_platform.models import GameRules
 from fastapi.testclient import TestClient
 
 from game_platform.api import create_app
@@ -21,6 +22,69 @@ def test_skin_assignment_is_stable_and_hashes_across_variants() -> None:
         for index in range(100)
     }
     assert assignments == {"classic", "aurora", "sunset"}
+
+
+def test_signup_experiment_events_do_not_consume_generated_ids() -> None:
+    ids = iter(("user-1", "game-1"))
+    platform = GamePlatform(new_id=lambda: next(ids))
+    user = platform.create_user(display_name="alice")
+
+    game = platform.create_game(
+        caller_id=user.id,
+        name="game",
+        description="",
+        rules=GameRules(
+            allowed_player_counts=(1,),
+            allows_leave_mid_match=False,
+            allows_join_mid_match=False,
+        ),
+        code="",
+    )
+
+    assert game.id == "game-1"
+
+
+def test_match_start_tracking_uses_match_timestamp_without_advancing_clock() -> None:
+    now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    clock_reads = 0
+
+    def clock() -> dt.datetime:
+        nonlocal clock_reads, now
+        clock_reads += 1
+        now += dt.timedelta(minutes=1)
+        return now
+
+    ids = iter(("user-1", "game-1", "match-1"))
+    platform = GamePlatform(clock=clock, new_id=lambda: next(ids))
+    user = platform.create_user(display_name="alice")
+    game = platform.create_game(
+        caller_id=user.id,
+        name="game",
+        description="",
+        rules=GameRules(
+            allowed_player_counts=(1,),
+            allows_leave_mid_match=False,
+            allows_join_mid_match=False,
+        ),
+        code="",
+    )
+    match = platform.create_match(
+        caller_id=user.id, game_id=game.id, num_computer_opponents=0
+    )
+    started = platform.start_match(
+        caller_id=user.id,
+        match_id=match.id,
+        first_turn_player_indices=frozenset({0}),
+        initial_state={},
+    )
+    match_start_event = next(
+        event
+        for event in platform._store.list_experiment_events()
+        if event.kind == "match_start"
+    )
+
+    assert clock_reads == 6
+    assert match_start_event.occurred_at == started.updated_at
 
 
 def test_skin_assignment_merge_keeps_survivor_then_inherits_source() -> None:

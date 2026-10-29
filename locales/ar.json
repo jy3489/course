@@ -198,6 +198,12 @@
   "error.payouts_nonnegative": "payouts must be nonnegative integer tokens",
   "error.payouts_total_pot": "payouts must total the token pot",
   "error.no_tokens_for_payout": "no tokens available for payout",
+  "error.experiment_not_found": "لم يتم العثور على التجربة",
+  "error.experiment_variant_key_invalid": "يجب أن يتكون مفتاح المتغير من 1 إلى 50 حرفًا صغيرًا أو رقمًا أو شرطة",
+  "error.experiment_variant_key_conflict": "يوجد متغير بهذا المفتاح بالفعل",
+  "error.campaign_budget_invalid": "يجب أن تتراوح ميزانية الحملة بين $0 و$100",
+  "error.campaign_link_not_found": "لم يتم العثور على رابط الحملة",
+  "error.campaign_spend_invalid": "يجب أن يتراوح الإنفاق بين $0 وميزانية الحملة",
 
   "ui.section.finished": "المنتهية",
   "ui.match.computer_name": "الكمبيوتر {number}",

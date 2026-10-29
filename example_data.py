@@ -12,6 +12,7 @@ import datetime as dt
 import itertools
 import json
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -77,7 +78,13 @@ def build(operations: Iterable[Mapping[str, Any]]) -> Snapshot:
             raise ValueError(
                 f"operation {number} {dict(operation)} failed: {error}"
             ) from error
-    return store.snapshot()
+    snapshot = store.snapshot()
+    return replace(
+        snapshot,
+        experiments=(),
+        experiment_assignments=(),
+        experiment_events=(),
+    )
 
 
 def _apply(
@@ -103,9 +110,11 @@ def _apply(
                 allows_leave_mid_match=operation["allows_leave_mid_match"],
                 allows_join_mid_match=operation["allows_join_mid_match"],
             ),
-            code=(GAMES_DIR / operation["code_file"]).read_text(),
+            code=(GAMES_DIR / operation["code_file"]).read_text(encoding="utf-8"),
             server_code=(
-                (GAMES_DIR / operation["server_code_file"]).read_text()
+                (GAMES_DIR / operation["server_code_file"]).read_text(
+                    encoding="utf-8"
+                )
                 if operation.get("server_code_file")
                 else None
             ),
@@ -176,7 +185,7 @@ def main() -> None:
         "output", nargs="?", type=Path, default=DEFAULT_OUTPUT, help="%(default)s"
     )
     args = parser.parse_args()
-    operations = json.loads(OPERATIONS_FILE.read_text())
+    operations = json.loads(OPERATIONS_FILE.read_text(encoding="utf-8"))
     output: Path = args.output
     write_snapshot(output, build(operations))
     print(f"wrote {output}")
