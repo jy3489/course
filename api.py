@@ -99,7 +99,7 @@ from game_platform.model_api import ModelApiClient
 from game_platform.models import LinkedAccountKind
 from game_platform.oauth import ProviderError, verify_google_id_token
 from game_platform.push import vapid_public_key
-from game_platform.senders import CodeSender, LogSender, SenderError
+from game_platform.senders import CodeSender, LogSender, SenderError, TwilioVerifyClient
 
 _STATUS_OF_ERROR: Final[tuple[tuple[type[PlatformError], HTTPStatus], ...]] = (
     (UnauthorizedError, HTTPStatus.UNAUTHORIZED),
@@ -288,6 +288,7 @@ def auth_config(request: Request) -> AuthConfigOut:
     return AuthConfigOut(
         google_client_id=config.google.client_id,
         phone_login_enabled=config.sms.provider != "log",
+        phone_call_enabled=config.sms.provider == "verify" or (config.sms.provider == "twilio" and config.sms.twilio_voice_enabled),
         email_login_enabled=config.email.provider != "log",
     )
 
@@ -357,18 +358,37 @@ def auth_google(
 def phone_start(
     platform: Platform, request: Request, body: PhoneStart
 ) -> VerificationStarted:
-    """Texts a login code to [body.phone_number]."""
-    if _auth_config_of(request).sms.provider == "log":
+    config = _auth_config_of(request).sms
+    if config.provider == "log":
         raise HTTPException(
             HTTPStatus.NOT_IMPLEMENTED, "phone login is not configured"
         )
-    verification_id, code, normalized = platform.start_verification(
+    if body.delivery_method == "call" and config.provider == "twilio" and not config.twilio_voice_enabled:
+        raise HTTPException(
+            HTTPStatus.NOT_IMPLEMENTED, "phone login is not configured"
+        )
+
+    verification_id, local_code, number = platform.start_verification(
         kind="phone", identifier=body.phone_number
     )
     try:
-        request.app.state.sms_sender.send_login_code(normalized, code)
+        if config.provider == "verify":
+            client = request.app.state.verify_client
+            if client is None:
+                raise SenderError("Twilio Verify is not configured")
+            client.start_verification(number, body.delivery_method)
+        else:
+            sender = (
+                request.app.state.voice_sender
+                if body.delivery_method == "call"
+                else request.app.state.sms_sender
+            )
+            sender.send_login_code(number, local_code)
     except SenderError as error:
-        raise HTTPException(HTTPStatus.BAD_GATEWAY, str(error)) from error
+        raise HTTPException(
+            HTTPStatus.BAD_GATEWAY, str(error)
+        ) from error
+
     return VerificationStarted(
         verification_id=verification_id,
         expires_in_seconds=VERIFICATION_TTL_SECONDS,
@@ -377,18 +397,41 @@ def phone_start(
 
 @auth_router.post("/phone/verify")
 def phone_verify(
-    platform: Platform, caller_id: OptionalCallerId, body: VerifyCode
+    platform: Platform, request: Request,
+    caller_id: OptionalCallerId, body: VerifyCode
 ) -> AuthResponse:
-    """Logs in with a texted code. Pass the caller's headers to link the number to the
-    current account instead."""
-    user, merged_from = platform.verify_code(
-        verification_id=body.verification_id,
-        code=body.code,
-        display_name=body.display_name,
-        as_user_id=caller_id,
-        invited_by_user_id=body.invited_by_user_id,
+    if _auth_config_of(request).sms.provider == "verify":
+        number = platform.pending_external_phone(body.verification_id)
+        client = request.app.state.verify_client
+        if client is None:
+            raise HTTPException(
+                HTTPStatus.BAD_GATEWAY, "Twilio Verify is not configured"
+            )
+        try:
+            approved = client.check_verification(number, body.code.strip())
+        except SenderError as error:
+            raise HTTPException(
+                HTTPStatus.BAD_GATEWAY, str(error)
+            ) from error
+
+        user, merged_from = platform.finish_external_phone(
+            body.verification_id,
+            approved=approved,
+            display_name=body.display_name,
+            as_user_id=caller_id,
+            invited_by_user_id=body.invited_by_user_id,
+        )
+    else:
+        user, merged_from = platform.verify_code(
+            verification_id=body.verification_id,
+            code=body.code,
+            display_name=body.display_name,
+            as_user_id=caller_id,
+            invited_by_user_id=body.invited_by_user_id,
+        )
+    return AuthResponse.of(
+        user, merged_from_user_id=merged_from
     )
-    return AuthResponse.of(user, merged_from_user_id=merged_from)
 
 
 @auth_router.post("/email/start")
@@ -1547,6 +1590,8 @@ def create_app(
     auth_config: AuthConfig | None = None,
     push_config: PushConfig | None = None,
     sms_sender: CodeSender | None = None,
+    voice_sender: CodeSender | None = None,
+    verify_client: TwilioVerifyClient | None = None,
     email_sender: CodeSender | None = None,
     cors_allow_origins: Sequence[str] = ("*",),
     public_base_url: str = "",
@@ -1592,6 +1637,8 @@ def create_app(
     app.state.auth_config = auth_config if auth_config is not None else AuthConfig()
     app.state.push_config = push_config if push_config is not None else PushConfig()
     app.state.sms_sender = sms_sender if sms_sender is not None else LogSender()
+    app.state.voice_sender = voice_sender if voice_sender is not None else LogSender()
+    app.state.verify_client = verify_client
     app.state.email_sender = email_sender if email_sender is not None else LogSender()
     app.include_router(router)
     app.include_router(auth_router)
