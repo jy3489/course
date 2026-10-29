@@ -139,14 +139,18 @@ class ScalablePlatform(GamePlatform):
 
     def _merge_locked(self, *, source, into):
         # Refuse before changing identity reservations. The snapshot implementation
-        # rewrites all historical records and cannot safely run in a request here.
+        # rewrites all historical records and cannot safely run in a request here;
+        # use the resumable maintenance job instead (scaling_accounts.merge_users,
+        # via `scaling_tools merge --from-user ... --into-user ...`).
         raise ConflictError(
-            "account merging requires a maintenance migration in query mode"
+            "account merging in query mode runs as a resumable maintenance job; "
+            "see scaling_tools merge"
         )
 
     def admin_delete_user(self, user_id):
         raise ConflictError(
-            "account deletion requires a maintenance migration in query mode"
+            "account deletion in query mode runs as a resumable maintenance job; "
+            "see scaling_tools delete-user"
         )
 
     def _schedule_computer_moves(self, match):

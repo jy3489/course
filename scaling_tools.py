@@ -326,8 +326,13 @@ def main():
             "cleanup",
             "dashboard",
             "activity",
+            "merge",
+            "delete-user",
         ],
     )
+    parser.add_argument("--from-user", help="merge: the user merged away")
+    parser.add_argument("--into-user", help="merge: the surviving user")
+    parser.add_argument("--user-id", help="delete-user: the user to delete")
     parser.add_argument("--project", required=True)
     parser.add_argument("--database", required=True)
     parser.add_argument("--namespace", required=True)
@@ -352,7 +357,17 @@ def main():
     )
     args = parser.parse_args()
     if (
-        args.command in ("init", "migrate", "seed", "cleanup", "dashboard", "activity")
+        args.command
+        in (
+            "init",
+            "migrate",
+            "seed",
+            "cleanup",
+            "dashboard",
+            "activity",
+            "merge",
+            "delete-user",
+        )
         and args.database == "(default)"
         and not os.environ.get("FIRESTORE_EMULATOR_HOST")
     ):
@@ -414,6 +429,35 @@ def main():
         from game_platform.scaling_maintenance import cleanup
 
         result = cleanup(store, limit=args.limit)
+    elif args.command == "merge":
+        if not args.source_writers_stopped:
+            parser.error("merge requires a source write-maintenance window")
+        if not args.from_user or not args.into_user:
+            parser.error("merge requires --from-user and --into-user")
+        from game_platform.scaling_accounts import merge_users
+
+        result = merge_users(
+            store,
+            run_id=args.run_id,
+            source_id=args.from_user,
+            into_id=args.into_user,
+            max_records=args.limit,
+        )
+    elif args.command == "delete-user":
+        if not args.source_writers_stopped:
+            parser.error("delete-user requires a source write-maintenance window")
+        if not args.user_id:
+            parser.error("delete-user requires --user-id")
+        from game_platform.scaling_accounts import delete_user
+        from game_platform.scaling_service import ScalablePlatform
+
+        result = delete_user(
+            store,
+            run_id=args.run_id,
+            user_id=args.user_id,
+            max_records=args.limit,
+            platform=ScalablePlatform(store=store),
+        )
     else:
         result = store.counts()
     print(json.dumps(result, sort_keys=True))
