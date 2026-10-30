@@ -4,11 +4,12 @@ Goal: when something goes wrong, someone who needs to know is told, and the logs
 find out why, for a person or an agent, without asking the user to repeat what they did.
 
 - **Minor** problems send an **email**. Look at them today.
-- **Major** problems send the email **and** call, text or page (PagerDuty). Act now.
+- **Major** problems send the email **and** a text message and/or a PagerDuty page (PagerDuty can
+  also call a phone, if the person on call sets that in their PagerDuty notification rules). Act now.
 
 ```
 server  ->  JSON log file  ->  Ops Agent  ->  Cloud Logging  ->  log-match alert policies ->  email (minor)
-(observability.py)                                                                          ->  email + phone/text/PagerDuty (major)
+(observability.py)                                                                          ->  email + text/PagerDuty (major)
                                            VM metrics (memory, CPU, disk)  ->  metric policies   (same split)
                                            Uptime check of /health         ->  policy             (major)
 ```
@@ -123,8 +124,8 @@ To repeat a problem the line has:
    It creates an email channel, an uptime check of `https://buildplay.fun/health`, and the policies
    in the tables above. It skips what exists, so running it again is safe. To page for major alerts,
    add either or both of `PAGERDUTY_KEY=...` and `SMS_NUMBER=+1555...`, or create the channels in the
-   console (Monitoring > Alerting > Edit notification channels: PagerDuty, SMS, or the phone-call
-   option, whichever you want) and pass their names in `MAJOR_EXTRA_CHANNELS=projects/P/notificationChannels/ID`.
+   console (Monitoring > Alerting > Edit notification channels: SMS or PagerDuty; Cloud Monitoring itself
+   cannot place phone calls, so for a call use PagerDuty) and pass their names in `MAJOR_EXTRA_CHANNELS=projects/P/notificationChannels/ID`.
    Without one, major alerts only send the email, and the script warns you.
 
    To see what it will create first: `python3 policies.py --help`, or run it with fake channel names

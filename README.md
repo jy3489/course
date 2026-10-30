@@ -733,7 +733,7 @@ The server logs every unexpected situation as a structured line (a slow or stuck
 its arguments, a 5xx or crash with its stack trace, a game function that timed out or ran out of
 memory with its inputs, a rejected move, a flood of sign-ups, too much memory) with a request id
 that ties the lines of one request together. Problems carry an `alert` field: **minor** ones
-become an email and **major** ones also call, text or page, through Google Cloud Monitoring.
+become an email and **major** ones also text or page (PagerDuty), through Google Cloud Monitoring.
 `docs/monitoring.md` lists every alert and how to set it up, test it (`tools/alert_drill`, or the
 fake users in `tools/fake_users`) and investigate from the logs (`tools/log_digest.py`,
 `ops/monitoring/investigate.sh`). Every response has an `X-Request-Id` header.

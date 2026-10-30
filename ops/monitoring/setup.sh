@@ -54,7 +54,7 @@ if [[ -n "${SMS_NUMBER:-}" ]]; then
 fi
 if [[ -n "${MAJOR_EXTRA_CHANNELS:-}" ]]; then MAJOR="$MAJOR,$MAJOR_EXTRA_CHANNELS"; fi
 if [[ "$MAJOR" == "$EMAIL_CHANNEL" ]]; then
-  echo "WARNING: no phone, text or PagerDuty channel given, so major alerts only send email." >&2
+  echo "WARNING: no text or PagerDuty channel given, so major alerts only send email." >&2
 fi
 
 echo "== Uptime check of https://$HOST/health"
