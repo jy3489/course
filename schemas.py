@@ -34,6 +34,7 @@ from game_platform.models import (
     Move,
     Seat,
     SeatKind,
+    Translation,
     User,
     WebPushSubscription,
 )
