@@ -1,0 +1,7 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Clients use the authorized HTTP API. Only the server Admin SDK reads data.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

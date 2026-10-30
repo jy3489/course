@@ -439,6 +439,8 @@ const Auth = (() => {
   function renderMenu(container) {
     const account = current();
     const all = accounts();
+    const key = JSON.stringify([account?.id, all.map(user => [user.id, user.display_name, user.picture_url, user.linked]), I18n.revision?.() ?? 0]);
+    if (container._authRenderKey === key && container.querySelector(".auth-menu-button")) return container;
     const panelWasOpen = container.querySelector(".auth-menu-panel")?.hidden === false;
     container.replaceChildren();
     const button = el("button", {
@@ -464,7 +466,13 @@ const Auth = (() => {
       panel.inert = panel.hidden;
       panel.setAttribute("aria-hidden", String(panel.hidden));
     };
-    document.addEventListener("click", () => hidePanel(), { once: true });
+    container._hideAuthMenu = hidePanel;
+    if (!container._authCloseBound) {
+      container._authCloseBound = true;
+      document.addEventListener("click", event => {
+        if (!container.contains(event.target)) container._hideAuthMenu?.();
+      });
+    }
 
     if (account) {
       panel.append(el("div", { class: "auth-menu-heading" },
@@ -519,6 +527,7 @@ const Auth = (() => {
       );
     }
     container.append(button, panel);
+    container._authRenderKey = key;
     return container;
   }
 

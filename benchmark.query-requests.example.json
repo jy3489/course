@@ -1,0 +1,5 @@
+[
+  {"method": "GET", "path": "/health", "weight": 1},
+  {"method": "GET", "path": "/v2/games?limit=50", "weight": 2},
+  {"method": "GET", "path": "/v2/matches?status=ongoing&limit=50", "weight": 4}
+]

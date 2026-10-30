@@ -1,0 +1,315 @@
+{
+  "runId": "portal-cloud1",
+  "namespace": "scaling_v1",
+  "month": "2026-09",
+  "startedAt": "2026-10-29T22:10:08.825Z",
+  "finishedAt": "2026-10-29T22:19:18.060Z",
+  "kind": "portal browser activity on duplicated shipped games",
+  "gameSourceHashes": [
+    "32b355ea814ff4a69e2ca79be72da3b802bdfaa889939d38e47338c12033b0e2",
+    "1da052226ea8c235918a4b73d216ea5cb16df6eb23610c3fd798c4902e965eb3"
+  ],
+  "actions": 372,
+  "completed": [
+    {
+      "date": "2026-09-01",
+      "index": 0,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "0d6f47e0-8d83-4ceb-a13e-42a7a4cfd7ef",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-02",
+      "index": 1,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "56d52c83-ebd7-45dc-9af7-feb802bf1474",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-03",
+      "index": 2,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "0d9ee2ab-a614-46e8-8e10-253dea2d4285",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-04",
+      "index": 3,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "2dacbf90-8289-4b5c-b7af-971946eddf8b",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-05",
+      "index": 4,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "0efee434-fd35-4e9d-80a6-932b9adddeea",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-06",
+      "index": 5,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "b664c95c-f7fe-4e42-ae46-5a91864f159d",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-07",
+      "index": 6,
+      "mode": "two humans",
+      "moves": 9,
+      "left": false,
+      "matchId": "82f7d2c6-a83f-4f29-8961-fc8442bce6a8",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-08",
+      "index": 7,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "c0f569f6-5616-4d58-8545-3706109afd35",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-09",
+      "index": 8,
+      "mode": "two humans",
+      "moves": 7,
+      "left": false,
+      "matchId": "a7218682-ea67-4751-9e43-4c5e273c659b",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-10",
+      "index": 9,
+      "mode": "two humans",
+      "moves": 9,
+      "left": false,
+      "matchId": "49133018-7d05-4960-898f-7cd2f8d30334",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-11",
+      "index": 10,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "64e3ea7d-6779-4a39-a201-2f4bdd3a3bdd",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-12",
+      "index": 11,
+      "mode": "human vs computer",
+      "moves": 2,
+      "left": true,
+      "matchId": "46947bd9-6b22-4949-93be-3583a37c969e",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-13",
+      "index": 12,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "f3818386-50c0-4513-9b57-ea9d05b88588",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-14",
+      "index": 13,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "7b91b46b-1261-49c4-85f1-9d521a261cfe",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-15",
+      "index": 14,
+      "mode": "two humans",
+      "moves": 8,
+      "left": false,
+      "matchId": "2c452d15-91ce-4a1b-88e0-870a70dfa909",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-16",
+      "index": 15,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "a27dc978-c05e-46a4-9199-1f58b50651b2",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-17",
+      "index": 16,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "d9e56728-26de-4e11-940a-e1ce3733e86b",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-18",
+      "index": 17,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "e87c8827-af09-4d7e-bbe4-a73b05a8d338",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-19",
+      "index": 18,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "2150fd9f-4bc6-4068-adf2-879d5ee7dbf2",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-20",
+      "index": 19,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "9a8d780b-7f72-479f-ace5-547d46ce2c40",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-21",
+      "index": 20,
+      "mode": "two humans",
+      "moves": 9,
+      "left": false,
+      "matchId": "eb7c19e9-16e4-4b04-9a09-17bc529dec30",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-22",
+      "index": 21,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "9e2c33db-513f-41a3-bd72-fb6c6780621c",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-23",
+      "index": 22,
+      "mode": "two humans",
+      "moves": 9,
+      "left": false,
+      "matchId": "77d1a860-cf92-4bb9-94b1-3e3e08194c1f",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-24",
+      "index": 23,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "834beebf-933a-4c2a-9a7f-62ea6b5e64cb",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-25",
+      "index": 24,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "35476807-8e49-4a06-85df-1fdabe24d308",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-26",
+      "index": 25,
+      "mode": "human vs computer",
+      "moves": 3,
+      "left": false,
+      "matchId": "a0485784-0567-45a8-9c3a-2fcd2bc86bc2",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-27",
+      "index": 26,
+      "mode": "two humans",
+      "moves": 9,
+      "left": false,
+      "matchId": "269f5a72-2c91-4ee2-b900-8cedddfe0819",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-28",
+      "index": 27,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "matchId": "72982870-79c4-4d05-bc77-c73ad7c5abaf",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-29",
+      "index": 28,
+      "mode": "two humans",
+      "moves": 8,
+      "left": false,
+      "matchId": "1015f1fa-4863-4550-a0c8-3680593dae7a",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-30",
+      "index": 29,
+      "mode": "human vs computer",
+      "moves": 4,
+      "left": false,
+      "matchId": "1bd87dec-17c8-42a6-a831-01fcebd79e67",
+      "status": "over"
+    }
+  ],
+  "pageErrors": [],
+  "httpErrors": [],
+  "success": true,
+  "observed_database_count_changes": {
+    "game_versions_total": 0,
+    "experiment_assignments_total": 44,
+    "matches_ongoing": 0,
+    "matches_total": 30,
+    "users_total": 44,
+    "matches_over": 30,
+    "moves_total": 192,
+    "experiment_events_total": 74,
+    "matches_waiting_for_players": 0,
+    "games_total": 0,
+    "games_live": 0,
+    "experiments_total": 0
+  },
+  "configuration": {
+    "days": 30,
+    "matchesPerDay": 1,
+    "humanOpponentProbability": 0.5,
+    "leaveProbability": 0.3,
+    "seed": 42
+  },
+  "limitations": [
+    "Small functional cloud demonstration, not target-scale capacity proof",
+    "Tic-tac-toe portal adapter; poker catalog copies were not played",
+    "UI moves are counted per player click; database move delta also includes computer moves",
+    "No model API or AI generation calls"
+  ]
+}

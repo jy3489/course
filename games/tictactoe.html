@@ -19,7 +19,7 @@
 </head>
 <body>
 <h1>Tic-tac-toe</h1>
-<div id="status">Waiting for the platform…</div>
+<div id="status" role="status" aria-live="polite">Waiting for the platform…</div>
 <div id="board"></div>
 <div class="players" id="players"></div>
 
@@ -42,11 +42,12 @@ if (typeof window !== "undefined" && window.document) {
   function render() {
     const state = view();
     const acting = latest.status === "ongoing" ? latest.acting_for_player_index : null;
-    const myTurn = acting !== null && acting === latest.my_player_index;
+    const myTurn = !latest.replay && acting !== null && acting === latest.my_player_index;
     const name = (seat) => `${latest.players[seat].name} (${MARKS[seat]})`;
 
     let status;
-    if (state.winner !== null) status = `${name(state.winner)} wins!`;
+    if (latest.replay) status = `Viewing move ${latest.replay.index} of ${latest.replay.total} · read only`;
+    else if (state.winner !== null) status = `${name(state.winner)} wins!`;
     else if (state.draw) status = "It's a draw.";
     else if (latest.status === "over") status = "The match is over.";
     else if (myTurn) status = `Your move, ${name(acting)}.`;
@@ -56,10 +57,11 @@ if (typeof window !== "undefined" && window.document) {
     $("board").replaceChildren(...state.board.map((mark, cell) => {
       const button = document.createElement("button");
       button.textContent = mark;
+      button.setAttribute("aria-label", `Row ${Math.floor(cell / 3) + 1}, column ${cell % 3 + 1}: ${mark || "empty"}`);
       button.disabled = !myTurn || mark !== "";
       if (state.line && state.line.includes(cell)) button.className = "win";
       button.addEventListener("click", () => {
-        if (moveSent) return;
+        if (moveSent || !myTurn || mark !== "") return;
         moveSent = true;
         window.parent.postMessage({ type: "make_move", move: { cell } }, "*");
       });

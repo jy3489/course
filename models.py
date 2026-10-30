@@ -242,6 +242,9 @@ class Seat:
     kind: SeatKind
     # Set exactly when [kind] is "human".
     user_id: str | None
+    # Account ownership can change on merge; a game's opaque state may still
+    # contain the original player ID. Keep that game identity stable.
+    logic_player_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -354,7 +357,7 @@ class Match:
         the Nth computer seat (counting from 1, in seat order)."""
         if seat.kind == "human":
             assert seat.user_id is not None
-            return seat.user_id
+            return seat.logic_player_id or seat.user_id
         computers = [s for s in self.seats if s.kind == "computer"]
         return f"computer-{computers.index(seat) + 1}"
 

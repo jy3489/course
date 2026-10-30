@@ -11,8 +11,8 @@ function setup(request=async()=>{},catalog=async()=>[]) {
     replaceChildren(...items){this.children=items;for(const item of items)if(item&&typeof item==='object')item.parentNode=this;},
     append(...items){this.children.push(...items);for(const item of items)if(item&&typeof item==='object')item.parentNode=this;},
     focus(){},setAttribute(){},getBoundingClientRect(){return {x:100,y:100,width:420,height:500};},addEventListener(){}});return nodes.get(id);}
-  const ctx=vm.createContext({console,Set,Map,AbortController,Date,JSON,structuredClone,
-    document:{getElementById:node,addEventListener(){}},window:{addEventListener(){},innerWidth:1280,innerHeight:720},
+  const ctx=vm.createContext({StoragePages:{enabled:async()=>false,list:(request,path,options)=>request("GET",path,options),controls(){},search(){return false;}},console,Set,Map,AbortController,Date,JSON,structuredClone,
+    document:{getElementById:node,querySelector(){return null;},addEventListener(){}},window:{addEventListener(){},innerWidth:1280,innerHeight:720},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout:(fn,ms)=>{if(ms===1500)Promise.resolve().then(fn);return ++timer;},clearTimeout(){},setInterval:()=>++timer,clearInterval(){},
     Auth:{current:()=>user},I18n:{t:(key,params,fallback)=>fallback??key},GameFrame:class{load(code){this.code=code;}unload(){this.code=null;}send(value){this.message=value;}resizeViewport(){this.resizes=(this.resizes||0)+1;}},
@@ -27,6 +27,39 @@ function saved(body,id='new-id',revision=1){return {...body,id,revision,base_ver
 
 test('selecting the same game preserves current work',async()=>{
   const t=setup();await t.choose();t.run('state.editor.name="New name"');await t.run('select("game")');assert.equal(t.run('state.editor.name'),'New name');
+});
+
+test('changing library pages keeps the selected draft revision and full source',async()=>{
+  const calls=[];
+  const draft={...game,revision:3,base_version:1};
+  const t=setup(async(method,url,{body}={})=>{
+    if(url==='/game-drafts/game' && method==='GET')return draft;
+    if(url==='/games/game')return game;
+    if(method==='GET')return [{...draft,id:'another',revision:99,code:''}];
+    calls.push(body);return saved(body,'game',4);
+  });
+  t.run('StoragePages.enabled=async()=>true');
+  await t.run('select("game")');
+  t.run('state.editor.name="Unsaved edit"');
+  await t.run('loadGames()');
+  assert.equal(t.run('selectedDraft().revision'),3);
+  assert.equal(t.run('selectedGame().code'),game.code);
+  await t.run('flushAutosave()');
+  assert.equal(calls[0].expected_revision,3);
+});
+
+test('query-mode resume fetches a saved draft even when it is not on the current page',async()=>{
+  const draft={...game,id:'unlisted',revision:7,base_version:0};
+  const t=setup(async(method,url)=>{
+    if(url==='/game-drafts/unlisted')return draft;
+    throw Object.assign(new Error('missing'),{status:404});
+  });
+  t.run('StoragePages.enabled=async()=>true');
+  t.storage.set('game-platform.builder.last.v2.owner','unlisted');
+  await t.run('resumeWorkspace()');
+  assert.equal(t.run('state.selectedId'),'unlisted');
+  assert.equal(t.run('state.editor.code'),game.code);
+  assert.equal(t.run('selectedDraft().revision'),7);
 });
 
 test('focused preview preserves the running game and emulator state',async()=>{
@@ -161,7 +194,7 @@ test('a completed AI update respects a panel closed while the request was runnin
 test('an existing public game becomes an autosaved independent copy without an AI request',async()=>{
   const calls=[],source=JSON.stringify(game);
   const t=setup(async(method,url,{body})=>{calls.push([method,url,body]);return saved(body,'copy-id');},async()=>[game]);
-  await t.run('select("new")');assert.equal(t.node('starter-game').value,'game');t.run('useStarter()');
+  await t.run('select("new")');assert.equal(t.node('starter-game').value,'game');await t.run('useStarter()');
   assert.equal(t.run('state.editor.name'),'Counter (copy)');assert.equal(t.run('state.editor.code'),game.code);
   assert.equal(t.node('starter-view').hidden,true);assert.equal(t.run('state.test.players.length'),1);
   await t.run('flushAutosave()');assert.equal(calls.length,1);assert.equal(calls[0][1],'/game-drafts');
@@ -183,7 +216,7 @@ test('catalog failure allows retry without overwriting a game',async()=>{
 
 test('a late catalog cannot replace a selected game',async()=>{
   const wait=deferred(),t=setup(undefined,()=>wait.promise);const loading=t.run('select("new")');await t.choose();
-  wait.resolve([game]);await loading;t.run('useStarter()');assert.equal(t.run('state.selectedId'),'game');assert.equal(t.run('state.editor.name'),'Counter');
+  wait.resolve([game]);await loading;await t.run('useStarter()');assert.equal(t.run('state.selectedId'),'game');assert.equal(t.run('state.editor.name'),'Counter');
 });
 
 test('a late catalog response is ignored after switching accounts',async()=>{

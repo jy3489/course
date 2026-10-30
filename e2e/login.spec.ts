@@ -9,6 +9,24 @@ async function openLoginDialog(page: Page) {
 }
 
 test.describe('Guest login (real server)', () => {
+  test('an open login menu keeps keyboard focus across portal polling', async ({page}) => {
+    await page.goto('/static/portal.html');
+    await page.getByRole('button', {name:'Log in', exact:true}).click();
+    const login=page.locator('.auth-menu-panel').getByRole('button', {name:'Log in', exact:true});
+    await login.focus();
+    await expect(login).toBeFocused();
+    await page.waitForResponse(response => new URL(response.url()).pathname==='/games' && response.request().method()==='GET');
+    await expect(login).toBeFocused();
+    await login.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button',{name:'Close',exact:true}).click();
+    for(let i=0;i<2;i++) {
+      await page.getByRole('button',{name:'Log in',exact:true}).click();
+      await expect(page.locator('.auth-menu-panel')).toBeVisible();
+      await page.getByRole('heading',{name:'Game platform',exact:true}).click();
+      await expect(page.locator('.auth-menu-panel')).toBeHidden();
+    }
+  });
   test('log in as a guest, see the name in the menu, then log out', async ({ page }) => {
     const name = uniqueName('Guest');
     await page.goto('/static/portal.html');

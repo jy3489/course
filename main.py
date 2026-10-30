@@ -13,7 +13,12 @@ from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
 from game_platform.saving_store import SavingStore
 from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
-from game_platform.senders import make_email_sender, make_sms_sender, make_voice_sender, make_verify_client
+from game_platform.senders import (
+    make_email_sender,
+    make_sms_sender,
+    make_voice_sender,
+    make_verify_client,
+)
 from game_platform.service import GamePlatform
 
 logger = logging.getLogger(__name__)
@@ -26,6 +31,8 @@ def warn_about_insecure_setup(config: Config, platform: GamePlatform) -> None:
             "debug_tools is on with no master_password: anyone who can reach this "
             "server can read every user's password via /browse and /debug/all-data"
         )
+    if getattr(platform._store, "scalable", False):
+        return  # Full-database hygiene checks belong to offline maintenance.
     weak = [u.id for u in platform.all_data().users if u.password == u.id]
     if weak:
         logger.warning(
@@ -91,7 +98,26 @@ def main() -> None:
     )
     monitor = observability.Monitor(config.monitoring)
     store: SavingStore
-    if config.firestore.enabled:
+    if config.firestore.enabled and config.firestore.mode == "query":
+        if (
+            config.firestore.database == "(default)"
+            and not config.firestore.allow_default_database_query
+            and not os.environ.get("FIRESTORE_EMULATOR_HOST")
+        ):
+            raise ValueError(
+                "query mode in the default database requires explicit production opt-in after migration"
+            )
+        from google.cloud import firestore
+        from game_platform.query_store import QueryStore
+
+        store = QueryStore(
+            firestore.Client(
+                project=config.firestore.project_id or None,
+                database=config.firestore.database,
+            ),
+            namespace=config.firestore.namespace,
+        )
+    elif config.firestore.enabled:
         # Imported here so that servers using the data file don't load the client.
         from game_platform.firestore_store import FirestoreStore
 
@@ -119,7 +145,12 @@ def main() -> None:
     push_notifier: PushNotifier | None = None
     try:
         push_notifier = make_push_notifier(push_config, store=store)
-        platform = GamePlatform(
+        platform_class = GamePlatform
+        if getattr(store, "scalable", False):
+            from game_platform.scaling_service import ScalablePlatform
+
+            platform_class = ScalablePlatform
+        platform = platform_class(
             store=store,
             push_notifier=push_notifier,
             max_push_subscriptions_per_user=push_config.max_subscriptions_per_user,
@@ -167,6 +198,8 @@ def main() -> None:
     finally:
         monitor.stop()
         observability.log_event("server_stopping", "the server is shutting down")
+        if "platform" in locals() and hasattr(platform, "close_workers"):
+            platform.close_workers()
         # Deliver queued notifications first: subscriptions found dead while draining
         # are dropped by the final write below.
         if push_notifier is not None:
