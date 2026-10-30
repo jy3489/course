@@ -232,7 +232,10 @@ This release is not yet a replacement for every snapshot-mode feature:
   legacy assignment/event limit in query mode; an oversized request returns 409
   with its writes rolled back. Its snapshot-mode behavior remains unchanged.
 * Daily creation, A/B and transitive referral reports are available as offline
-  snapshots. Per-game analytics and automated reconciliation jobs are not implemented.
+  snapshots. A/B metric counts retain the published snapshot date; experiment
+  names, activation, variants and spend configuration come from current records,
+  so admin changes appear immediately. Per-game analytics and automated
+  reconciliation jobs are not implemented.
   HTTP global exports are replaced by an offline CLI.
 * QuickJS runs inside the semantic transaction. Move computation outside locks,
   with revision revalidation, remains a contention optimization. Job due-time
