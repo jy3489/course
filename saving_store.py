@@ -10,6 +10,8 @@ can be lost. Subclasses decide where the data goes (a JSON file, Firestore).
 import logging
 import threading
 
+from game_platform import observability
+
 from game_platform.models import (
     AgentConversation,
     AgentConversationEntry,
@@ -45,6 +47,7 @@ class SavingStore:
         self._writer_name = writer_name
         # Why the last save failed, or None after a successful one. For health checks.
         self.last_write_error: str | None = None
+        self._consecutive_failures = 0
         # Guards [_inner] against the writer thread taking a snapshot mid-change.
         self._lock = threading.Lock()
         # Serializes saves, so the destination always ends up with the latest snapshot.
@@ -82,8 +85,29 @@ class SavingStore:
             try:
                 self._save(snapshot)
                 self.last_write_error = None
+                if self._consecutive_failures:
+                    observability.log_event(
+                        "data_save_recovered",
+                        f"saved {self._writer_name} again after "
+                        f"{self._consecutive_failures} failures",
+                        log=logger,
+                        failures=self._consecutive_failures,
+                    )
+                    self._consecutive_failures = 0
             except Exception as error:
-                logger.exception("Failed to save (%s); will retry", self._writer_name)
+                self._consecutive_failures += 1
+                # The first failure is retried and may be a blip (minor); three in a row
+                # means changes are piling up in memory and would be lost (major).
+                observability.log_event(
+                    "data_save_failed",
+                    f"Failed to save ({self._writer_name}); will retry",
+                    level=logging.ERROR,
+                    alert="major" if self._consecutive_failures >= 3 else "minor",
+                    exc_info=True,
+                    log=logger,
+                    destination=self._writer_name,
+                    consecutive_failures=self._consecutive_failures,
+                )
                 self.last_write_error = type(error).__name__
                 with self._lock:
                     self._set_dirty()

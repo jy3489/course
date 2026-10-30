@@ -1,0 +1,34 @@
+# Google Cloud Ops Agent config for the game platform VM.
+# Install it as /etc/google-cloud-ops-agent/config.yaml, then
+#   sudo systemctl restart google-cloud-ops-agent
+# (the Ops Agent also collects the VM's memory, CPU and disk metrics by default).
+#
+# The server writes one JSON object per line to the file below when its config has
+#   "monitoring": {"log_format": "json", "log_file": "/var/log/game-platform/server.log"}
+# The receiver's name, game_platform, becomes the log's name in Cloud Logging, and the
+# alert policies filter on it (ops/monitoring/policies.py: LOG_ID).
+#
+# Result: every line is a log entry whose fields (event, alert, request_id, ...) are in
+# jsonPayload, so a filter like  jsonPayload.alert="major"  or  jsonPayload.event="illegal_move"
+# works. The `severity` field is moved to the entry's severity, so ERROR and CRITICAL lines
+# show as such. The line's own "timestamp" field stays in jsonPayload; the entry is stamped
+# when the agent reads it (within a second or two).
+logging:
+  receivers:
+    game_platform:
+      type: files
+      include_paths:
+        - /var/log/game-platform/server.log
+  processors:
+    parse_game_platform_json:
+      type: parse_json
+    move_severity:
+      type: modify_fields
+      fields:
+        severity:
+          move_from: jsonPayload.severity
+  service:
+    pipelines:
+      game_platform:
+        receivers: [game_platform]
+        processors: [parse_game_platform_json, move_severity]

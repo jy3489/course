@@ -13,6 +13,7 @@ import math
 import re
 import secrets
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
@@ -20,7 +21,9 @@ from typing import Any, Final
 
 from pydantic import JsonValue
 
-from game_platform import i18n
+import logging
+
+from game_platform import i18n, observability
 from game_platform.avatars import random_user_avatar, computer_avatar
 from game_platform.models import (
     AgentConversation,
@@ -48,7 +51,13 @@ from game_platform.models import (
     User,
     WebPushSubscription,
 )
-from game_platform.game_logic import GameLogic, GameLogicError, InvalidMoveError
+from game_platform.game_logic import (
+    TIME_LIMIT_SECONDS,
+    GameLogic,
+    GameLogicError,
+    GameLogicTimeout,
+    InvalidMoveError,
+)
 from game_platform.game_testing import GameTestReport, test_server_code
 from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
@@ -938,6 +947,7 @@ class GamePlatform:
                 updated_at=now,
             )
             self._store.put_user(user)
+            observability.current().note_signup(user.id)
             self.record_new_user(
                 user_id=user.id,
                 campaign_code=campaign_code,
@@ -2430,8 +2440,9 @@ class GamePlatform:
         """Runs one game function; records bug-level failures on the game
         version and raises a PlatformError for them. InvalidMove passes
         through: it is the player's fault, not a bug."""
+        started = time.perf_counter()
         try:
-            return self._logic_for(game).call(
+            result = self._logic_for(game).call(
                 function,
                 *args,
                 ctx=self._game_ctx(match),
@@ -2439,16 +2450,28 @@ class GamePlatform:
                 now=self._clock(),
                 time_limit_seconds=time_limit_seconds,
             )
-        except InvalidMoveError:
+        except InvalidMoveError as error:
+            self._log_illegal_move(game, match, function, args, error)
             raise
         except GameLogicError as error:
-            self._record_logic_error(game, function, error)
+            self._record_logic_error(game, function, error, match=match, args=args)
             raise PlatformError(
                 f"the game's server code failed in {function}: {error}"
             ) from error
+        self._log_if_slow(
+            game, match, function, args,
+            (time.perf_counter() - started) * 1000, time_limit_seconds,
+        )
+        return result
 
     def _record_logic_error(
-        self, game: Game, function: str, error: Exception
+        self,
+        game: Game,
+        function: str,
+        error: Exception,
+        *,
+        match: Match | None = None,
+        args: Sequence[Any] | None = None,
     ) -> None:
         self._store.add_game_version_error(
             GameVersionError(
@@ -2459,6 +2482,118 @@ class GamePlatform:
                 message=str(error)[:2000],
                 created_at=self._clock(),
             )
+        )
+        self._log_logic_error(game, function, error, match, args)
+
+    def _game_log_fields(self, game: Game, match: Match | None, function: str) -> dict[str, Any]:
+        """Who and what a game-function log line is about, to find it again."""
+        fields: dict[str, Any] = {
+            "game_id": game.id,
+            "game_version": game.version,
+            "game_name": game.name,
+            "owner_user_id": game.owner_user_id,
+            "function": function,
+        }
+        if match is not None:
+            fields.update(
+                match_id=match.id,
+                move_count=len(match.moves),
+                # With the state and the seed, a call can be repeated exactly.
+                seed=self._call_seed(match),
+            )
+        return fields
+
+    def _log_logic_error(
+        self,
+        game: Game,
+        function: str,
+        error: Exception,
+        match: Match | None,
+        args: Sequence[Any] | None,
+    ) -> None:
+        """A bug in a game's server code: a timeout, too much memory, an exception, a
+        bad result, or a computer's move that the game itself rejects. Logged with the
+        function's inputs, so it can be reproduced."""
+        monitor = observability.current()
+        limit = monitor.config.max_logged_game_input_bytes
+        text = str(error).lower()
+        if isinstance(error, InvalidMoveError):
+            event = "computer_illegal_move"
+        elif isinstance(error, GameLogicTimeout):
+            event = "game_function_timeout"
+        elif "memory" in text:
+            event = "game_function_memory"
+        else:
+            event = "game_function_error"
+        monitor.count("game_errors")
+        fields = self._game_log_fields(game, match, function)
+        if match is not None:
+            fields["ctx"] = observability.capture(self._game_ctx(match), limit)
+        if args is not None:
+            fields["inputs"] = observability.capture(list(args), limit, keep_long_strings=True)
+        observability.log_event(
+            event,
+            f"{function} failed in {game.name} v{game.version}: {str(error)[:300]}",
+            level=logging.ERROR,
+            alert="minor",
+            error=str(error)[:2000],
+            error_type=type(error).__name__,
+            **fields,
+        )
+
+    def _log_illegal_move(
+        self,
+        game: Game,
+        match: Match,
+        function: str,
+        args: Sequence[Any],
+        error: InvalidMoveError,
+    ) -> None:
+        """The game rejected a move. That is usually a player's mistake, so it is only
+        counted and logged (a computer's rejected move is a bug: see above)."""
+        player_id = args[1] if len(args) > 1 else None
+        if isinstance(player_id, str) and player_id.startswith("computer-"):
+            return
+        monitor = observability.current()
+        monitor.count("illegal_moves")
+        observability.log_event(
+            "illegal_move",
+            f"{function} rejected a move in {game.name}: {error.message[:200]}",
+            level=logging.INFO,
+            reason=error.message[:500],
+            player_id=player_id,
+            move=observability.capture(args[2] if len(args) > 2 else None, 2048),
+            inputs=observability.capture(list(args), monitor.config.max_logged_body_bytes),
+            **self._game_log_fields(game, match, function),
+        )
+
+    def _log_if_slow(
+        self,
+        game: Game,
+        match: Match,
+        function: str,
+        args: Sequence[Any],
+        elapsed_ms: float,
+        time_limit_seconds: float | None,
+    ) -> None:
+        """A game function that ran, but took a worrying share of its time limit."""
+        monitor = observability.current()
+        limit_ms = (time_limit_seconds or TIME_LIMIT_SECONDS) * 1000
+        # "Slow" scales with the limit: playerLeft is allowed 2 s, other calls 100 ms.
+        slow_ms = monitor.config.game_function_slow_ms * limit_ms / (TIME_LIMIT_SECONDS * 1000)
+        if elapsed_ms < slow_ms:
+            return
+        monitor.count("game_slow_calls")
+        observability.log_event(
+            "game_function_slow",
+            f"{function} took {elapsed_ms:.0f} ms in {game.name} (limit {limit_ms:.0f} ms)",
+            level=logging.WARNING,
+            elapsed_ms=round(elapsed_ms, 1),
+            limit_ms=round(limit_ms),
+            inputs=observability.capture(
+                list(args), monitor.config.max_logged_game_input_bytes, keep_long_strings=True
+            ),
+            **self._game_log_fields(game, match, function),
         )
 
     def _turn_indices(
@@ -2588,7 +2723,7 @@ class GamePlatform:
                 now=self._clock(),
             )
         except GameLogicError as error:
-            self._record_logic_error(game, "newMatch", error)
+            self._record_logic_error(game, "newMatch", error, match=funded_view, args=())
             raise PlatformError(
                 f"the game's server code failed in newMatch: {error}"
             ) from error
@@ -2690,7 +2825,10 @@ class GamePlatform:
                     )
                 except InvalidMoveError as error:
                     # A computer move the game itself rejects is a game bug.
-                    self._record_logic_error(game, "applyMove", error)
+                    self._record_logic_error(
+                        game, "applyMove", error,
+                        match=current, args=(current.state, player_id, move),
+                    )
                     return
                 except PlatformError:
                     # Already recorded by _call_logic; leave the match as is.
@@ -2732,7 +2870,10 @@ class GamePlatform:
                 now=self._clock(),
             )
         except GameLogicError as error:
-            self._record_logic_error(game, "viewFor", error)
+            self._record_logic_error(
+                game, "viewFor", error,
+                match=match, args=(match.state, match.player_id_of(seat)),
+            )
             return None
 
     def start_match(
