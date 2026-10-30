@@ -33,8 +33,15 @@
   document.addEventListener('DOMContentLoaded', () => {
     const button = document.getElementById('match-sounds');
     if (!button) return;
-    const label = () => {button.textContent = enabled ? 'Sound on' : 'Sound off'; button.setAttribute('aria-pressed', String(enabled));};
+    const label = () => {
+      const known = typeof I18n !== 'undefined';
+      button.textContent = enabled
+        ? (known ? I18n.t("ui.match.sound_on", {}, "Sound on") : 'Sound on')
+        : (known ? I18n.t("ui.match.sound_off", {}, "Sound off") : 'Sound off');
+      button.setAttribute('aria-pressed', String(enabled));
+    };
     label();
+    document.addEventListener('i18n-changed', label);
     button.addEventListener('click', () => {
       enabled = !enabled;
       try {localStorage.setItem('portal-sounds', enabled ? 'on' : 'off');} catch {}

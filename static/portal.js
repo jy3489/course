@@ -202,26 +202,26 @@ function updateMatchCurrency(match, user) {
   box.className = `match-currency token-summary${paid ? " is-paid" : ""}`;
   const title = el("div", {class:"token-summary-title"},
     el("span", {class:"token-summary-icon", "aria-hidden":"true", textContent:"✦"}),
-    el("strong", {textContent: paid ? "Match stakes" : "Free match"}));
+    el("strong", {textContent: paid ? I18n.t("ui.stakes.paid", {}, "Match stakes") : I18n.t("ui.stakes.free", {}, "Free match")}));
   const values = el("div", {class:"token-summary-values"},
-    el("div", {}, el("span", {textContent:"Per player"}), el("strong", {textContent:`${stake} tokens`})),
-    el("div", {}, el("span", {textContent:"Pot"}), el("strong", {textContent:`${pot} tokens`})));
+    el("div", {}, el("span", {textContent:I18n.t("ui.stakes.per_player", {}, "Per player")}), el("strong", {textContent:I18n.t("ui.stakes.tokens", {count: stake}, `${stake} tokens`)})),
+    el("div", {}, el("span", {textContent:I18n.t("ui.stakes.pot", {}, "Pot")}), el("strong", {textContent:I18n.t("ui.stakes.tokens", {count: pot}, `${pot} tokens`)})));
   const notes = [];
   if (paid && match.status === "waiting_for_players")
-    notes.push(el("p", {class:"token-summary-note", textContent:"Pot is collected when the match starts. Paid matches need human players."}));
+    notes.push(el("p", {class:"token-summary-note", textContent:I18n.t("ui.stakes.pot_note", {}, "Pot is collected when the match starts. Paid matches need human players.")}));
   if (paid && match.status === "over" && match.token_payouts != null) {
     const seat = user && match.players.find(p => p.user_id === user.id);
     if (seat) {
       const payout = match.token_payouts[String(seat.player_index)] ?? 0;
       const net = payout - stake;
       notes.push(el("div", {class:"token-summary-payout"},
-        el("span", {textContent:"Your payout"}),
-        el("strong", {textContent:`${payout} tokens`}),
-        el("small", {textContent:`Net ${net > 0 ? "+" : ""}${net} tokens`})));
-    } else notes.push(el("p", {class:"token-summary-note", textContent:"Payouts settled for all players."}));
+        el("span", {textContent:I18n.t("ui.stakes.your_payout", {}, "Your payout")}),
+        el("strong", {textContent:I18n.t("ui.stakes.tokens", {count: payout}, `${payout} tokens`)}),
+        el("small", {textContent:I18n.t("ui.stakes.net", {amount: `${net > 0 ? "+" : ""}${net}`}, `Net ${net > 0 ? "+" : ""}${net} tokens`)})));
+    } else notes.push(el("p", {class:"token-summary-note", textContent:I18n.t("ui.stakes.settled", {}, "Payouts settled for all players.")}));
   }
   if (!paid && match.status === "over")
-    notes.push(el("p", {class:"token-summary-note", textContent:"No tokens were wagered in this game."}));
+    notes.push(el("p", {class:"token-summary-note", textContent:I18n.t("ui.stakes.none_wagered", {}, "No tokens were wagered in this game.")}));
   box.replaceChildren(title, values, ...notes);
   box.hidden = false;
 }
@@ -238,7 +238,7 @@ function nameOf(userId) {
 
 function playerName(player) {
   if (player.kind === "human" && !player.user_id)
-    return `Player ${player.player_index + 1}`;
+    return I18n.t("ui.match.player_n", { number: player.player_index + 1 }, `Player ${player.player_index + 1}`);
   return player.user_id
     ? nameOf(player.user_id)
     : I18n.t("ui.match.computer_name", { number: player.player_index + 1 }, `Computer ${player.player_index + 1}`);
@@ -417,20 +417,20 @@ async function refreshLocked() {
 function matchOutcome(match, userId) {
   if (match.status !== "over") return null;
   if (match.end_reason && match.end_reason !== "finished")
-    return {label:"Ended early", kind:"neutral"};
+    return {label:I18n.t("ui.match.ended_early", {}, "Ended early"), kind:"neutral"};
   const result = match.state;
   const seat = seatOf(match, userId);
-  let outcome = {label:"Result unavailable", kind:"neutral"};
+  let outcome = {label:I18n.t("ui.match.result_unavailable", {}, "Result unavailable"), kind:"neutral"};
   if (result && typeof result === "object") {
     if (Number.isInteger(result.winner) && match.players.some(player => player.player_index === result.winner)) {
       outcome = seat
-        ? {label:seat.player_index === result.winner ? "You won" : "You lost", kind:seat.player_index === result.winner ? "win" : "loss"}
-        : {label:`${playerName(match.players.find(player => player.player_index === result.winner))} won`, kind:"neutral"};
+        ? {label:seat.player_index === result.winner ? I18n.t("ui.match.you_won", {}, "You won") : I18n.t("ui.match.you_lost", {}, "You lost"), kind:seat.player_index === result.winner ? "win" : "loss"}
+        : {label:I18n.t("ui.match.won", {name: playerName(match.players.find(player => player.player_index === result.winner))}, "{name} won"), kind:"neutral"};
     } else if (result.winner === -1 || (result.winner === null && (result.draw === true || result.done === true))) {
-      outcome = {label:"Draw", kind:"draw"};
+      outcome = {label:I18n.t("ui.match.draw", {}, "Draw"), kind:"draw"};
     }
   }
-  if (match.pending || match.conflict) outcome = {...outcome, label:outcome.label + " · awaiting sync"};
+  if (match.pending || match.conflict) outcome = {...outcome, label:outcome.label + " · " + I18n.t("ui.match.awaiting_sync", {}, "awaiting sync")};
   return outcome;
 }
 
@@ -794,7 +794,7 @@ function actionButton(
     type: "button",
     class: primary ? "primary" : danger ? "danger" : "",
     disabled,
-    textContent: armed ? `${label}: click again to confirm` : label,
+    textContent: armed ? I18n.t("ui.match.click_again", {label}, `${label}: click again to confirm`) : label,
     title: confirm ?? "",
     onclick: async () => {
       if (confirm && !armed) {
@@ -834,7 +834,7 @@ function renderMatch() {
     window.PortalMatchLayout?.update(null);
     $("placeholder").textContent = user
       ? "Your match will open here. You can also select a match from the sidebar."
-      : "Sign in at the top right, then choose a game above.";
+      : I18n.t("ui.portal.sign_in_to_play", {}, "Sign in at the top right, then choose a game above.");
     return;
   }
   const game = gameOf(match.game_id, match.game_version);
@@ -842,30 +842,30 @@ function renderMatch() {
   const counts = game ? game.allowed_player_counts : [];
   const ownerName = nameOf(match.owner_user_id);
   $("match-title").textContent =
-    `${game ? I18n.gameName(game.id, game.name) : "?"} (version ${match.game_version})`;
+    I18n.t("ui.match.title", {name: game ? I18n.gameName(game.id, game.name) : "?", version: match.game_version}, `${game ? I18n.gameName(game.id, game.name) : "?"} (version ${match.game_version})`);
   const outcome = matchOutcome(match, user?.id);
   $("match-result").hidden = !outcome;
   $("match-result").textContent = outcome?.label || "";
   $("match-result").className = `match-result result-${outcome?.kind || "neutral"}`;
-  $("match-status").textContent = match.status.replaceAll("_", " ");
+  $("match-status").textContent = I18n.t(`status.${match.status}`, {}, match.status.replaceAll("_", " "));
   $("match-status").className = `badge ${match.status}`;
   const meta = [
-    `owner ${ownerName}`,
-    `${match.move_count} moves`,
-    `created ${formatTime(match.created_at)}`,
+    I18n.t("ui.match.owner", {name: ownerName}, `owner ${ownerName}`),
+    I18n.t("ui.match.moves_meta", {count: match.move_count}, `${match.move_count} moves`),
+    I18n.t("ui.match.created", {time: formatTime(match.created_at)}, `created ${formatTime(match.created_at)}`),
   ];
   if (match.turn_seconds)
     meta.push(I18n.t("ui.speed.meta", {minutes: match.turn_seconds / 60}, `speed · ${match.turn_seconds / 60} min per move`));
   if (match.end_reason)
     meta.push(
       match.end_reason === "finished"
-        ? "ended by the game"
+        ? I18n.t("ui.match.ended_game", {}, "ended by the game")
         : match.end_reason === "timed_out"
           ? I18n.t("ui.speed.ended_meta", {}, "ended because time ran out")
-          : "ended because a player left",
+          : I18n.t("ui.match.ended_left", {}, "ended because a player left"),
     );
-  if (game && game.deleted) meta.push("this game has been deleted");
-  else if (game?.published === false) meta.push("unpublished · existing participants only");
+  if (game && game.deleted) meta.push(I18n.t("ui.match.game_deleted", {}, "this game has been deleted"));
+  else if (game?.published === false) meta.push(I18n.t("ui.match.unpublished", {}, "unpublished · existing participants only"));
   $("match-meta").textContent = meta.join(" · ");
 
   const mySeat = user ? seatOf(match, user.id) : null;
@@ -876,8 +876,8 @@ function renderMatch() {
         class: `seat-chip${turn.includes(player.player_index) ? " turn" : ""}`,
       }, el("img", {class: "player-avatar", src: playerPicture(player), alt: "", width: 44, height: 44,
         onerror: event => { event.target.hidden = true; }}), el("span", {textContent:
-          `${playerName(player)}${player === mySeat ? " · You" : ""}` +
-          `${turn.includes(player.player_index) ? " — to move" : ""}`,
+          `${playerName(player)}${player === mySeat ? " · " + I18n.t("ui.match.seat_you", {}, "You") : ""}` +
+          `${turn.includes(player.player_index) ? " — " + I18n.t("ui.match.to_move", {}, "to move") : ""}`,
       })),
     ),
   );
@@ -885,15 +885,15 @@ function renderMatch() {
   const actions = [];
   const secondaryActions = [];
   if (match.localMode) {
-    if (match.status === "ongoing") actions.push(actionButton("End practice", async()=>{offline.endPractice(match.id);state.lastSent=null;}));
-    else if (match.resumeTurn) actions.push(actionButton("Resume practice",async()=>{offline.resumePractice(match.id);state.lastSent=null;}));
-    secondaryActions.push(actionButton("Remove practice from list",async()=>{await portalRequest("DELETE",`/matches/${match.id}`);selectMatch(null);},{danger:true,confirm:"Archive this practice and remove it from your list?"}));
+    if (match.status === "ongoing") actions.push(actionButton(I18n.t("ui.match.end_practice", {}, "End practice"), async()=>{offline.endPractice(match.id);state.lastSent=null;}));
+    else if (match.resumeTurn) actions.push(actionButton(I18n.t("ui.match.resume_practice", {}, "Resume practice"),async()=>{offline.resumePractice(match.id);state.lastSent=null;}));
+    secondaryActions.push(actionButton(I18n.t("ui.match.remove_practice", {}, "Remove practice from list"),async()=>{await portalRequest("DELETE",`/matches/${match.id}`);selectMatch(null);},{danger:true,confirm:I18n.t("ui.match.remove_practice_confirm", {}, "Archive this practice and remove it from your list?")}));
   }
   // Practice plays locally in the browser, which a v2 game can't do: its
   // logic runs on the server. The button is only offered for v1 games.
   if (game?.code && !game.server_code)
     secondaryActions.push(
-      actionButton("Start a new practice", async () => {
+      actionButton(I18n.t("ui.match.new_practice", {}, "Start a new practice"), async () => {
         const practiceMatch = offline.practice(game, $("practice-mode").value);
         selectMatch(practiceMatch.id);
       }),
@@ -904,7 +904,7 @@ function renderMatch() {
   }
   if (match.pending) {
     showMessage(
-      `${match.pending} move(s) saved on this device, awaiting sync.`,
+      I18n.t("ui.match.pending_sync", {count: match.pending}, `${match.pending} move(s) saved on this device, awaiting sync.`),
     );
     $("match-message").dataset.offline = "true";
   }
@@ -913,18 +913,18 @@ function renderMatch() {
     $("match-message").dataset.offline = "true";
     actions.push(
       actionButton(
-        "Use server version",
+        I18n.t("ui.match.use_server", {}, "Use server version"),
         async () => {
           offline.resolve(match.id);
           state.lastSent = null;
         },
         {
-          confirm: "Archive your offline moves and restore the server version?",
+          confirm: I18n.t("ui.match.use_server_confirm", {}, "Archive your offline moves and restore the server version?"),
         },
       ),
     );
     actions.push(
-      actionButton("Download offline moves", async () => {
+      actionButton(I18n.t("ui.match.download_offline", {}, "Download offline moves"), async () => {
         const blob = new Blob(
           [JSON.stringify(offline.read().queues[match.id], null, 2)],
           { type: "application/json" },
@@ -948,13 +948,13 @@ function renderMatch() {
     };
   if (user && isJoinable(match, user.id)) {
     actions.push(
-      actionButton("Join", call("POST", "/join"), { primary: true }),
+      actionButton(I18n.t("ui.action.join", {}, "Join"), call("POST", "/join"), { primary: true }),
     );
   }
   if (match.status === "waiting_for_players") {
     if (isOwner) {
       if (latest && latest.version > match.game_version && latest.allowed_player_counts.length === 1 && latest.allowed_player_counts[0] === 1) {
-        actions.push(actionButton("Play latest solo version", async () => {
+        actions.push(actionButton(I18n.t("ui.match.play_latest_solo", {}, "Play latest solo version"), async () => {
           $("new-game").value = latest.id;
           renderGameSearch();
           updateMatchSetup();
@@ -967,23 +967,23 @@ function renderMatch() {
       if (!paidMatch) {
         const minus = actionButton("−", call("PATCH", "", {num_computer_opponents: computers - 1}), {disabled:computers === 0});
         const plus = actionButton("+", call("PATCH", "", {num_computer_opponents: computers + 1}), {disabled:match.players.length >= max});
-        minus.setAttribute?.("aria-label", "Remove computer opponent");
-        plus.setAttribute?.("aria-label", "Add computer opponent");
-        actions.push(el("div", {class:"computer-stepper", role:"group", "aria-label":"Computer opponents"},
-          el("span", {class:"stepper-label", textContent:"Computers"}), minus,
-          el("span", {class:"stepper-count", textContent:String(computers), "aria-label":`${computers} computer opponents`}), plus));
+        minus.setAttribute?.("aria-label", I18n.t("ui.match.remove_computer_aria", {}, "Remove computer opponent"));
+        plus.setAttribute?.("aria-label", I18n.t("ui.match.add_computer_aria", {}, "Add computer opponent"));
+        actions.push(el("div", {class:"computer-stepper", role:"group", "aria-label":I18n.t("ui.match.computer_opponents", {}, "Computer opponents")},
+          el("span", {class:"stepper-label", textContent:I18n.t("ui.match.computers", {}, "Computers")}), minus,
+          el("span", {class:"stepper-count", textContent:String(computers), "aria-label":I18n.t("ui.match.computers_count_aria", {count: computers}, `${computers} computer opponents`)}), plus));
       } else {
         actions.push(el("p", {class:"paid-lobby-hint", textContent: computers ?
-          "Paid matches need human opponents. Remove the computer to continue." :
-          "Invite a human player to join this token match."}));
-        if (computers > 0) actions.push(actionButton("Remove computer", call("PATCH", "", {num_computer_opponents: computers - 1})));
+          I18n.t("ui.match.paid_needs_humans", {}, "Paid matches need human opponents. Remove the computer to continue.") :
+          I18n.t("ui.match.paid_invite_human", {}, "Invite a human player to join this token match.")}));
+        if (computers > 0) actions.push(actionButton(I18n.t("ui.match.remove_computer", {}, "Remove computer"), call("PATCH", "", {num_computer_opponents: computers - 1})));
       }
       const readyToStart = counts.includes(match.players.length) && (!paidMatch || computers === 0);
-      actions.push(actionButton("Start game", call("POST", "/start"), {primary:true, disabled:!readyToStart}));
-      secondaryActions.push(actionButton("Delete match", call("DELETE"), {danger:true, confirm:"Delete this match for everyone?"}));
+      actions.push(actionButton(I18n.t("ui.match.start_game", {}, "Start game"), call("POST", "/start"), {primary:true, disabled:!readyToStart}));
+      secondaryActions.push(actionButton(I18n.t("ui.match.delete_match", {}, "Delete match"), call("DELETE"), {danger:true, confirm:I18n.t("ui.match.delete_confirm", {}, "Delete this match for everyone?")}));
     } else if (mySeat) {
       actions.push(
-        actionButton("Leave", call("POST", "/leave"), { danger: true }),
+        actionButton(I18n.t("ui.action.leave", {}, "Leave"), call("POST", "/leave"), { danger: true }),
       );
     }
   } else if (match.status === "ongoing" && mySeat && !match.localMode) {
@@ -993,23 +993,23 @@ function renderMatch() {
       // split), and only a confirmed click applies that exact preview
       // — so the amount is always shown, staked match or not.
       actions.push(
-        actionButton("Leave", async () => {
+        actionButton(I18n.t("ui.action.leave", {}, "Leave"), async () => {
           const preview = await portalRequest("POST", `${path}/maybeLeave`, { user });
           const payout = preview.pending_leave_payout ?? 0;
           const ends = game.allows_leave_mid_match
             ? ""
-            : " Leaving ends the match for everyone.";
-          if (!confirm(`You will get ${payout} tokens back — leave?${ends}`)) return;
+            : " " + I18n.t("ui.match.leave_ends_all", {}, "Leaving ends the match for everyone.");
+          if (!confirm(I18n.t("ui.match.leave_refund", {payout}, `You will get ${payout} tokens back — leave?`) + ends)) return;
           await portalRequest("POST", `${path}/playerLeft`, { user });
         }, { danger: true }),
       );
     } else {
       const confirm =
         game && game.allows_leave_mid_match
-          ? "Leave? A computer takes over your seat."
-          : "Leave? This game doesn't allow leaving, so the match ends for everyone.";
+          ? I18n.t("ui.match.leave_confirm_takeover", {}, "Leave? A computer takes over your seat.")
+          : I18n.t("ui.match.leave_confirm_ends", {}, "Leave? This game doesn't allow leaving, so the match ends for everyone.");
       actions.push(
-        actionButton("Leave", call("POST", "/leave"), { danger: true, confirm }),
+        actionButton(I18n.t("ui.action.leave", {}, "Leave"), call("POST", "/leave"), { danger: true, confirm }),
       );
     }
   } else if (match.status === "over") {
@@ -1019,10 +1019,10 @@ function renderMatch() {
         match.players.some((player) => player.kind === "computer");
       actions.push(actionButton(
         playingSoloWithComputers
-          ? "Play again"
+          ? I18n.t("ui.match.play_again", {}, "Play again")
           : match.rematch_match_id
-            ? "Join rematch"
-            : "Request rematch",
+            ? I18n.t("ui.match.join_rematch", {}, "Join rematch")
+            : I18n.t("ui.match.request_rematch", {}, "Request rematch"),
         async () => {
           const rematch = await portalRequest(
             "POST",
@@ -1036,19 +1036,19 @@ function renderMatch() {
     }
     if (isOwner)
       secondaryActions.push(
-        actionButton("Delete match", call("DELETE"), {
+        actionButton(I18n.t("ui.match.delete_match", {}, "Delete match"), call("DELETE"), {
           danger: true,
-          confirm: "Delete this match for everyone?",
+          confirm: I18n.t("ui.match.delete_confirm", {}, "Delete this match for everyone?"),
         }),
       );
     else if (mySeat && !match.localMode)
-      actions.push(actionButton("Hide from my list", call("DELETE")));
+      actions.push(actionButton(I18n.t("ui.match.hide_from_list", {}, "Hide from my list"), call("DELETE")));
   }
   if (isOwner && match.status === "ongoing") {
     secondaryActions.push(
-      actionButton("Delete match", call("DELETE"), {
+      actionButton(I18n.t("ui.match.delete_match", {}, "Delete match"), call("DELETE"), {
         danger: true,
-        confirm: "Delete this ongoing match for everyone?",
+        confirm: I18n.t("ui.match.delete_ongoing_confirm", {}, "Delete this ongoing match for everyone?"),
       }),
     );
   }
@@ -1056,7 +1056,7 @@ function renderMatch() {
     actions.push(
       el("button", {
         type: "button",
-        textContent: "Invite friends",
+        textContent: I18n.t("ui.match.invite_friends", {}, "Invite friends"),
         onclick: () =>
           navigator.clipboard
             // With the sender's id as "ref", whoever signs up through the link
@@ -1066,12 +1066,12 @@ function renderMatch() {
                 ? Auth.inviteLink(Auth.current(), `match=${match.id}`)
                 : `${location.origin}/portal#match=${match.id}`,
             )
-            .then(() => toast("✓ Invite link copied")),
+            .then(() => toast(I18n.t("ui.match.invite_copied", {}, "✓ Invite link copied"))),
       }),
     );
   if (secondaryActions.length) {
     const menu = el("details", {class:"match-more", open:state.moreActionsMatch === match.id},
-      el("summary", {"aria-label":"More match actions", textContent:"⋯"}),
+      el("summary", {"aria-label":I18n.t("ui.match.more_actions", {}, "More match actions"), textContent:"⋯"}),
       el("div", {class:"match-more-panel"}, ...secondaryActions));
     menu.addEventListener?.("toggle", () => {
       if (menu.isConnected) {
@@ -1098,13 +1098,17 @@ function renderMatch() {
   if (waiting) {
     const allowed = counts.length ? counts.join(", ") : "?";
     const ready = counts.includes(match.players.length);
-    if (ready) $("match-status").textContent = "ready to start";
+    const seated = match.players.length;
+    if (ready) $("match-status").textContent = I18n.t("ui.match.ready_to_start", {}, "ready to start");
+    const ownerStarts = I18n.t("ui.match.owner_starts", {}, "The owner starts the match.");
     $("waiting").textContent = ready
-      ? `Ready to start with ${match.players.length} ${match.players.length === 1 ? "player" : "players"}. ` + (isOwner ? "Press Start to play." : "The owner starts the match.")
-      : `Waiting for players: ${match.players.length} seated, this game plays with ${allowed}. ` +
-        (isOwner ? "Add computers or wait for others to join, then start." : "The owner starts the match.");
+      ? (seated === 1 ? I18n.t("ui.match.ready_one", {}, "Ready to start with 1 player.") : I18n.t("ui.match.ready_many", {count: seated}, `Ready to start with ${seated} players.`)) +
+        " " + (isOwner ? I18n.t("ui.match.press_start", {}, "Press Start to play.") : ownerStarts)
+      : I18n.t("ui.match.waiting_players_info", {seated, allowed}, `Waiting for players: ${seated} seated, this game plays with ${allowed}.`) +
+        " " + (isOwner ? I18n.t("ui.match.add_or_wait", {}, "Add computers or wait for others to join, then start.") : ownerStarts);
     if (latest && latest.version > match.game_version) {
-      $("waiting").textContent += ` This match uses version ${match.game_version}; the latest game is version ${latest.version}. Create a new match to use its updated rules.`;
+      $("waiting").textContent += " " + I18n.t("ui.match.newer_version", {match_version: match.game_version, latest_version: latest.version},
+        `This match uses version ${match.game_version}; the latest game is version ${latest.version}. Create a new match to use its updated rules.`);
     }
   }
   $("game-box").hidden = waiting;
