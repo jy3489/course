@@ -714,7 +714,10 @@ function updateMatchSetup() {
   $("show-creator").hidden = detailPage;
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
-  $("practice").disabled = !me() || !game;
+  const serverOnly = game?.supports_local_practice === false || Boolean(game?.server_code);
+  $("practice").disabled = !me() || !game || serverOnly;
+  $("practice-mode").disabled = serverOnly;
+  $("practice-unavailable").hidden = !serverOnly;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("speed-choice").hidden = solo;
   updateStakePreview();
@@ -1214,6 +1217,8 @@ async function syncGame() {
     actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
   });
   message.token_pot = view.token_pot ?? 0;
+  // Let game UIs distinguish a historical snapshot from a live opponent turn.
+  message.replay = replay ? { index: replay.index, total: match.move_count } : null;
   const json = JSON.stringify(message);
   if (json !== state.lastSent) {
     state.lastSent = json;

@@ -109,8 +109,9 @@
                 <div class="play-option-heading"><span class="play-option-icon" aria-hidden="true">⌂</span><div><h3 id="local-play-title" data-i18n="ui.mode.local_practice">Local practice</h3><p data-i18n="ui.portal.practice_hint">A quick game, saved on this device.</p></div></div>
                 <div class="practice-controls">
                   <label for="practice-mode"><span data-i18n="ui.portal.play_style">Play style</span><select id="practice-mode"><option value="computer" data-i18n="ui.mode.against_computer">Against computer</option><option value="pass" data-i18n="ui.mode.pass_and_play">Pass and play</option></select></label>
-                  <button id="practice" type="button" data-i18n="ui.portal.play_on_device">Play on this device ↗</button>
+                  <button id="practice" type="button" aria-describedby="practice-unavailable" data-i18n="ui.portal.play_on_device">Play on this device ↗</button>
                 </div>
+                <p id="practice-unavailable" class="play-option-note" role="status" hidden>This game requires an online match. Create a match above, then invite a friend or add a computer.</p>
                 <p class="play-option-note" data-i18n="ui.portal.practice_offline_note">For offline play, open the game online first.</p>
               </section>
             </div>
@@ -158,6 +159,6 @@
     <script src="/static/portal-speed.js?v=2"></script>
     <script src="/static/push-notifications.js?v=1"></script>
     <script src="/static/portal-feedback.js?v=1"></script>
-    <script src="/static/portal.js?v=49"></script>
+    <script src="/static/portal.js?v=50"></script>
   </body>
 </html>
