@@ -128,7 +128,8 @@ def _uptime_policy(check_id: str, channels: list[str], host: str) -> dict[str, A
                 "conditionThreshold": {
                     "filter": (
                         'metric.type="monitoring.googleapis.com/uptime_check/check_passed" '
-                        f'AND metric.label.check_id="{check_id}"'
+                        f'AND metric.label.check_id="{check_id}" '
+                        'AND resource.type="uptime_url"'
                     ),
                     "aggregations": [
                         {
