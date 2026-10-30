@@ -576,10 +576,19 @@ function libraryGames() {
   ];
 }
 
+// Distinguish games that share a name, even when filtering hides one of them.
+function catalogGameLabel(game) {
+  const name = game.name.trim().toLocaleLowerCase();
+  const duplicate = state.games.some(other => other.id !== game.id && other.name.trim().toLocaleLowerCase() === name);
+  const short = game.id.slice(0, 8);
+  const id = state.games.some(other => other.id !== game.id && other.id.slice(0, 8) === short) ? game.id : short;
+  return duplicate ? `${game.name} · v${game.version} · ${id}` : game.name;
+}
+
 function renderLibrary() {
   const games = libraryGames();
   const selected = $("new-game").value;
-  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter, state.randomJoining, I18n.revision()]);
+  const key = JSON.stringify([games, games.map(catalogGameLabel), selected, state.libraryView, state.libraryFilter, state.randomJoining, I18n.revision()]);
   if (state.libraryKey === key) return;
   state.libraryKey = key;
   $("library-count").textContent = I18n.t("ui.games.count", { count: games.length }, `${games.length} ${games.length === 1 ? "game" : "games"} to explore`);
@@ -589,7 +598,7 @@ function renderLibrary() {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
     const random = isRandomGame(game);
     // The "Random" card is built into the page; every other game's text is its builder's.
-    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : game.name;
+    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : catalogGameLabel(game);
     const description = random ? I18n.t("ui.games.random_description", {}, game.description) : game.description;
     const initials = name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
@@ -619,7 +628,7 @@ function renderGameSearch() {
   state.filteredGames = results;
   state.gameSearchActive = Math.min(state.gameSearchActive, Math.max(0, state.filteredGames.length - 1));
   const key = JSON.stringify([state.gameSearchOpen, state.gameSearchQuery, state.gameSearchActive,
-    results.map((game) => [game.id, game.version])]);
+    results.map((game) => [game.id, game.version, catalogGameLabel(game)])]);
   if (key === state.gameSearchKey) return;
   state.gameSearchKey = key;
   input.setAttribute("aria-activedescendant", state.gameSearchOpen && state.filteredGames.length ? `game-result-${state.gameSearchActive}` : "");
@@ -628,7 +637,7 @@ function renderGameSearch() {
     class: "game-option", "aria-selected": String(index === state.gameSearchActive),
     onclick: () => isRandomGame(game) ? joinRandomMatch() : openGamePage(game.id),
   }, el("span", {class: "game-option-copy"},
-    el("span", {textContent: game.name}),
+    el("span", {textContent: isRandomGame(game) ? game.name : catalogGameLabel(game)}),
     ...(game.description ? [el("span", {class: "game-option-description", textContent: game.description})] : [])),
     el("small", {textContent: gameCountLabel(game)}))));
   $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
@@ -718,6 +727,7 @@ function updateMatchSetup() {
   $("practice").disabled = !me() || !game || serverOnly;
   $("practice-mode").disabled = serverOnly;
   $("practice-unavailable").hidden = !serverOnly;
+  $("practice-offline-note").hidden = serverOnly;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("speed-choice").hidden = solo;
   updateStakePreview();
