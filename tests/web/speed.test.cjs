@@ -162,7 +162,7 @@ function setupPortal(request) {
     return nodes.get(id);
   };
   const window={addEventListener(){}};
-  const ctx=vm.createContext({console,Map,Set,URLSearchParams,Date,Math,Number,String,
+  const ctx=vm.createContext({StoragePages:{enabled:async()=>false,list:(request,path,options)=>request("GET",path,options),controls(){},search(){return false;}},console,Map,Set,URLSearchParams,Date,Math,Number,String,
     navigator:{onLine:true},localStorage:{},PortalOffline:class {api(...args){return request(...args);}read(){return {};}write(){}},
     document:{getElementById:node,body:{classList:{toggle(){}}}},window,
     location:{hash:'',search:'',assign(){}},history:{replaceState(){}},

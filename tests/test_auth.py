@@ -51,7 +51,12 @@ def _google_api(
     monkeypatch.setattr(
         api_module,
         "verify_google_id_token",
-        lambda token, client_id: (subject, name, "gina@example.com", "https://pic/gina"),
+        lambda token, client_id: (
+            subject,
+            name,
+            "gina@example.com",
+            "https://pic/gina",
+        ),
     )
     return api
 
@@ -102,15 +107,16 @@ def test_auth_config_is_all_disabled_by_default() -> None:
 # Google login
 
 
-def test_google_login_creates_a_user_on_first_use(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_google_login_creates_a_user_on_first_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api = _google_api(monkeypatch)
     first = api.ok("POST", "/auth/google", json={"id_token": "token"})
     assert first["display_name"] == "Gina"
     assert first["password"]
     assert first["merged_from_user_id"] is None
     assert [
-        (account["kind"], account["identifier"])
-        for account in first["linked_accounts"]
+        (account["kind"], account["identifier"]) for account in first["linked_accounts"]
     ] == [("google", "sub-1")]
     # The same Google account logs back into the same user.
     second = api.ok("POST", "/auth/google", json={"id_token": "token"})
@@ -137,7 +143,12 @@ def test_google_login_refreshes_changed_profile_details(
     monkeypatch.setattr(
         api_module,
         "verify_google_id_token",
-        lambda token, client_id: ("sub-1", "Gina", "gina@example.com", "https://pic/new"),
+        lambda token, client_id: (
+            "sub-1",
+            "Gina",
+            "gina@example.com",
+            "https://pic/new",
+        ),
     )
     second = api.ok("POST", "/auth/google", json={"id_token": "token"})
     assert second["user_id"] == first["user_id"]
@@ -166,14 +177,14 @@ def test_google_login_rejects_bad_tokens(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
 
-
-
 # Phone and email codes
 
 
 def test_phone_login_sends_and_verifies_a_code() -> None:
     api, sender = _sms_api()
-    started = api.ok("POST", "/auth/phone/start", json={"phone_number": "+1 (555) 123-4567"})
+    started = api.ok(
+        "POST", "/auth/phone/start", json={"phone_number": "+1 (555) 123-4567"}
+    )
     assert started["expires_in_seconds"] == 600
     assert len(sender.sent) == 1
     destination, code = sender.sent[0]
@@ -208,11 +219,14 @@ def test_email_login_normalizes_the_address() -> None:
         auth_config=AuthConfig(email=EmailAuthConfig(provider="smtp")),
         email_sender=sender,
     )
-    started = api.ok("POST", "/auth/email/start", json={"email": "  Player@Example.COM "})
+    started = api.ok(
+        "POST", "/auth/email/start", json={"email": "  Player@Example.COM "}
+    )
     destination, code = sender.sent[0]
     assert destination == "player@example.com"
     response = api.ok(
-        "POST", "/auth/email/verify",
+        "POST",
+        "/auth/email/verify",
         json={"verification_id": started["verification_id"], "code": code},
     )
     # Without a display name, the address's local part is used.
@@ -221,7 +235,9 @@ def test_email_login_normalizes_the_address() -> None:
 
 def test_phone_login_needs_configuration() -> None:
     assert error(
-        Api().request("POST", "/auth/phone/start", json={"phone_number": "+15551234567"})
+        Api().request(
+            "POST", "/auth/phone/start", json={"phone_number": "+15551234567"}
+        )
     ) == (501, "phone login is not configured")
 
 
@@ -233,13 +249,17 @@ def test_email_login_needs_configuration() -> None:
 
 def test_bad_phone_numbers_and_emails_are_rejected() -> None:
     api, _ = _sms_api()
-    assert error(
-        api.request("POST", "/auth/phone/start", json={"phone_number": "555-1234"})
-    )[0] == 400
+    assert (
+        error(
+            api.request("POST", "/auth/phone/start", json={"phone_number": "555-1234"})
+        )[0]
+        == 400
+    )
     email_api = Api(auth_config=AuthConfig(email=EmailAuthConfig(provider="smtp")))
-    assert error(email_api.request("POST", "/auth/email/start", json={"email": "nope"}))[
-        0
-    ] == 400
+    assert (
+        error(email_api.request("POST", "/auth/email/start", json={"email": "nope"}))[0]
+        == 400
+    )
 
 
 def test_wrong_codes_are_rejected_then_locked_out() -> None:
@@ -306,7 +326,8 @@ def test_unknown_verification_ids_are_rejected() -> None:
     api, _ = _sms_api()
     assert error(
         api.request(
-            "POST", "/auth/phone/verify",
+            "POST",
+            "/auth/phone/verify",
             json={"verification_id": "nope", "code": "123456"},
         )
     ) == (404, "verification not found or expired")
@@ -315,7 +336,9 @@ def test_unknown_verification_ids_are_rejected() -> None:
 # Linking and merging
 
 
-def test_linking_a_login_to_the_current_account(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_linking_a_login_to_the_current_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api = _google_api(monkeypatch)
     bob = api.new_user("bob")
     response = api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=bob)
@@ -395,7 +418,9 @@ def test_merge_requires_authenticating_as_the_source(
     bob = api.new_user("bob")
     # Bob can't absorb Ann's account.
     assert error(
-        api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=bob)
+        api.request(
+            "POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=bob
+        )
     ) == (403, "only the merged-away user can request the merge")
     # Nobody can merge a user into itself.
     assert error(
@@ -410,15 +435,18 @@ def test_merge_requires_authenticating_as_the_source(
         )
     ) == (404, "user not found")
     # Anonymous callers can't merge at all.
-    assert error(
-        api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob})
-    )[0] == 401
+    assert (
+        error(api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob}))[0]
+        == 401
+    )
     # The rank rule decides who is merged away: Ann's Google login outranks guest
     # Bob, so Ann asking to merge herself into Bob is refused — Bob is the
     # replaced party, not her.
     api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=ann)
     assert error(
-        api.request("POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann)
+        api.request(
+            "POST", f"/users/{ann}/merge", json={"into_user_id": bob}, as_user=ann
+        )
     ) == (403, "only the merged-away user can request the merge")
 
 
@@ -452,7 +480,9 @@ def test_merge_does_not_duplicate_an_already_linked_login(
     api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=ann)
     # Bob links a *different* Google account first.
     monkeypatch.setattr(
-        api_module, "verify_google_id_token", lambda token, cid: ("sub-2", "Bea", "bea@example.com", "")
+        api_module,
+        "verify_google_id_token",
+        lambda token, cid: ("sub-2", "Bea", "bea@example.com", ""),
     )
     api.ok("POST", "/auth/google", json={"id_token": "token"}, as_user=bob)
     # Merge Ann into Bob: Bob keeps both logins, no duplicates; Ann is replaced.
@@ -515,6 +545,36 @@ def test_authenticate_as_replaced_user_returns_the_survivor() -> None:
     assert api.ok("GET", f"/users/{ann}")["id"] == bob
 
 
+def test_merge_preserves_server_game_player_identity_and_private_view() -> None:
+    from game_platform.tests.test_server_matches import _create_game, _start, _move
+
+    api = Api()
+    source, target, opponent = (
+        api.new_user(name) for name in ("source", "target", "opponent")
+    )
+    match = _start(api, source, _create_game(api, source), joiner=opponent)
+    before = api.ok("GET", f"/matches/{match}", as_user=source)["state"]
+    api.ok(
+        "POST", f"/users/{source}/merge", as_user=source, json={"into_user_id": target}
+    )
+    assert api.ok("GET", f"/matches/{match}", as_user=target)["state"] == before
+    assert _move(api, match, as_user=target, add=1).status_code == 201
+    assert _move(api, match, as_user=opponent, add=1).status_code == 201
+
+
+def test_merge_waits_for_shared_active_match_without_changing_accounts() -> None:
+    from game_platform.tests.test_server_matches import _create_game, _start
+
+    api = Api()
+    source, target = api.new_user("source"), api.new_user("target")
+    _start(api, source, _create_game(api, source), joiner=target)
+    response = api.request(
+        "POST", f"/users/{source}/merge", as_user=source, json={"into_user_id": target}
+    )
+    assert response.status_code == 409
+    assert api.ok("GET", f"/users/{source}")["id"] == source
+
+
 def test_replacement_is_flattened_to_one_hop() -> None:
     platform = GamePlatform(store=InMemoryStore(), clock=Clock())
     ann = platform.create_user(display_name="ann")
@@ -548,9 +608,7 @@ def test_replacement_is_flattened_to_one_hop() -> None:
     assert raw_dan.replaced_user_ids == (cat.id, bob.id, ann.id)
     # Once everything resolves to the same user, merging is a self-merge (400).
     with pytest.raises(InvalidRequestError):
-        platform.merge_users(
-            caller_id=dan.id, from_user_id=ann.id, into_user_id=bob.id
-        )
+        platform.merge_users(caller_id=dan.id, from_user_id=ann.id, into_user_id=bob.id)
 
 
 def test_replaced_user_holds_no_data_but_keeps_working_credentials() -> None:

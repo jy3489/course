@@ -1,0 +1,88 @@
+{
+  "base_url": "http://127.0.0.1:8125",
+  "request_mix": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "weight": 1,
+      "headers": {},
+      "json": null
+    },
+    {
+      "method": "GET",
+      "path": "/v2/games?limit=50",
+      "weight": 2,
+      "headers": {},
+      "json": null
+    },
+    {
+      "method": "GET",
+      "path": "/v2/matches?status=ongoing&limit=50",
+      "weight": 4,
+      "headers": {},
+      "json": null
+    }
+  ],
+  "stages": [
+    {
+      "concurrency": 1,
+      "elapsed_seconds": 10.0,
+      "requests": 67,
+      "requests_per_second": 6.7,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "http_statuses": {
+        "200": 67
+      },
+      "error_types": {},
+      "latency_ms": {
+        "min": 102.07,
+        "mean": 149.91,
+        "p50": 142.06,
+        "p95": 187.7,
+        "p99": 231.23,
+        "max": 257.47
+      }
+    },
+    {
+      "concurrency": 2,
+      "elapsed_seconds": 10.0,
+      "requests": 134,
+      "requests_per_second": 13.4,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "http_statuses": {
+        "200": 134
+      },
+      "error_types": {},
+      "latency_ms": {
+        "min": 83.59,
+        "mean": 150.4,
+        "p50": 142.41,
+        "p95": 205.23,
+        "p99": 226.41,
+        "max": 230.59
+      }
+    },
+    {
+      "concurrency": 4,
+      "elapsed_seconds": 10.0,
+      "requests": 194,
+      "requests_per_second": 19.4,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "http_statuses": {
+        "200": 194
+      },
+      "error_types": {},
+      "latency_ms": {
+        "min": 89.68,
+        "mean": 208.56,
+        "p50": 209.01,
+        "p95": 263.81,
+        "p99": 320.97,
+        "max": 351.06
+      }
+    }
+  ]
+}

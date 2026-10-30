@@ -13,6 +13,8 @@
     "backup_keep": 48
   },
   "firestore": {
+    "mode": "snapshot",
+    "namespace": "",
     "enabled": false,
     "project_id": "",
     "database": "(default)",

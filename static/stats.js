@@ -407,13 +407,40 @@ async function refresh() {
       fetch("/admin/experiments"),
     ]);
     if (!statsResponse.ok) throw new Error(`GET /admin/stats: ${statsResponse.status}`);
-    if (!experimentsResponse.ok) throw new Error(`GET /admin/experiments: ${experimentsResponse.status}`);
     const [stats, experiments] = await Promise.all([
       statsResponse.json(),
-      experimentsResponse.json(),
+      experimentsResponse.ok ? experimentsResponse.json() : Promise.resolve(null),
     ]);
     $("error").textContent = "";
-    render(stats, experiments);
+    if (stats.schema_version === 2) {
+      const rows=Object.entries(stats.counts).sort(([a],[b])=>a.localeCompare(b));
+      $("content").replaceChildren(table("Database records",["Record type","Count"],rows));
+      if (stats.snapshot) {
+        const snapshot = stats.snapshot;
+        const anchor = new Date(`${snapshot.anchor}T00:00:00Z`);
+        const dates = Array.from({length:30}, (_, i) => {
+          const date = new Date(anchor);
+          date.setUTCDate(date.getUTCDate() - 29 + i);
+          return date.toISOString().slice(0,10);
+        });
+        $("content").append(
+          el("p", {textContent:`Historical report built ${formatTime(snapshot.generated_at)}`}),
+          ...["users", "games", "matches"].map(kind => barChart(
+            `New ${kind} per day`, dates.map(date => ({date, count:snapshot.days[date]?.[kind] ?? 0}))
+          )),
+        );
+      }
+      if (experiments) $("content").append(
+        el("p", {textContent:`Experiment report built ${formatTime(experiments.generated_at)}`}),
+        experimentTable("UI skin experiment", experiments.skin_experiment, "skin"),
+        experimentTable("Advertisement campaigns", experiments.campaign_experiment, "campaign"),
+        experimentManagement(),
+      );
+      else $("content").append(el("p", {textContent:"Experiment report is currently unavailable."}));
+    } else {
+      if (!experiments) throw new Error(`GET /admin/experiments: ${experimentsResponse.status}`);
+      render(stats, experiments);
+    }
     $("freshness").textContent = `Loaded ${formatTime(stats.generated_at)}`;
   } catch (error) {
     $("error").textContent = `Couldn't load statistics: ${error.message}`;

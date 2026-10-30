@@ -410,6 +410,13 @@ function matchDetail(match, nameOf) {
 
 async function refresh() {
   try {
+    if (await StoragePages.enabled()) {
+      await refreshPagedBrowse();
+      state.loadedAt=new Date();
+      $("error").textContent="";
+      renderFreshness();
+      return;
+    }
     const allData = await fetchAllData();
     state.loadedAt = new Date();
     $("error").textContent = "";
@@ -437,7 +444,8 @@ function setAutoRefresh(enabled) {
 }
 
 function main() {
-  $("filter").addEventListener("input", render);
+  let filterTimer;
+  $("filter").addEventListener("input",()=>{clearTimeout(filterTimer);filterTimer=setTimeout(()=>state.pages?refresh():render(),250);});
   $("refresh").addEventListener("click", refresh);
   const autoRefresh = $("auto-refresh");
   autoRefresh.checked = Boolean(localStorage.getItem(AUTO_REFRESH_KEY));
@@ -448,3 +456,27 @@ function main() {
 }
 
 main();
+
+async function refreshPagedBrowse() {
+  const mappings=[["users","users"],["games","games"],["matches","matches"],["agent_conversations","conversations"]];
+  state.pages ??= {};
+  for (const [kind,id] of mappings) {
+    const page=state.pages[kind] ??= {cursor:null,previous:[]};
+    const response=await fetch(`/v2/admin/${kind}?limit=50${page.cursor?"&cursor="+encodeURIComponent(page.cursor):""}`);
+    if(!response.ok)throw new Error(`Loading ${kind}: ${response.status}`);
+    const result=await response.json();
+    const filter=$("filter").value.toLocaleLowerCase();
+    const rows=result.items.filter(x=>JSON.stringify(x).toLocaleLowerCase().includes(filter));
+    const back=el("button",{textContent:"Previous page",disabled:!page.previous.length,onclick:()=>{page.cursor=page.previous.pop();refresh();}});
+    const next=el("button",{textContent:"Next page",disabled:!result.next_cursor,onclick:()=>{page.previous.push(page.cursor);page.cursor=result.next_cursor;refresh();}});
+    $(id+"-count").textContent=`${rows.length} on this page`;
+    $(id).replaceChildren(...rows.map(row=>{
+      const detail=el("details",{},el("summary",{textContent:row.display_name||row.name||row.id||row.game_id}),el("pre",{textContent:JSON.stringify(row,null,2)}));
+      if(kind==="agent_conversations") detail.append(el("button",{textContent:"Load recent messages",onclick:async()=>{
+        const r=await fetch(`/admin/games/${encodeURIComponent(row.game_id)}/agent-conversation`);
+        if(r.ok)detail.append(el("pre",{textContent:JSON.stringify(await r.json(),null,2)}));
+      }}));
+      return detail;
+    }),back,next);
+  }
+}

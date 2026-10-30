@@ -5,6 +5,7 @@ matters, and raises a subclass of [PlatformError] when a request can't be honore
 """
 
 import collections
+from game_platform.move_history import append_move
 import datetime as dt
 import hashlib
 import hmac
@@ -361,7 +362,7 @@ class GamePlatform:
         # Each public method is a read-modify-write on the store; the server handles
         # requests on a thread pool, so serialize them. Reentrant, because verifying a
         # code and merging accounts compose smaller locked operations.
-        self._lock = threading.RLock()
+        self._lock = getattr(self._store, "operation_lock", None) or threading.RLock()
         # Referral code -> the user id it was given to (possibly merged away since,
         # which resolves to the survivor like any old id).
         self._user_ids_by_code: dict[str, str] = {}
@@ -568,7 +569,7 @@ class GamePlatform:
         match_id: str | None = None,
         occurred_at: dt.datetime | None = None,
     ) -> ExperimentEvent:
-        events = self._store.list_experiment_events()
+        events = [] if getattr(self._store, "scalable", False) else self._store.list_experiment_events()
         duplicate = next(
             (
                 event
@@ -588,6 +589,10 @@ class GamePlatform:
             separators=(",", ":"),
         )
         event_id = hashlib.sha256(event_identity.encode()).hexdigest()
+        if getattr(self._store, "scalable", False):
+            existing = self._store._get("experiment_events", f"experiment-event:{event_id}")
+            if existing is not None:
+                return existing
         event = ExperimentEvent(
             id=f"experiment-event:{event_id}",
             experiment_id=experiment_id,
@@ -612,7 +617,7 @@ class GamePlatform:
                 raise NotFoundError("campaign link not found")
             now = self._clock()
             event_id = f"click:{experiment.id}:{variant.id}:{now.date().isoformat()}"
-            existing = next(
+            existing = self._store._get("experiment_events", event_id) if getattr(self._store, "scalable", False) else next(
                 (
                     event
                     for event in self._store.list_experiment_events()
@@ -718,13 +723,13 @@ class GamePlatform:
                 (experiment for experiment in experiments if experiment.id == CAMPAIGN_EXPERIMENT_ID),
                 None,
             )
-            users = {user.id: user for user in self._store.list_users()}
-            account = users.get(user_id)
+            account = self._store.get_user(user_id)
             survivor_ids = {
                 user_id,
                 *(account.replaced_user_ids if account is not None else ()),
             }
-            events = self._store.list_experiment_events()
+            events = (self._store.experiment_signups(survivor_ids, CAMPAIGN_EXPERIMENT_ID)
+                      if getattr(self._store, "scalable", False) else self._store.list_experiment_events())
             campaign_signups = (
                 [
                     event
@@ -1053,6 +1058,8 @@ class GamePlatform:
     def _find_by_linked_account(
         self, kind: LinkedAccountKind, identifier: str
     ) -> User | None:
+        if getattr(self._store, "scalable", False):
+            return self._store.find_linked_account(kind, identifier)
         for user in self._store.list_users():
             if any(
                 account.kind == kind and account.identifier == identifier
@@ -1083,6 +1090,8 @@ class GamePlatform:
     def _give_missing_referral_codes(self) -> None:
         """At startup: indexes the codes accounts have, and gives one to every account
         from before referral codes."""
+        if getattr(self._store, "scalable", False):
+            return  # Migration assigns old codes; new accounts reserve codes atomically.
         with self._lock:
             users = self._store.list_users()
             for user in users:
@@ -1102,6 +1111,8 @@ class GamePlatform:
         # TODO: free the codes of long-inactive accounts once there's a policy for it;
         # until then a code is never reused (except a deleted account's, see
         # admin_delete_user).
+        if getattr(self._store, "scalable", False):
+            return self._store.reserve_referral(user_id)
         if len(self._user_ids_by_code) > REFERRAL_CODE_MAX - REFERRAL_CODE_MIN:
             raise RuntimeError(
                 f"all {REFERRAL_CODE_MAX - REFERRAL_CODE_MIN + 1} referral codes are taken"
@@ -1115,7 +1126,9 @@ class GamePlatform:
         """The surviving account an invite link's "ref" names: a 5-digit referral code
         or (older links) a user id. None when it names nobody. The caller holds the
         lock."""
-        if ref and _REFERRAL_CODE_RE.fullmatch(ref):
+        if ref and getattr(self._store, "scalable", False):
+            ref = self._store.user_for_referral(ref) or ref
+        elif ref and _REFERRAL_CODE_RE.fullmatch(ref):
             ref = self._user_ids_by_code.get(ref)
         return self._existing_user_id(ref)
 
@@ -1389,6 +1402,9 @@ class GamePlatform:
         if source.id == into.id:
             raise InvalidRequestError("cannot merge a user into itself")
         from_user_id, into_user_id = source.id, into.id
+        for match in self._store.list_matches_involving(from_user_id):
+            if match.status != "over" and match.seat_of(from_user_id) is not None and match.seat_of(into_user_id) is not None:
+                raise ConflictError("wait until shared matches end before merging these accounts")
         for assignment in self._store.list_experiment_assignments():
             if assignment.user_id != from_user_id:
                 continue
@@ -1416,7 +1432,8 @@ class GamePlatform:
                 updated = replace(
                     updated,
                     seats=tuple(
-                        replace(seat, user_id=into_user_id)
+                        replace(seat, user_id=into_user_id,
+                                logic_player_id=match.player_id_of(seat))
                         if seat.user_id == from_user_id
                         else seat
                         for seat in updated.seats
@@ -1674,10 +1691,11 @@ class GamePlatform:
             if game is None:
                 raise NotFoundError("game version not found")
             if not game.published and caller_id != game.owner_user_id:
-                if caller_id is None or not any(
+                if caller_id is None or not (self._store.has_game_membership(caller_id, game_id, version)
+                    if getattr(self._store, "scalable", False) else any(
                     match.game_id == game_id and match.game_version == version
                     for match in self._store.list_matches_involving(caller_id)
-                ):
+                )):
                     raise NotFoundError("game version not found")
             return game
 
@@ -2553,7 +2571,7 @@ class GamePlatform:
             replace(
                 match,
                 state=result.get("state"),
-                moves=(*match.moves, record),
+                moves=append_move(match.moves, record),
                 turn_of_player_indices=turn_indices,
                 status="ongoing" if turn_indices is not None else "over",
                 end_reason=None if turn_indices is not None else "finished",
@@ -2696,7 +2714,7 @@ class GamePlatform:
             current = match
             # Games could in principle pass the turn between computers
             # forever; the cap keeps a broken game from wedging the server.
-            for _ in range(1000):
+            for _ in range(1 if getattr(self._store, "scalable", False) else 1000):
                 if (
                     current.status != "ongoing"
                     or not current.turn_of_player_indices
@@ -2954,7 +2972,7 @@ class GamePlatform:
                 match,
                 "playerLeft",
                 match.state,
-                caller_id,
+                match.player_id_of(self._get_seat(match, caller_id)),
                 time_limit_seconds=PLAYER_LEFT_TIME_LIMIT_SECONDS,
             )
         except InvalidMoveError as error:
@@ -3284,7 +3302,7 @@ class GamePlatform:
                 replace(
                     match,
                     state=new_state,
-                    moves=(*match.moves, move),
+                    moves=append_move(match.moves, move),
                     turn_of_player_indices=next_turn_player_indices,
                     status="ongoing"
                     if next_turn_player_indices is not None
@@ -3347,7 +3365,7 @@ class GamePlatform:
             raise ForbiddenError("it is not your turn")
         try:
             result = self._call_logic(
-                game, match, "applyMove", match.state, caller_id, move
+                game, match, "applyMove", match.state, match.player_id_of(seat), move
             )
         except InvalidMoveError as error:
             raise InvalidRequestError(error.message) from error
@@ -3844,6 +3862,8 @@ class GamePlatform:
     def storage_error(self) -> str | None:
         """Why the data isn't being saved, or None when it is (or the store has no
         file). Taking the lock also proves requests aren't stuck behind it."""
+        if getattr(self._store, "scalable", False):
+            return self._store.health()
         with self._lock:
             return getattr(self._store, "last_write_error", None)
 
