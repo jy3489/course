@@ -741,11 +741,9 @@ function updateMatchSetup() {
   $("show-creator").hidden = detailPage;
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
-  const serverOnly = game?.supports_local_practice === false || Boolean(game?.server_code);
-  $("practice").disabled = !me() || !game || serverOnly;
-  $("practice-mode").disabled = serverOnly;
-  $("practice-unavailable").hidden = !serverOnly;
-  $("practice-offline-note").hidden = serverOnly;
+  $("practice").disabled = !me() || !game;
+  $("practice-mode").disabled = false;
+  $("practice-offline-note").hidden = false;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("speed-choice").hidden = solo;
   updateStakePreview();
@@ -889,12 +887,11 @@ function renderMatch() {
     else if (match.resumeTurn) actions.push(actionButton(I18n.t("ui.match.resume_practice", {}, "Resume practice"),async()=>{offline.resumePractice(match.id);state.lastSent=null;}));
     secondaryActions.push(actionButton(I18n.t("ui.match.remove_practice", {}, "Remove practice from list"),async()=>{await portalRequest("DELETE",`/matches/${match.id}`);selectMatch(null);},{danger:true,confirm:I18n.t("ui.match.remove_practice_confirm", {}, "Archive this practice and remove it from your list?")}));
   }
-  // Practice plays locally in the browser, which a v2 game can't do: its
-  // logic runs on the server. The button is only offered for v1 games.
-  if (game?.code && !game.server_code)
+  // Both API versions can practice on-device, without tokens or server writes.
+  if (game?.code)
     secondaryActions.push(
       actionButton(I18n.t("ui.match.new_practice", {}, "Start a new practice"), async () => {
-        const practiceMatch = offline.practice(game, $("practice-mode").value);
+        const practiceMatch = await offline.practice(game, $("practice-mode").value);
         selectMatch(practiceMatch.id);
       }),
     );
@@ -1286,6 +1283,12 @@ async function onMakeMove(move) {
         // it, so the client checks nothing but whose turn it is.
         if (!match || !user || actingFor(match, user.id) === null)
           throw new Error("It isn't your turn.");
+        if (match.localMode) {
+          const updated = await offline.practiceMove(match, move.move);
+          if (state.match?.id === match.id) state.match = updated;
+          state.lastSent = null;
+          return;
+        }
         if (offline.read().queues?.[match.id]?.length) {
           // A v2 move is already waiting to sync. Unlike a v1 move it
           // carries no resulting state, so a second click is a decision
@@ -1332,12 +1335,7 @@ async function practice() {
       "GET",
       `/games/${game.id}/versions/${game.version}`,
     );
-    if (full.server_code) {
-      $("create-message").textContent =
-        "Practice isn't available for server-side games: their logic runs on the server. Create a match instead.";
-      return;
-    }
-    const match = offline.practice(full, $("practice-mode").value);
+    const match = await offline.practice(full, $("practice-mode").value);
     state.gameCache.set(`${full.id}@${full.version}`, full);
     selectMatch(match.id);
   } catch (error) {

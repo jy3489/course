@@ -377,22 +377,10 @@ test('current account avatar wins over stale match profile cache',()=>{
   assert.equal(run('playerPicture({kind:"human",user_id:"other"})'),'/other-cat.png');
 });
 
-test('server games explain unavailable practice before a click; client games restore it',()=>{
-  const t=setup();
-  t.run('state.games[0].supports_local_practice=false;updateMatchSetup()');
-  assert.equal(t.node('practice').disabled,true);
-  assert.equal(t.node('practice-mode').disabled,true);
-  assert.equal(t.node('practice-unavailable').hidden,false);
-  t.run('state.games[0].supports_local_practice=true;updateMatchSetup()');
-  assert.equal(t.node('practice').disabled,false);
-  assert.equal(t.node('practice-mode').disabled,false);
-  assert.equal(t.node('practice-unavailable').hidden,true);
-});
-
-test('unsupported practice hides offline instructions and restores them for local games',()=>{
+test('v2 games offer local practice and offline instructions',()=>{
  const t=setup();t.run('state.games[0].supports_local_practice=false;updateMatchSetup()');
- assert.equal(t.node('practice-offline-note').hidden,true);
- t.run('state.games[0].supports_local_practice=true;updateMatchSetup()');
+ assert.equal(t.node('practice').disabled,false);
+ assert.equal(t.node('practice-mode').disabled,false);
  assert.equal(t.node('practice-offline-note').hidden,false);
 });
 test('duplicate names have stable distinct labels across search and catalog filters',()=>{

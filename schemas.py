@@ -479,7 +479,7 @@ class GameSummaryOut(BaseModel):
             updated_at=game.updated_at,
             deleted=game.deleted,
             published=game.published,
-            supports_local_practice=not bool(game.server_code),
+            supports_local_practice=True,
         )
 
 

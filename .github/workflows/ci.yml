@@ -58,6 +58,7 @@ jobs:
           cache: npm
           cache-dependency-path: game_platform/package-lock.json
       - run: npm ci
+      - run: node --test tests/web/*.test.cjs
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
       - uses: actions/upload-artifact@v4
