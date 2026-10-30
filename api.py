@@ -1,6 +1,7 @@
 """FastAPI routes for the game platform."""
 
 import io
+import logging
 import mimetypes
 import secrets
 import asyncio
@@ -25,7 +26,7 @@ from starlette.datastructures import State
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import JsonValue
 
-from game_platform import i18n
+from game_platform import i18n, observability
 from game_platform.models import Game, GameRules, Match, MatchStatus
 from game_platform.schemas import (
     AdminGameCodeRequest,
@@ -1201,6 +1202,29 @@ def admin_stats(platform: Platform) -> dict[str, JsonValue]:
     return platform.stats()
 
 
+@debug_router.get("/admin/monitoring", dependencies=[MasterPassword])
+def admin_monitoring(request: Request) -> dict[str, JsonValue]:
+    """What the monitor sees now: requests in flight, sign-ups in the last minute,
+    memory, and the alert thresholds."""
+    return request.app.state.monitor.snapshot()
+
+
+@debug_router.post("/admin/alerts/test", dependencies=[MasterPassword])
+def admin_test_alert(
+    request: Request, tier: Literal["minor", "major"] = "minor"
+) -> dict[str, JsonValue]:
+    """Writes a test alert to the log, to check that it reaches the right people: a
+    "minor" one should send an email, a "major" one should page. Nothing else happens."""
+    observability.log_event(
+        "alert_test",
+        f"this is a test of a {tier} alert; nobody needs to act",
+        level=logging.CRITICAL if tier == "major" else logging.WARNING,
+        alert=tier,
+        test=True,
+    )
+    return {"logged": "alert_test", "alert": tier, "request_id": request.state.request_id}
+
+
 @debug_router.get("/admin/experiments", dependencies=[MasterPassword])
 def admin_experiment_stats(platform: Platform) -> dict[str, JsonValue]:
     return platform.experiment_stats()
@@ -1383,8 +1407,27 @@ async def agent_chat(
             timeout=GENERATION_BUDGET_SECONDS,
         )
     except asyncio.TimeoutError as exc:
+        observability.log_event(
+            "ai_generation_timeout",
+            f"the game-building agent took more than {GENERATION_BUDGET_SECONDS:.0f}s",
+            level=logging.WARNING,
+            alert="minor",
+            budget_seconds=GENERATION_BUDGET_SECONDS,
+            game_id=body.game_id,
+            messages=len(body.messages),
+            last_message=observability.capture(body.messages[-1].content, 1000),
+        )
         raise HTTPException(status_code=504, detail="Muse did not finish within two minutes. Try a smaller game or change.") from exc
     except AgentError as exc:
+        observability.log_event(
+            "ai_generation_failed",
+            f"the game-building agent failed: {str(exc)[:200]}",
+            level=logging.WARNING,
+            error=str(exc)[:1000],
+            game_id=body.game_id,
+            messages=len(body.messages),
+            last_message=observability.capture(body.messages[-1].content, 1000),
+        )
         raise HTTPException(
             status_code=HTTPStatus.BAD_GATEWAY, detail=str(exc)
         ) from exc
@@ -1687,6 +1730,17 @@ async def _handle_platform_error(request: Request, exc: Exception) -> JSONRespon
     return JSONResponse(status_code=status, content=_error_body(request, str(exc)))
 
 
+async def _handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
+    """A bug: the request middleware has already logged it with its arguments and stack
+    trace. The caller gets the request id to quote when reporting it."""
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+        content={"detail": "internal server error", "code": "internal_error", "request_id": request_id},
+        headers={"X-Request-Id": request_id} if request_id else None,
+    )
+
+
 async def _handle_http_exception(request: Request, exc: Exception) -> Response:
     """Like Starlette's default handler, but with a localized `detail` and a `code`."""
     assert isinstance(exc, StarletteHTTPException)
@@ -1746,6 +1800,7 @@ def create_app(
     cors_allow_origins: Sequence[str] = ("*",),
     public_base_url: str = "",
     ai_max_fix_attempts: int = 3,
+    monitor: observability.Monitor | None = None,
 ) -> FastAPI:
     """[debug_tools] adds the web pages (/portal, /builder, /admin, /console, /browse)
     and /debug/all-data, which exposes everything (including users' passwords),
@@ -1757,7 +1812,10 @@ def create_app(
     `Access-Control-Allow-Origin` headers make browsers reject the response).
 
     [public_base_url] is where invite links and QR codes point; empty uses the
-    address each request came to."""
+    address each request came to.
+
+    [monitor] counts requests and raises alerts (see docs/monitoring.md); every request
+    is also given an id (the X-Request-Id header) and logged when it is slow or fails."""
     # Windows registry associations can otherwise break service-worker loading.
     mimetypes.init()
     mimetypes.add_type("text/javascript", ".js")
@@ -1773,6 +1831,9 @@ def create_app(
         )
     app.state.platform = platform if platform is not None else GamePlatform()
     app.state.master_password = master_password
+    monitor = monitor if monitor is not None else observability.Monitor()
+    app.state.monitor = monitor
+    observability.set_current(monitor)
     app.state.public_base_url = public_base_url
     app.state.started_at = time.monotonic()
     app.state.model_api_config = (
@@ -1805,4 +1866,7 @@ def create_app(
         app.middleware("http")(_revalidate_pages)
     app.add_exception_handler(PlatformError, _handle_platform_error)
     app.add_exception_handler(StarletteHTTPException, _handle_http_exception)
+    app.add_exception_handler(Exception, _handle_unexpected_exception)
+    # Last added, so outermost: it times everything, including the other middleware.
+    app.add_middleware(observability.RequestLogMiddleware, monitor=lambda: monitor)
     return app

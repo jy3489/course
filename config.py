@@ -145,6 +145,61 @@ class FirestoreConfig(_Section):
         return self
 
 
+class MonitoringConfig(_Section):
+    """What the server logs and when it raises an alert (see docs/monitoring.md).
+
+    Alerts are log lines with an `alert` field: "minor" (an email) or "major" (a page).
+    Google Cloud Monitoring turns them into notifications; the thresholds below decide
+    when the server writes them."""
+
+    # "json": one JSON object per line, which Google Cloud Logging parses into fields
+    # (use it on the server). "text": readable lines for a terminal.
+    log_format: Literal["text", "json"] = "text"
+    # Also write the log as JSON lines to this file (rotated at 50 MB, 5 kept), for the
+    # Google Cloud Ops Agent to read. Empty writes only to the terminal / journal.
+    log_file: str = ""
+    # A request slower than this is logged with its arguments (WARNING)...
+    slow_request_ms: Annotated[int, Field(ge=1)] = 1000
+    # ...and one slower than this is a minor alert (ERROR).
+    very_slow_request_ms: Annotated[int, Field(ge=1)] = 5000
+    # A request still running after this many seconds is logged once, with every
+    # thread's stack, since it may never finish (minor alert).
+    stuck_request_seconds: Annotated[float, Field(gt=0)] = 30.0
+    # How much of a request's JSON body is logged with it (secrets are always hidden).
+    max_logged_body_bytes: Annotated[int, Field(ge=0)] = 8192
+    # How much of a game function's inputs (its state) are logged when it fails.
+    max_logged_game_input_bytes: Annotated[int, Field(ge=0)] = 65536
+    # A game function slower than this is logged (WARNING); the hard limit is 100 ms.
+    game_function_slow_ms: Annotated[int, Field(ge=1)] = 50
+    # Sign-ups in one minute: this many is a minor alert (a surge)...
+    signup_surge_per_minute: Annotated[int, Field(ge=1)] = 30
+    # ...and this many is a major alert (a flood, probably bots).
+    signup_flood_per_minute: Annotated[int, Field(ge=1)] = 120
+    # Requests being handled at once: busy is a minor alert, overloaded a major one.
+    busy_in_flight: Annotated[int, Field(ge=1)] = 30
+    overloaded_in_flight: Annotated[int, Field(ge=1)] = 80
+    # The server process's memory, as a percent of the machine's.
+    memory_warn_percent: Annotated[float, Field(gt=0, le=100)] = 70.0
+    memory_critical_percent: Annotated[float, Field(gt=0, le=100)] = 90.0
+    # Seconds between the "metrics" summary lines (requests, errors, latency...) and
+    # the checks for stuck requests and memory. 0 turns this background work off.
+    metrics_interval_seconds: Annotated[float, Field(ge=0)] = 60.0
+    # The same alert is written at most once per this many seconds.
+    alert_cooldown_seconds: Annotated[float, Field(ge=0)] = 300.0
+
+    @model_validator(mode="after")
+    def _thresholds_are_ordered(self) -> "MonitoringConfig":
+        for low, high in (
+            ("slow_request_ms", "very_slow_request_ms"),
+            ("signup_surge_per_minute", "signup_flood_per_minute"),
+            ("busy_in_flight", "overloaded_in_flight"),
+            ("memory_warn_percent", "memory_critical_percent"),
+        ):
+            if getattr(self, low) >= getattr(self, high):
+                raise ValueError(f"monitoring.{low} must be less than monitoring.{high}")
+        return self
+
+
 class Config(_Section):
     server: ServerConfig = ServerConfig()
     data_file: DataFileConfig = DataFileConfig()
@@ -155,6 +210,7 @@ class Config(_Section):
     # no password, which is only allowed when [server.host] is a numeric IP address.
     master_password: str = ""
     log_level: LogLevel = "INFO"
+    monitoring: MonitoringConfig = MonitoringConfig()
     model_api: ModelApiConfig = ModelApiConfig()
     auth: AuthConfig = AuthConfig()
     push: PushConfig = PushConfig()

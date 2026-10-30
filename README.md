@@ -513,6 +513,7 @@ stop the server at startup with an error naming the field.
 | `debug_tools`                     | `true`                                   | Serve `/console`, `/browse` and `/debug/all-data` (see [Pages](#pages)) |
 | `master_password`                 | `""`                                     | Password for `/browse` and `/debug/all-data` (see [Master password](#master-password)). Empty means none, which is only allowed when `server.host` is a numeric IP address |
 | `log_level`                       | `"INFO"`                                 | `"DEBUG"`, `"INFO"`, `"WARNING"` or `"ERROR"` |
+| `monitoring.*`                    | see `config.example.json`                | JSON logs, a log file for the Ops Agent, and the thresholds for alerts (slow requests, sign-up floods, memory...); see [docs/monitoring.md](docs/monitoring.md) |
 | `auth.google.client_id`           | `""`                                     | Google OAuth client ID for the website (empty disables Google login). Create one in Google Cloud Console > APIs & Services > Credentials, type "Web application", with the site's origin as an authorized JavaScript origin |
 | `auth.facebook.app_id`            | `""`                                     | Facebook app ID (empty disables Facebook login). Create an app at developers.facebook.com with Facebook Login |
 | `auth.facebook.app_secret`        | `""`                                     | Facebook app secret |
@@ -715,6 +716,17 @@ filter (bulk).
 - **Backups.** The data file is copied hourly to `<path>.backups/` (see the config
   table). To restore, stop the server and copy a backup over the data file. Also copy
   that directory off the VM (e.g. `gsutil rsync` to a bucket) in case the disk is lost.
+
+### Monitoring and alerts
+
+The server logs every unexpected situation as a structured line (a slow or stuck request with
+its arguments, a 5xx or crash with its stack trace, a game function that timed out or ran out of
+memory with its inputs, a rejected move, a flood of sign-ups, too much memory) with a request id
+that ties the lines of one request together. Problems carry an `alert` field: **minor** ones
+become an email and **major** ones also call, text or page, through Google Cloud Monitoring.
+`docs/monitoring.md` lists every alert and how to set it up, test it (`tools/alert_drill`, or the
+fake users in `tools/fake_users`) and investigate from the logs (`tools/log_digest.py`,
+`ops/monitoring/investigate.sh`). Every response has an `X-Request-Id` header.
 
 ### Master password
 

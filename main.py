@@ -7,6 +7,7 @@ from pathlib import Path
 
 import uvicorn
 
+from game_platform import observability
 from game_platform.api import create_app
 from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
@@ -92,7 +93,10 @@ def main() -> None:
     if env_key := os.environ.get("GAME_PLATFORM_VAPID_PRIVATE_KEY"):
         push_config = push_config.model_copy(update={"vapid_private_key": env_key})
 
-    logging.basicConfig(level=config.log_level)
+    observability.setup_logging(
+        config.log_level, config.monitoring.log_format, config.monitoring.log_file
+    )
+    monitor = observability.Monitor(config.monitoring)
     store: SavingStore
     if config.firestore.enabled and config.firestore.mode == "query":
         if (
@@ -171,6 +175,16 @@ def main() -> None:
             cors_allow_origins=config.server.cors_allow_origins,
             public_base_url=config.server.public_base_url,
             ai_max_fix_attempts=config.ai_max_fix_attempts,
+            monitor=monitor,
+        )
+        monitor.start()
+        observability.log_event(
+            "server_started",
+            f"serving on {config.server.host}:{config.server.port}",
+            host=config.server.host,
+            port=config.server.port,
+            store="firestore" if config.firestore.enabled else "data_file",
+            log_format=config.monitoring.log_format,
         )
         uvicorn.run(
             app,
@@ -178,8 +192,12 @@ def main() -> None:
             port=config.server.port,
             timeout_keep_alive=config.server.keep_alive_timeout_seconds,
             log_level=config.log_level.lower(),
+            # Use the logging set up above, so uvicorn's lines are JSON too.
+            log_config=None,
         )
     finally:
+        monitor.stop()
+        observability.log_event("server_stopping", "the server is shutting down")
         if "platform" in locals() and hasattr(platform, "close_workers"):
             platform.close_workers()
         # Deliver queued notifications first: subscriptions found dead while draining
