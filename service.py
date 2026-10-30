@@ -23,7 +23,7 @@ from pydantic import JsonValue
 
 import logging
 
-from game_platform import i18n, observability
+from game_platform import game_text, i18n, observability
 from game_platform.avatars import random_user_avatar, computer_avatar
 from game_platform.models import (
     AgentConversation,
@@ -48,6 +48,7 @@ from game_platform.models import (
     Move,
     SeatTimeout,
     Seat,
+    Translation,
     User,
     WebPushSubscription,
 )
@@ -61,6 +62,8 @@ from game_platform.game_logic import (
 from game_platform.game_testing import GameTestReport, test_server_code
 from game_platform.push import LogPushNotifier, PushMessage, PushNotifier
 from game_platform.store import InMemoryStore, Store
+from game_platform import translation as translation_module
+from game_platform.translation import Translator, TranslationService
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,6 +76,27 @@ class InviteView:
     inviter: User
     # Why the invite can't seat anyone new (an English error message), or None.
     problem: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class GameStrings:
+    """A game version's texts in one language (see game_text.py and translation.py)."""
+
+    game_id: str
+    game_version: int
+    locale: str
+    # "source" (the language wanted needs no translation), "translated", "partial" or
+    # "unavailable" (no translator, or it failed): see translation.Translated.
+    status: str
+    name: str
+    description: str
+    # The game's string table with each text in [locale] where there is a translation, and
+    # as the game wrote it where there is not. Empty when the game has no table.
+    strings: dict[str, str]
+    # Whether the game has a string table (a game without one shows only its own texts).
+    translatable: bool
+    # Why the game may translate badly (game_text.lint), in plain words.
+    warnings: list[str]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -346,9 +370,17 @@ class GamePlatform:
         push_notifier: PushNotifier | None = None,
         max_push_subscriptions_per_user: int = 10,
         computer_move_delay_seconds: float = 0.6,
+        translator: Translator | None = None,
+        translation_daily_character_limit: int = 200_000,
     ) -> None:
         self._store: Store = store if store is not None else InMemoryStore()
         self._clock = clock
+        self._translation = TranslationService(
+            self._store,
+            translator,
+            clock=clock,
+            daily_character_limit=translation_daily_character_limit,
+        )
         self._new_id = new_id
         self._new_password = new_password
         self._new_verification_code = new_verification_code
@@ -1654,6 +1686,80 @@ class GamePlatform:
                 ):
                     raise NotFoundError("game version not found")
             return game
+
+    def game_strings(
+        self, game_id: str, version: int, locale: str, *, caller_id: str | None = None
+    ) -> GameStrings:
+        """The texts of one game version in [locale]: its name, its description and its
+        string table. Texts are translated the first time they are asked for and
+        remembered. Anything that cannot be translated is returned as the game wrote it, so
+        this never fails because of the translator."""
+        game = self.get_game_version(game_id, version, caller_id=caller_id)
+        try:
+            table = game_text.extract_strings(game.code)
+        except game_text.StringsError:
+            table = None
+        warnings = game_text.lint(game.code)
+        # Not under the platform's lock: translating may wait for Google.
+        translated = self._translation.translate(
+            [game.name, game.description, *(table or {}).values()], locale
+        )
+        shown = lambda text: translated.texts.get(text, text)  # noqa: E731
+        return GameStrings(
+            game_id=game.id,
+            game_version=game.version,
+            locale=i18n.normalize_locale(locale) or i18n.DEFAULT_LOCALE,
+            status=translated.status,
+            name=shown(game.name),
+            description=shown(game.description),
+            strings={key: shown(text) for key, text in (table or {}).items()},
+            translatable=table is not None,
+            warnings=warnings,
+        )
+
+    def list_translations(self, locale: str | None = None) -> list[Translation]:
+        """Every remembered translation (of one language), for the backoffice."""
+        return sorted(self._store.list_translations(locale), key=lambda item: (item.locale, item.source))
+
+    def set_translation(self, *, locale: str, source: str, text: str) -> Translation:
+        """An administrator's translation of [source], which replaces a machine one and is
+        never replaced by one again."""
+        code = i18n.normalize_locale(locale)
+        if code is None or code == i18n.DEFAULT_LOCALE:
+            raise InvalidRequestError(f"{locale!r} is not a language that texts are translated into")
+        if not source.strip() or not text.strip():
+            raise InvalidRequestError("both the text and its translation are needed")
+        if translation_module.placeholders_of(text) != translation_module.placeholders_of(source):
+            raise InvalidRequestError("the translation must keep the text's placeholders (the words in curly braces)")
+        translation = Translation(
+            locale=code,
+            source_hash=translation_module.text_hash(source),
+            source=source,
+            text=text,
+            provider="manual",
+            created_at=self._clock(),
+            reviewed=True,
+        )
+        self._store.put_translations([translation])
+        return translation
+
+    def delete_translation(self, locale: str, source_hash: str) -> None:
+        """Forgets a translation: the text is translated again next time it is asked for."""
+        self._store.delete_translation(locale, source_hash)
+
+    def games_text(self, locale: str) -> tuple[str, dict[str, dict[str, str]]]:
+        """(status, {game id: {"name", "description"}}) for the published games, in [locale]:
+        what a portal shows on its game cards. Like [game_strings], it never fails because
+        of the translator."""
+        games = self.list_games(owner_user_id=None)
+        translated = self._translation.translate(
+            [text for game in games for text in (game.name, game.description)], locale
+        )
+        shown = lambda text: translated.texts.get(text, text)  # noqa: E731
+        return translated.status, {
+            game.id: {"name": shown(game.name), "description": shown(game.description)}
+            for game in games
+        }
 
     def list_owned_games(self, *, caller_id: str) -> list[Game]:
         with self._lock:

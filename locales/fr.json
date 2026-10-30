@@ -69,6 +69,9 @@
   "error.locale_not_supported": "langue non prise en charge : {locale}",
   "error.route_not_found": "Introuvable",
   "error.method_not_allowed": "Méthode non autorisée",
+  "error.translation_locale_unsupported": "{locale} n'est pas une langue dans laquelle les textes sont traduits",
+  "error.translation_text_missing": "le texte et sa traduction sont tous deux nécessaires",
+  "error.translation_placeholders": "la traduction doit conserver les marqueurs du texte (les mots entre accolades)",
   "error.push_subscription_not_found": "abonnement push introuvable",
   "error.push_not_yours": "vous ne pouvez supprimer que vos propres abonnements push",
 

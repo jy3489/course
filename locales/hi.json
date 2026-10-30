@@ -69,6 +69,9 @@
   "error.locale_not_supported": "भाषा समर्थित नहीं है: {locale}",
   "error.route_not_found": "नहीं मिला",
   "error.method_not_allowed": "विधि की अनुमति नहीं है",
+  "error.translation_locale_unsupported": "{locale} ऐसी भाषा नहीं है जिसमें पाठों का अनुवाद किया जाता है",
+  "error.translation_text_missing": "पाठ और उसका अनुवाद दोनों आवश्यक हैं",
+  "error.translation_placeholders": "अनुवाद में पाठ के प्लेसहोल्डर (कर्ली ब्रेसिज़ में शब्द) बने रहने चाहिए",
   "error.push_subscription_not_found": "पुश सदस्यता नहीं मिली",
   "error.push_not_yours": "आप केवल अपनी पुश सदस्यताएँ हटा सकते हैं",
 

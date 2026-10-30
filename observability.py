@@ -292,6 +292,12 @@ class Monitor:
         self._max_in_flight = len(self._in_flight)
         self._window_started = self._clock()
 
+    def may_alert(self, name: str) -> bool:
+        """True at most once per alert_cooldown_seconds for [name]. Use it so a problem
+        that repeats on every request raises one alert, not hundreds."""
+        with self._lock:
+            return self._may_alert(name)
+
     # Alerts are rate-limited, so one problem is one email or page, not hundreds.
     def _may_alert(self, name: str) -> bool:
         now = self._clock()

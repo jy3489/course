@@ -441,7 +441,7 @@ function matchItem(match) {
       "aria-selected": String(match.id === state.selectedId),
       onclick: () => selectMatch(match.id),
     },
-    el("div", { class: "title" }, game ? game.name : "?", ...badges),
+    el("div", { class: "title" }, game ? I18n.gameName(game.id, game.name) : "?", ...badges),
     el("div", {
       class: "sub",
       textContent: `${match.players.map(playerName).join(", ")} · ${I18n.t("ui.match.moves_count", { count: match.move_count }, `${match.move_count} moves`)}`,
@@ -589,8 +589,8 @@ function renderLibrary() {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
     const random = isRandomGame(game);
     // The "Random" card is built into the page; every other game's text is its builder's.
-    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : game.name;
-    const description = random ? I18n.t("ui.games.random_description", {}, game.description) : game.description;
+    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : I18n.gameName(game.id, game.name);
+    const description = random ? I18n.t("ui.games.random_description", {}, game.description) : I18n.gameDescription(game.id, game.description);
     const initials = name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
       "aria-label":random ? `${name}. ${description}` : I18n.t("ui.games.open_aria", { name, players: gameCountLabel(game) }, `Open ${name}, ${gameCountLabel(game)}`),
@@ -720,8 +720,8 @@ function updateMatchSetup() {
   updateStakePreview();
   $("create").textContent = solo ? I18n.t("ui.portal.play_solo", {}, "Play solo ↗") : I18n.t("ui.portal.create_match", {}, "Create match ↗");
   $("selected-game-card").hidden = !game;
-  $("selected-game-name").textContent = game?.name || I18n.t("ui.games.choose", {}, "Choose a game");
-  $("selected-game-description").textContent = game?.description || "";
+  $("selected-game-name").textContent = (game && I18n.gameName(game.id, game.name)) || I18n.t("ui.games.choose", {}, "Choose a game");
+  $("selected-game-description").textContent = (game && I18n.gameDescription(game.id, game.description)) || "";
   $("selected-game-mode").textContent = solo ? "1 player · solo" : game ? `${game.allowed_player_counts.join(", ")} players` : "";
   $("create-hint").textContent = solo ? "Starts immediately. No opponent needed." : game ? "Create a match, then invite friends or add computers in the lobby." : state.games.length ? "Choose a game from the search results to continue." : "Publish a game in the builder to make it available here.";
 }
@@ -811,7 +811,7 @@ function renderMatch() {
   const counts = game ? game.allowed_player_counts : [];
   const ownerName = nameOf(match.owner_user_id);
   $("match-title").textContent =
-    `${game ? game.name : "?"} (version ${match.game_version})`;
+    `${game ? I18n.gameName(game.id, game.name) : "?"} (version ${match.game_version})`;
   const outcome = matchOutcome(match, user?.id);
   $("match-result").hidden = !outcome;
   $("match-result").textContent = outcome?.label || "";
@@ -1214,6 +1214,8 @@ async function syncGame() {
     actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
   });
   message.token_pot = view.token_pot ?? 0;
+  // The viewer's language and, for a game with a string table, its texts in that language.
+  Object.assign(message, await I18n.gameText(match.game_id, match.game_version));
   const json = JSON.stringify(message);
   if (json !== state.lastSent) {
     state.lastSent = json;

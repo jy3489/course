@@ -69,6 +69,9 @@
   "error.locale_not_supported": "language not supported: {locale}",
   "error.route_not_found": "Not Found",
   "error.method_not_allowed": "Method Not Allowed",
+  "error.translation_locale_unsupported": "{locale} is not a language that texts are translated into",
+  "error.translation_text_missing": "both the text and its translation are needed",
+  "error.translation_placeholders": "the translation must keep the text's placeholders (the words in curly braces)",
   "error.push_subscription_not_found": "push subscription not found",
   "error.push_not_yours": "you can only delete your own push subscriptions",
 

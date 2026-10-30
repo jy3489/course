@@ -42,6 +42,12 @@
     "metrics_interval_seconds": 60.0,
     "alert_cooldown_seconds": 300.0
   },
+  "translation": {
+    "provider": "off",
+    "google_api_key": "",
+    "daily_character_limit": 200000,
+    "timeout_seconds": 10.0
+  },
   "model_api": {
     "api_key": "",
     "model": "muse-spark-1.3",

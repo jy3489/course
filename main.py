@@ -15,8 +15,21 @@ from game_platform.saving_store import SavingStore
 from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
 from game_platform.senders import make_email_sender, make_sms_sender, make_voice_sender, make_verify_client
 from game_platform.service import GamePlatform
+from game_platform.translation import FakeTranslator, GoogleTranslator, Translator
 
 logger = logging.getLogger(__name__)
+
+
+def make_translator(config: Config) -> Translator | None:
+    """The translator the config asks for, or None when translation is off. The API key is
+    taken from GAME_PLATFORM_TRANSLATE_API_KEY if set, else from the config; with neither,
+    the Google Cloud VM's own service account signs in."""
+    if config.translation.provider == "fake":
+        return FakeTranslator()
+    if config.translation.provider != "google":
+        return None
+    key = os.environ.get("GAME_PLATFORM_TRANSLATE_API_KEY") or config.translation.google_api_key
+    return GoogleTranslator(key, timeout_seconds=config.translation.timeout_seconds)
 
 
 def warn_about_insecure_setup(config: Config, platform: GamePlatform) -> None:
@@ -124,6 +137,8 @@ def main() -> None:
             push_notifier=push_notifier,
             max_push_subscriptions_per_user=push_config.max_subscriptions_per_user,
             computer_move_delay_seconds=config.computer_move_delay_seconds,
+            translator=make_translator(config),
+            translation_daily_character_limit=config.translation.daily_character_limit,
         )
         if args.purge_example_data:
             purge_example_data(platform)
@@ -154,6 +169,7 @@ def main() -> None:
             port=config.server.port,
             store="firestore" if config.firestore.enabled else "data_file",
             log_format=config.monitoring.log_format,
+            translation=config.translation.provider,
         )
         uvicorn.run(
             app,

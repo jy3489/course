@@ -513,6 +513,7 @@ stop the server at startup with an error naming the field.
 | `debug_tools`                     | `true`                                   | Serve `/console`, `/browse` and `/debug/all-data` (see [Pages](#pages)) |
 | `master_password`                 | `""`                                     | Password for `/browse` and `/debug/all-data` (see [Master password](#master-password)). Empty means none, which is only allowed when `server.host` is a numeric IP address |
 | `log_level`                       | `"INFO"`                                 | `"DEBUG"`, `"INFO"`, `"WARNING"` or `"ERROR"` |
+| `translation.*`                   | `"provider": "off"`                      | Translate games' own texts with Google Translate, on first use (see [docs/game-translation.md](docs/game-translation.md)); `google_api_key`, `daily_character_limit` |
 | `monitoring.*`                    | see `config.example.json`                | JSON logs, a log file for the Ops Agent, and the thresholds for alerts (slow requests, sign-up floods, memory...); see [docs/monitoring.md](docs/monitoring.md) |
 | `auth.google.client_id`           | `""`                                     | Google OAuth client ID for the website (empty disables Google login). Create one in Google Cloud Console > APIs & Services > Credentials, type "Web application", with the site's origin as an authorized JavaScript origin |
 | `auth.facebook.app_id`            | `""`                                     | Facebook app ID (empty disables Facebook login). Create an app at developers.facebook.com with Facebook Login |
@@ -716,6 +717,15 @@ filter (bulk).
 - **Backups.** The data file is copied hourly to `<path>.backups/` (see the config
   table). To restore, stop the server and copy a backup over the data file. Also copy
   that directory off the VM (e.g. `gsutil rsync` to a bucket) in case the disk is lost.
+
+### Translating games
+
+A game lists every text it shows in one JSON block in its HTML; the server translates the block
+(and the game's name and description) into the player's language the first time it is asked for, with
+Google Translate, remembers each text, and the portal passes the translations to the game in its
+`state_changed` message (`strings`, `locale`, `direction`). `GET /games/{id}/versions/{v}/strings` and
+`GET /i18n/games/{locale}` return them. The game-building agent is told how to write such games.
+Off until `translation.provider` is set. See [docs/game-translation.md](docs/game-translation.md).
 
 ### Monitoring and alerts
 

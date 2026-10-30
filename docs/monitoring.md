@@ -45,6 +45,8 @@ The same alert is written at most once per `alert_cooldown_seconds` (5 minutes).
 | `game_function_error` | minor | a game's server code threw, or returned something invalid | same |
 | `computer_illegal_move` | minor | a computer opponent chose a move its own game rejects | same: the game has a bug |
 | `ai_generation_timeout` | minor | the game-building agent took over two minutes | `last_message`: what was asked |
+| `translation_budget_exceeded` | minor | the day's character budget for Google Translate is spent: new game texts stay in their original language until tomorrow | `characters_today`, `daily_character_limit` (config `translation`) |
+| `translation_failed` | minor, once per cooldown | Google Translate is failing or refusing (a bad key, a quota, an outage): games show their own texts | `error` |
 | `alert_test` | minor or major | a test alert (`POST /admin/alerts/test`) | nobody needs to act |
 
 From Google Cloud (not the server):
@@ -63,7 +65,7 @@ Logged, but not alerts by themselves: `request_slow` (a request over 1 s, with i
 `illegal_move` (a player's rejected move: `move`, `reason`, `player_id`, `match_id`),
 `game_function_slow` (a game function using half its time limit; `inputs`), `metrics` (one summary
 line a minute: requests, status classes, p50/p95/max latency, in-flight, memory, counts),
-`data_save_recovered`, `server_started`, `server_stopping`.
+`translation_done` and `translation_rejected` (a translation that lost a `{placeholder}`), `data_save_recovered`, `server_started`, `server_stopping`.
 
 ## What is in a log line
 
