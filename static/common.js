@@ -408,6 +408,25 @@ function statusClass(status) {
   return "error";
 }
 
+/** Common app navigation; page-specific wallet/notification controls stay in place. */
+function setUpAppTopbar() {
+  const bar = document.querySelector?.('.topbar[data-app-page]');
+  const current = bar?.dataset?.appPage;
+  if (!current) return;
+  const brand = bar.querySelector('h1');
+  brand.setAttribute('data-i18n', 'ui.app_name');
+  const nav = bar.querySelector('nav');
+  nav.replaceChildren(...[
+    ['portal', 'Portal'], ['builder', 'Builder'], ['admin', 'Admin'],
+  ].map(([page, label]) => el('a', {
+    href: '/' + page,
+    'data-i18n': 'ui.nav.' + page,
+    'aria-current': page === current ? 'page' : null,
+    textContent: label,
+  })));
+}
+setUpAppTopbar();
+
 /** Dock beside the page when 280px of navigation leaves at least 620px to work. */
 function setUpSidebarDrawer() {
   const sidebar=document.querySelector('.builder-shell > .sidebar, .portal-shell > .sidebar');
