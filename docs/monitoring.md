@@ -121,7 +121,8 @@ To repeat a problem the line has:
    PROJECT_ID=my-project ALERT_EMAIL=me@example.com ./setup.sh
    ```
 
-   It creates an email channel, an uptime check of `https://buildplay.fun/health`, and the policies
+   `ALERT_EMAIL` can be several addresses separated by commas; each gets an email channel and all of them
+   get every alert. It creates the email channels, an uptime check of `https://buildplay.fun/health`, and the policies
    in the tables above. It skips what exists, so running it again is safe. To page for major alerts,
    add either or both of `PAGERDUTY_KEY=...` and `SMS_NUMBER=+1555...`, or create the channels in the
    console (Monitoring > Alerting > Edit notification channels: SMS or PagerDuty; Cloud Monitoring itself
@@ -130,6 +131,30 @@ To repeat a problem the line has:
 
    To see what it will create first: `python3 policies.py --help`, or run it with fake channel names
    and read `policies/*.json`.
+
+## Who gets the alerts, and handing over
+
+Nothing about who is alerted is in the repository: the addresses and numbers are notification
+**channels** in the Google Cloud project, and each alert policy lists the channels it uses. So you
+can start with your own details and hand over later without a code change or a deploy.
+
+To hand over to the admins, in the console (Monitoring > Alerting > Edit notification channels; the
+wording differs a little between versions), do one of:
+
+1. **Edit the channel**: change its email address or phone number. Every policy that uses it follows.
+2. **Add the admins' channels** (Add new: Email, SMS or PagerDuty) and tick them in each policy
+   (Alerting > the policy > Edit > Notifications); remove yours when you are done. Texts need the number
+   verified first.
+3. **Start over with new addresses**: delete the policies named "Game platform ..." (Alerting > Policies, or
+   `gcloud monitoring policies list --filter='displayName:"Game platform"' --format='value(name)' | xargs -n1 gcloud monitoring policies delete --quiet`),
+   then run `setup.sh` again with the admins in `ALERT_EMAIL`. It makes a channel for each new address and
+   recreates the policies with them. Re-running without deleting the policies does not move them to a new
+   address: it skips policies that exist.
+
+The easiest handover is to use a **group address** as `ALERT_EMAIL` from the start (for example
+`platform-alerts@yourdomain`): you then change the group's members and never touch Google Cloud. For
+the major tier, **PagerDuty** works the same way: your phone now, an on-call schedule of the admins later.
+Phone calls come through PagerDuty too (Cloud Monitoring itself cannot call).
 
 ## Check that the alerts work
 

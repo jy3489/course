@@ -272,3 +272,94 @@ def test_the_digest_reads_what_gcloud_prints() -> None:
     (entry,) = digest_tool.read_entries([wrapped])
     assert (entry["event"], entry["severity"], entry["timestamp"]) == ("http_5xx", "ERROR", "2026-10-29T12:00:00Z")
     assert digest_tool.digest([entry])["alerts"][0]["latest"]["path"] == "/x"
+
+
+# setup.sh, run against a stand-in for gcloud
+
+GCLOUD_STUB = r"""#!/usr/bin/env bash
+# Records every call; answers like gcloud for the few commands setup.sh uses.
+echo "$*" >> "$STUB_DIR/calls.log"
+case "$*" in
+  *"channels list"*) ;;
+  *"channels create"*)
+    count=$(( $(cat "$STUB_DIR/channels" 2>/dev/null || echo 0) + 1 )); echo $count > "$STUB_DIR/channels"
+    echo "projects/p/notificationChannels/$count" ;;
+  *"uptime list-configs"*) [[ -f "$STUB_DIR/uptime" ]] && echo "projects/p/uptimeCheckConfigs/chk1" ;;
+  *"uptime create"*) touch "$STUB_DIR/uptime" ;;
+  *"policies list"*) ;;
+  *"policies create"*) echo "projects/p/alertPolicies/1" ;;
+esac
+exit 0
+"""
+
+
+def _working_bash() -> str | None:
+    import shutil
+    import subprocess
+
+    for candidate in (shutil.which("bash"), "C:/Program Files/Git/bin/bash.exe"):
+        if not candidate:
+            continue
+        try:
+            done = subprocess.run([candidate, "-c", "echo ok"], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if done.returncode == 0 and done.stdout.strip() == "ok":
+            return candidate
+    return None
+
+
+def run_setup(tmp_path: Path, **env: str) -> tuple[int, str, list[str], dict[str, Any]]:
+    import os
+    import subprocess
+    import sys
+
+    bash = _working_bash()
+    if bash is None:
+        pytest.skip("needs bash")
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    (stubs / "gcloud").write_text(GCLOUD_STUB, encoding="utf-8", newline="\n")
+    # setup.sh runs `python3`: use this test's Python wherever python3 is missing or a stub.
+    (stubs / "python3").write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "$@"\n',
+                                   encoding="utf-8", newline="\n")
+    out = tmp_path / "policies"
+    out.mkdir()
+    full_env = {**os.environ, "STUB_DIR": stubs.as_posix(), "OUT": out.as_posix(), "PROJECT_ID": "p",
+                "PATH": stubs.as_posix() + os.pathsep + os.environ.get("PATH", ""), **env}
+    done = subprocess.run([bash, (PACKAGE_DIR / "ops/monitoring/setup.sh").as_posix()],
+                          capture_output=True, text=True, env=full_env, timeout=120)
+    calls = (stubs / "calls.log").read_text(encoding="utf-8").splitlines() if (stubs / "calls.log").exists() else []
+    policies_made = {path.name: json.loads(path.read_text(encoding="utf-8")) for path in out.glob("*.json")}
+    return done.returncode, done.stdout + done.stderr, calls, policies_made
+
+
+def test_setup_makes_a_channel_per_admin_and_emails_all_of_them(tmp_path: Path) -> None:
+    code, output, calls, made = run_setup(tmp_path, ALERT_EMAIL="ana@example.org, bo@example.org ,")
+    assert code == 0, output
+    created = [c for c in calls if "channels create" in c]
+    assert len(created) == 2
+    assert "--display-name=Game platform: email ana@example.org" in created[0] and "email_address=ana@example.org" in created[0]
+    assert "email_address=bo@example.org" in created[1]
+    emails = ["projects/p/notificationChannels/1", "projects/p/notificationChannels/2"]
+    assert made["log-minor.json"]["notificationChannels"] == emails
+    assert made["log-major.json"]["notificationChannels"] == emails  # with nothing else, a major alert still emails them
+    assert "major alerts only send email" in output  # and the script says so
+    assert len([c for c in calls if "policies create" in c]) == 9
+
+
+def test_setup_adds_text_and_pagerduty_for_major_alerts_only(tmp_path: Path) -> None:
+    code, output, calls, made = run_setup(
+        tmp_path, ALERT_EMAIL="ana@example.org", SMS_NUMBER="+15551234567", PAGERDUTY_KEY="abc123"
+    )
+    assert code == 0, output
+    assert made["log-minor.json"]["notificationChannels"] == ["projects/p/notificationChannels/1"]
+    assert made["log-major.json"]["notificationChannels"] == [f"projects/p/notificationChannels/{n}" for n in (1, 2, 3)]
+    assert any("--type=pagerduty" in c and "service_key=abc123" in c for c in calls)
+    assert any("--type=sms" in c and "number=+15551234567" in c for c in calls)
+    assert "only send email" not in output
+
+
+def test_setup_needs_an_address(tmp_path: Path) -> None:
+    code, output, _, _ = run_setup(tmp_path, ALERT_EMAIL=" , ")
+    assert code != 0 and "no address" in output
