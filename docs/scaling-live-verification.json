@@ -1,0 +1,34 @@
+{
+  "url": "https://sc5386.34.26.223.67.sslip.io",
+  "dataset": {
+    "users": 233,
+    "games": 133,
+    "matches": 1257,
+    "moves": 2949,
+    "drafts": 60,
+    "saved_library_entries": 60
+  },
+  "checks": {
+    "portalPagination": true,
+    "builderPagination": true,
+    "statistics": true,
+    "referrals": true,
+    "backoffice": true,
+    "savedLibraries": true,
+    "pagedHistory": true,
+    "paidCallsBlocked": true
+  },
+  "page_errors": [],
+  "budget": {
+    "expires_at": "2026-11-02T00:32:44.143568+00:00",
+    "reserved_operation_units": 188932,
+    "operation_unit_cap": 250000,
+    "written_bytes": 14002743,
+    "write_byte_cap": 33554432,
+    "served_bytes": 1173729,
+    "served_byte_cap": 134217728,
+    "conservative_operation_allowance_usd": 0.5,
+    "note": "Local deployment allowance, not an invoice or project-wide billing cap."
+  },
+  "scope": "Separate scaling VM, named test database, scaling_v1 namespace. Production and original scaling service untouched."
+}

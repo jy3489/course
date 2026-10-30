@@ -22,5 +22,5 @@ jobs:
           java-version: 21
       - run: pip install -r game_platform/requirements-dev.txt
       - run: npm install -g firebase-tools@15.34.1
-      - run: firebase emulators:exec --only firestore --project demo-game-platform --config game_platform/firebase.scaling.json 'python -m pytest game_platform/tests/test_query_store.py -q'
+      - run: firebase emulators:exec --only firestore --project demo-game-platform --config game_platform/firebase.scaling.json 'python -m pytest game_platform/tests/test_query_store.py game_platform/tests/test_scaling_live_budget.py -q'
       - run: node --test game_platform/tests/web/*.test.cjs
