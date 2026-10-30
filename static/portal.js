@@ -344,10 +344,15 @@ async function ensureDetails() {
   ]);
 }
 
-async function refresh() {
-  return portalLock(refreshLocked).catch((error) =>
-    showPageError(error.message),
-  );
+// Coalesce polls before they enter Web Locks, so slow requests cannot build an
+// unbounded queue ahead of a player's move (including from the same tab).
+let refreshPending = null;
+function refresh() {
+  if (refreshPending) return refreshPending;
+  refreshPending = portalLock(refreshLocked)
+    .catch(error => showPageError(error.message))
+    .finally(() => { refreshPending = null; });
+  return refreshPending;
 }
 
 async function refreshLocked() {
@@ -360,6 +365,25 @@ async function refreshLocked() {
   state.refreshAgain = false;
   try {
     const user = me();
+    // Local practice has its pinned rules and position on-device. Never hold
+    // the origin's move lock while fetching remote metadata for this screen.
+    if (state.selectedId?.startsWith("local-")) {
+      state.match = await portalRequest("GET", `/matches/${state.selectedId}`);
+      const saved = offline.read();
+      const locals = Object.values(saved.local);
+      state.myMatches = state.myMatches.filter(match => !match.localMode).concat(locals);
+      const match = state.match;
+      const game = saved.responses[`/games/${match.game_id}/versions/${match.game_version}`];
+      if (game) state.gameCache.set(`${match.game_id}@${match.game_version}`, game);
+      if (user) {
+        state.nameCache.set(user.id,user.display_name);
+        state.pictureCache.set(user.id,user.picture_url || "");
+      }
+      render();
+      await syncGame();
+      showPageError("");
+      return;
+    }
     if (!user) $("token-wallet").hidden = true;
     await offline.sync();
     const [games, myMatches, openMatches] = await Promise.all([

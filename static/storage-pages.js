@@ -6,10 +6,13 @@ window.StoragePages = (() => {
   const supported = new Set(["/games", "/builder/games", "/game-drafts", "/matches", "/matches/open"]);
   async function enabled() {
     if (capabilities === undefined) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
       try {
-        const response = await fetch("/storage/capabilities", {cache:"no-store"});
+        const response = await fetch("/storage/capabilities", {cache:"no-store",signal:controller.signal});
         capabilities = response.ok && (await response.json()).pagination === true;
       } catch { return false; }
+      finally { clearTimeout(timer); }
     }
     return capabilities;
   }
