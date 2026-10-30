@@ -133,15 +133,18 @@ def current(store):
     job = store.raw_get(ref)
     if not job or not job.get("complete"):
         return None
-    result = {"generated_at": job["generated_at"], "consistency": "offline snapshot"}
+    result = {
+        "generated_at": job["generated_at"],
+        "consistency": "offline snapshot",
+        "configuration_consistency": "live",
+    }
     for name, experiment_id in (
         ("skin_experiment", SKIN_EXPERIMENT_ID),
         ("campaign_experiment", CAMPAIGN_EXPERIMENT_ID),
     ):
-        data = store.raw_get(ref.collection("config").document(key(experiment_id)))
-        experiment = (
-            ADAPTERS["experiments"].validate_json(data["json"]) if data else None
-        )
+        # Metrics stay anchored to the published snapshot, while controls must
+        # reflect create/delete/toggle/spend changes immediately.
+        experiment = store._get("experiments", experiment_id)
         report = {
             "id": experiment_id,
             "name": experiment.name if experiment else "",
