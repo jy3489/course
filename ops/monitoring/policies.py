@@ -37,6 +37,10 @@ RATE_LIMIT_SECONDS = {"minor": 600, "major": 300}
 #        error_rate_critical, data_save_failed (three in a row)
 
 
+# The label Google shows in the alert's email subject ("[ALERT - Critical] ...").
+SEVERITY = {"minor": "WARNING", "major": "CRITICAL"}
+
+
 def _documentation(title: str, body: str) -> dict[str, str]:
     return {"mimeType": "text/markdown", "content": f"**{title}**\n\n{body}\n\nRunbook: docs/monitoring.md"}
 
@@ -50,6 +54,7 @@ def _log_policy(tier: str, channels: list[str]) -> dict[str, Any]:
         "displayName": f"Game platform: {tier} alert from the server's log",
         "documentation": _documentation(f"A {tier} alert was logged by the game platform", meaning),
         "combiner": "OR",
+        "severity": SEVERITY[tier],
         "conditions": [
             {
                 "displayName": f"A log line with alert={tier}",
@@ -81,6 +86,7 @@ def _threshold_policy(
         "displayName": f"Game platform VM: {name}",
         "documentation": _documentation(name, explanation),
         "combiner": "OR",
+        "severity": SEVERITY[tier],
         "conditions": [
             {
                 "displayName": name,
@@ -115,6 +121,7 @@ def _uptime_policy(check_id: str, channels: list[str], host: str) -> dict[str, A
             "Check `sudo systemctl status game-platform` and `journalctl -u game-platform -n 100` on the VM.",
         ),
         "combiner": "OR",
+        "severity": SEVERITY["major"],
         "conditions": [
             {
                 "displayName": "Uptime check failed",
