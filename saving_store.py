@@ -9,6 +9,7 @@ can be lost. Subclasses decide where the data goes (a JSON file, Firestore).
 
 import logging
 import threading
+from collections.abc import Sequence
 
 from game_platform import observability
 
@@ -21,6 +22,7 @@ from game_platform.models import (
     Game,
     GameDraft,
     GameTestSeeds,
+    Translation,
     GameVersionError,
     Invite,
     Match,
@@ -270,6 +272,28 @@ class SavingStore:
     def list_game_test_seeds(self) -> list[GameTestSeeds]:
         with self._lock:
             return self._inner.list_game_test_seeds()
+
+    def get_translations(
+        self, locale: str, source_hashes: Sequence[str]
+    ) -> dict[str, Translation]:
+        with self._lock:
+            return self._inner.get_translations(locale, source_hashes)
+
+    def put_translations(self, translations: Sequence[Translation]) -> None:
+        if not translations:
+            return
+        with self._lock:
+            self._inner.put_translations(translations)
+            self._set_dirty()
+
+    def delete_translation(self, locale: str, source_hash: str) -> None:
+        with self._lock:
+            self._inner.delete_translation(locale, source_hash)
+            self._set_dirty()
+
+    def list_translations(self, locale: str | None = None) -> list[Translation]:
+        with self._lock:
+            return self._inner.list_translations(locale)
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:
         with self._lock:

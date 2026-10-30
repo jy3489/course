@@ -70,6 +70,9 @@
   "error.locale_not_supported": "idioma não suportado: {locale}",
   "error.route_not_found": "Não encontrado",
   "error.method_not_allowed": "Método não permitido",
+  "error.translation_locale_unsupported": "{locale} não é um idioma para o qual os textos são traduzidos",
+  "error.translation_text_missing": "são necessários tanto o texto quanto a sua tradução",
+  "error.translation_placeholders": "a tradução deve manter os marcadores do texto (as palavras entre chaves)",
   "error.push_subscription_not_found": "assinatura push não encontrada",
   "error.push_not_yours": "você só pode excluir suas próprias assinaturas push",
 

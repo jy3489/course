@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pydantic import TypeAdapter, ValidationError
 
 from game_platform.game_testing import GameTestReport
+from game_platform.game_text import PROMPT_RULES
 from game_platform.model_api import ModelApiClient, ModelApiError
 from game_platform.schemas import AgentChatRequest, AgentChatResponse, PlayerCounts
 
@@ -40,7 +41,7 @@ GENERATION_BUDGET_SECONDS = 120.0
 # allowed_player_counts, allows_leave_mid_match, allows_join_mid_match).
 ServerTester = Callable[[str, list[int], bool, bool], GameTestReport]
 
-SYSTEM_PROMPT = """\
+_BASE_PROMPT = """\
 You are a game-building assistant inside a turn-based solo and multiplayer platform's \
 builder. You help the user create and refine a game by writing its code through \
 conversation. Be concise, friendly, and iterative: propose a change, explain it \
@@ -160,6 +161,12 @@ game's rules change and for every new game.
 Only return "code" when the user asked for a game or a change to it; for \
 questions and discussion, return "code": null, "server_code": null and answer \
 in "message"."""
+
+# The translation rules go just before the response format, which must stay the last thing.
+SYSTEM_PROMPT = _BASE_PROMPT.replace(
+    "\nRESPONSE FORMAT:", "\n" + PROMPT_RULES + "\nRESPONSE FORMAT:", 1
+)
+assert PROMPT_RULES in SYSTEM_PROMPT
 
 
 class AgentError(Exception):

@@ -4,11 +4,12 @@ Goal: when something goes wrong, someone who needs to know is told, and the logs
 find out why, for a person or an agent, without asking the user to repeat what they did.
 
 - **Minor** problems send an **email**. Look at them today.
-- **Major** problems send the email **and** call, text or page (PagerDuty). Act now.
+- **Major** problems send the email **and** a text message and/or a PagerDuty page (PagerDuty can
+  also call a phone, if the person on call sets that in their PagerDuty notification rules). Act now.
 
 ```
 server  ->  JSON log file  ->  Ops Agent  ->  Cloud Logging  ->  log-match alert policies ->  email (minor)
-(observability.py)                                                                          ->  email + phone/text/PagerDuty (major)
+(observability.py)                                                                          ->  email + text/PagerDuty (major)
                                            VM metrics (memory, CPU, disk)  ->  metric policies   (same split)
                                            Uptime check of /health         ->  policy             (major)
 ```
@@ -45,6 +46,8 @@ The same alert is written at most once per `alert_cooldown_seconds` (5 minutes).
 | `game_function_error` | minor | a game's server code threw, or returned something invalid | same |
 | `computer_illegal_move` | minor | a computer opponent chose a move its own game rejects | same: the game has a bug |
 | `ai_generation_timeout` | minor | the game-building agent took over two minutes | `last_message`: what was asked |
+| `translation_budget_exceeded` | minor | the day's character budget for Google Translate is spent: new game texts stay in their original language until tomorrow | `characters_today`, `daily_character_limit` (config `translation`) |
+| `translation_failed` | minor, once per cooldown | Google Translate is failing or refusing (a bad key, a quota, an outage): games show their own texts | `error` |
 | `alert_test` | minor or major | a test alert (`POST /admin/alerts/test`) | nobody needs to act |
 
 From Google Cloud (not the server):
@@ -63,7 +66,7 @@ Logged, but not alerts by themselves: `request_slow` (a request over 1 s, with i
 `illegal_move` (a player's rejected move: `move`, `reason`, `player_id`, `match_id`),
 `game_function_slow` (a game function using half its time limit; `inputs`), `metrics` (one summary
 line a minute: requests, status classes, p50/p95/max latency, in-flight, memory, counts),
-`data_save_recovered`, `server_started`, `server_stopping`.
+`translation_done` and `translation_rejected` (a translation that lost a `{placeholder}`), `data_save_recovered`, `server_started`, `server_stopping`.
 
 ## What is in a log line
 
@@ -118,15 +121,40 @@ To repeat a problem the line has:
    PROJECT_ID=my-project ALERT_EMAIL=me@example.com ./setup.sh
    ```
 
-   It creates an email channel, an uptime check of `https://buildplay.fun/health`, and the policies
+   `ALERT_EMAIL` can be several addresses separated by commas; each gets an email channel and all of them
+   get every alert. It creates the email channels, an uptime check of `https://buildplay.fun/health`, and the policies
    in the tables above. It skips what exists, so running it again is safe. To page for major alerts,
    add either or both of `PAGERDUTY_KEY=...` and `SMS_NUMBER=+1555...`, or create the channels in the
-   console (Monitoring > Alerting > Edit notification channels: PagerDuty, SMS, or the phone-call
-   option, whichever you want) and pass their names in `MAJOR_EXTRA_CHANNELS=projects/P/notificationChannels/ID`.
+   console (Monitoring > Alerting > Edit notification channels: SMS or PagerDuty; Cloud Monitoring itself
+   cannot place phone calls, so for a call use PagerDuty) and pass their names in `MAJOR_EXTRA_CHANNELS=projects/P/notificationChannels/ID`.
    Without one, major alerts only send the email, and the script warns you.
 
    To see what it will create first: `python3 policies.py --help`, or run it with fake channel names
    and read `policies/*.json`.
+
+## Who gets the alerts, and handing over
+
+Nothing about who is alerted is in the repository: the addresses and numbers are notification
+**channels** in the Google Cloud project, and each alert policy lists the channels it uses. So you
+can start with your own details and hand over later without a code change or a deploy.
+
+To hand over to the admins, in the console (Monitoring > Alerting > Edit notification channels; the
+wording differs a little between versions), do one of:
+
+1. **Edit the channel**: change its email address or phone number. Every policy that uses it follows.
+2. **Add the admins' channels** (Add new: Email, SMS or PagerDuty) and tick them in each policy
+   (Alerting > the policy > Edit > Notifications); remove yours when you are done. Texts need the number
+   verified first.
+3. **Start over with new addresses**: delete the policies named "Game platform ..." (Alerting > Policies, or
+   `gcloud monitoring policies list --filter='displayName:"Game platform"' --format='value(name)' | xargs -n1 gcloud monitoring policies delete --quiet`),
+   then run `setup.sh` again with the admins in `ALERT_EMAIL`. It makes a channel for each new address and
+   recreates the policies with them. Re-running without deleting the policies does not move them to a new
+   address: it skips policies that exist.
+
+The easiest handover is to use a **group address** as `ALERT_EMAIL` from the start (for example
+`platform-alerts@yourdomain`): you then change the group's members and never touch Google Cloud. For
+the major tier, **PagerDuty** works the same way: your phone now, an on-call schedule of the admins later.
+Phone calls come through PagerDuty too (Cloud Monitoring itself cannot call).
 
 ## Check that the alerts work
 

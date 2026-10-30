@@ -5,6 +5,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 
 const LOCALES=[{code:'en',name:'English',direction:'ltr'},{code:'es',name:'Español',direction:'ltr'},{code:'ar',name:'العربية',direction:'rtl'}];
+const GAME_STRINGS={locale:'es',direction:'ltr',status:'translated',translatable:true,strings:{wins:'¡{name} gana!'}};
+const GAMES_TEXT={chess:{name:'Ajedrez',description:'Un clásico'}};
 const CATALOGS={
   es:{version:'es1',messages:{'ui.action.save':'Guardar','ui.match.moves_count':'Movimientos: {count}'}},
   ar:{version:'ar1',messages:{'ui.action.save':'حفظ'}},
@@ -21,7 +23,7 @@ function element(tag){
 // Objects made inside the sandbox have another realm's prototypes; compare their JSON.
 const plain=value=>JSON.parse(JSON.stringify(value));
 
-function setup({stored={},languages=['en-US'],user=null,accountLocale='',catalogs=CATALOGS}={}){
+function setup({stored={},languages=['en-US'],user=null,accountLocale='',catalogs=CATALOGS,stringsAnswer=GAME_STRINGS,stringsFail=false,games=GAMES_TEXT}={}){
   const storage=new Map(Object.entries(stored).map(([k,v])=>[k,JSON.stringify(v)]));
   const requests=[],apiCalls=[],events=[];
   const topbar=element('header');
@@ -39,6 +41,7 @@ function setup({stored={},languages=['en-US'],user=null,accountLocale='',catalog
     const url=typeof input==='string'?input:input.url;
     requests.push({url,headers:new Headers(init.headers??{})});
     if(url==='/i18n/locales')return {ok:true,json:async()=>({locales:LOCALES})};
+    if(/^\/i18n\/games\/\w+$/.test(url))return {ok:true,json:async()=>({status:'translated',games})};
     const match=/^\/i18n\/(\w+)$/.exec(url);
     if(match&&catalogs[match[1]])return {ok:true,json:async()=>catalogs[match[1]]};
     return {ok:false,json:async()=>({})};
@@ -50,7 +53,11 @@ function setup({stored={},languages=['en-US'],user=null,accountLocale='',catalog
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     fetch:nativeFetch,
     Auth:{current:()=>user},
-    apiRequest:async(method,url,options)=>{apiCalls.push({method,url,body:options?.body});return method==='GET'?{locale:accountLocale}:{};},
+    apiRequest:async(method,url,options)=>{
+      apiCalls.push({method,url,body:options?.body});
+      if(url.includes('/strings')){if(stringsFail)throw new Error('down');return stringsAnswer;}
+      return method==='GET'?{locale:accountLocale}:{};
+    },
   };
   sandbox.window=sandbox;
   sandbox.window.addEventListener=()=>{};
@@ -149,4 +156,43 @@ test('offline, the saved catalog still translates the page',async()=>{
   const offline=setup({stored:{'game-platform.locale.v1':'es','game-platform.i18n-catalog.v1:es':JSON.parse(saved)},catalogs:{}});
   await offline.settle();
   assert.equal(offline.run('I18n.t("ui.action.save")'),'Guardar');
+});
+
+// The games' own texts
+
+test('in English a game gets only the language, with no request',async()=>{
+  const t=setup();await t.settle();t.apiCalls.length=0;
+  assert.deepEqual(plain(await t.run('I18n.gameText("chess", 3)')),{locale:'en',direction:'ltr'});
+  assert.equal(t.apiCalls.length,0);
+});
+
+test('in another language a game gets its translated strings, asked for once',async()=>{
+  const t=setup({stored:{'game-platform.locale.v1':'es'}});await t.settle();t.apiCalls.length=0;
+  const first=plain(await t.run('I18n.gameText("chess", 3)'));
+  assert.deepEqual(first,{locale:'es',direction:'ltr',strings:{wins:'¡{name} gana!'}});
+  await t.run('I18n.gameText("chess", 3)');
+  await t.run('I18n.gameText("chess", 4)'); // another version
+  assert.deepEqual(t.apiCalls.map(call=>call.url),['/games/chess/versions/3/strings?lang=es','/games/chess/versions/4/strings?lang=es']);
+});
+
+test('a game without a string table gets the language but no strings',async()=>{
+  const t=setup({stored:{'game-platform.locale.v1':'ar'},stringsAnswer:{locale:'ar',direction:'rtl',status:'translated',translatable:false,strings:{}}});
+  await t.settle();
+  assert.deepEqual(plain(await t.run('I18n.gameText("chess", 1)')),{locale:'ar',direction:'rtl'});
+});
+
+test('if the translations cannot be fetched the game still gets its language and shows its own text',async()=>{
+  const t=setup({stored:{'game-platform.locale.v1':'es'},stringsFail:true});await t.settle();
+  assert.deepEqual(plain(await t.run('I18n.gameText("chess", 3)')),{locale:'es',direction:'ltr'});
+});
+
+test('game names and descriptions are translated once they arrive, and fall back to the original',async()=>{
+  const t=setup({stored:{'game-platform.locale.v1':'es'}});await t.settle();
+  assert.equal(t.run('I18n.gameName("chess","Chess")'),'Ajedrez');
+  assert.equal(t.run('I18n.gameDescription("chess","A classic")'),'Un clásico');
+  assert.equal(t.run('I18n.gameName("checkers","Checkers")'),'Checkers'); // not translated yet
+  const before=t.run('I18n.revision()');
+  await t.run('I18n.choose("en")');
+  assert.equal(t.run('I18n.gameName("chess","Chess")'),'Chess'); // English shows the original
+  assert.ok(t.run('I18n.revision()')>before); // so a script that skips unchanged redraws redraws
 });

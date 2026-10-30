@@ -70,6 +70,9 @@
   "error.locale_not_supported": "不支持的语言：{locale}",
   "error.route_not_found": "未找到",
   "error.method_not_allowed": "不允许的请求方法",
+  "error.translation_locale_unsupported": "{locale} 不是文本翻译的目标语言",
+  "error.translation_text_missing": "需要同时提供原文和译文",
+  "error.translation_placeholders": "译文必须保留原文中的占位符（花括号中的词）",
   "error.push_subscription_not_found": "未找到推送订阅",
   "error.push_not_yours": "只能删除自己的推送订阅",
 
