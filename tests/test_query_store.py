@@ -58,6 +58,26 @@ def test_restart_and_second_instance_read_committed_move_without_loading_history
     assert second.get_match(match).moves[0].new_state == record.state
 
 
+def test_recent_experiment_variant_deletion_is_atomic_when_legacy_limit_is_exceeded(store):
+    import datetime as dt
+    from game_platform.models import ExperimentAssignment
+
+    api = api_for(store)
+    platform = api.client.app.state.platform
+    platform.list_experiments()
+    before = store._get("experiments", "ui-skins")
+    variant = before.variants[0]
+    for index in range(101):
+        store.put_experiment_assignment(ExperimentAssignment(
+            user_id=f"variant-limit-{index}", experiment_id=before.id,
+            variant_id=variant.id, assigned_at=dt.datetime.now(dt.timezone.utc),
+        ))
+    response = api.request("DELETE", f"/admin/experiments/{before.id}/variants/{variant.id}")
+    assert response.status_code == 409
+    assert store._get("experiments", before.id) == before
+    assert store.get_experiment_assignment(user_id="variant-limit-0", experiment_id=before.id)
+
+
 def test_history_page_uses_one_batch_and_preserves_move_order(store):
     from game_platform.scaling_tools import seed
 

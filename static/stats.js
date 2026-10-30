@@ -58,61 +58,71 @@ function experimentTable(title, experiment, kind) {
           rel: "noopener",
         })
       : "—";
-    const spend = kind === "campaign"
-      ? (() => {
-          const input = el("input", {
-            type: "number",
-            min: 0,
-            max: variant.budget_usd ?? 100,
-            step: 0.01,
-            value: variant.spend_usd,
-            "aria-label": `Actual spend for ${variant.name}`,
-          });
-          const status = el("span", { class: "muted", role: "status" });
-          const form = el(
-            "form",
-            { class: "spend-form" },
-            input,
-            el("button", { type: "submit", textContent: "Save" }),
-            status,
+    const status = el("span", { class: "muted delete-status", role: "status" });
+    const remove = el("button", {
+      type: "button",
+      class: "danger",
+      textContent: "Delete",
+      "aria-label": `Delete ${variant.name}`,
+      onclick: async (event) => {
+        if (
+          !window.confirm(
+            `Delete "${variant.name}"? Its assignments and recorded experiment metrics will also be deleted.`,
+          )
+        )
+          return;
+        const button = event.currentTarget;
+        button.disabled = true;
+        status.textContent = "Deleting…";
+        try {
+          await apiRequest(
+            "DELETE",
+            `/admin/experiments/${encodeURIComponent(experiment.id)}/variants/${encodeURIComponent(variant.variant_id)}`,
           );
-          form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            status.textContent = "Saving…";
-            try {
-              await apiRequest(
-                "PATCH",
-                `/admin/experiments/campaign-links/${encodeURIComponent(variant.variant_id)}`,
-                { body: { spend_usd: Number(input.value) } },
-              );
-              await refresh();
-            } catch (error) {
-              status.textContent = `Couldn't save spend: ${error.message}`;
-            }
-          });
-          return form;
-        })()
-      : "—";
+          await refresh();
+        } catch (error) {
+          button.disabled = false;
+          status.textContent = `Couldn't delete variant: ${error.message}`;
+        }
+      },
+    });
     return el(
       "tr",
       {},
       el("td", { textContent: variant.name }),
-      el("td", { class: "num", textContent: kind === "skin" ? variant.assigned : "—" }),
-      el("td", { class: "num", textContent: kind === "campaign" ? variant.clicks : "—" }),
-      el("td", { class: "num", textContent: variant.signups }),
-      el("td", { class: "num", textContent: variant.match_starts }),
-      el("td", { class: "num", textContent: variant.returning_active_users }),
-      el("td", { class: "num", textContent: kind === "campaign" && variant.budget_usd != null ? `$${variant.budget_usd.toFixed(2)}` : "—" }),
-      el("td", { class: "num", textContent: spend }),
-      el("td", { class: "num", textContent: kind === "campaign" ? `${variant.signup_rate}%` : "—" }),
-      el("td", { class: "num", textContent: `${variant.match_start_rate}%` }),
-      el("td", { class: "num", textContent: `${variant.return_rate}%` }),
-      el("td", { class: "num", textContent: kind === "campaign" && variant.cost_per_signup_usd !== null ? `$${variant.cost_per_signup_usd.toFixed(2)}` : "—" }),
-      el("td", { class: "num", textContent: kind === "campaign" && variant.cost_per_match_user_usd !== null ? `$${variant.cost_per_match_user_usd.toFixed(2)}` : "—" }),
-      el("td", { class: "num", textContent: kind === "campaign" && variant.cost_per_returning_user_usd !== null ? `$${variant.cost_per_returning_user_usd.toFixed(2)}` : "—" }),
-      el("td", {}, link),
+      ...(kind === "skin"
+        ? [
+            el("td", { class: "num", textContent: variant.assigned }),
+            el("td", { class: "num", textContent: variant.signups }),
+            el("td", { class: "num", textContent: variant.match_starts }),
+            el("td", { class: "num", textContent: variant.returning_active_users }),
+            el("td", { class: "num", textContent: `${variant.match_start_rate}%` }),
+            el("td", { class: "num", textContent: `${variant.return_rate}%` }),
+          ]
+        : [
+            el("td", { class: "num", textContent: variant.clicks }),
+            el("td", { class: "num", textContent: variant.signups }),
+            el("td", { class: "num", textContent: variant.match_starts }),
+            el("td", { class: "num", textContent: variant.returning_active_users }),
+            el("td", {
+              class: "num",
+              textContent:
+                variant.budget_usd == null
+                  ? "—"
+                  : `$${variant.budget_usd.toFixed(2)}`,
+            }),
+            el("td", { class: "num", textContent: `${variant.signup_rate}%` }),
+            el("td", { class: "num", textContent: `${variant.match_start_rate}%` }),
+            el("td", { class: "num", textContent: `${variant.return_rate}%` }),
+            el("td", {}, link),
+          ]),
+      el("td", { class: "variant-actions" }, remove, status),
     );
   });
+  const headings =
+    kind === "skin"
+      ? ["Variant", "Assigned", "Signups", "Match starts", "7-day return", "Start rate", "Return rate", "Actions"]
+      : ["Campaign", "Clicks", "Signups", "Match starts", "7-day return", "Budget", "Signup rate", "Start rate", "Return rate", "Link", "Actions"];
   return el(
     "div",
     { class: "panel experiment-panel" },
@@ -130,8 +140,14 @@ function experimentTable(title, experiment, kind) {
               el(
                 "tr",
                 {},
-                ["Variant", "Assigned", "Clicks", "Signups", "Match starts", "7-day return", "Budget", "Actual spend", "Signup rate", "Start rate", "Return rate", "Cost/signup", "Cost/start", "Cost/return", "Link"].map(
-                  (heading, index) => el("th", { class: index > 0 && index < 14 ? "num" : "", textContent: heading }),
+                headings.map((heading, index) =>
+                  el("th", {
+                    class:
+                      index > 0 && index < headings.length - 1 && heading !== "Link"
+                        ? "num"
+                        : "",
+                    textContent: heading,
+                  }),
                 ),
               ),
             ),
@@ -196,20 +212,49 @@ function variantForm({ title, endpoint, note, withLink = false }) {
 }
 
 function experimentManagement() {
+  const steps = (title, items) =>
+    el(
+      "details",
+      { class: "experiment-help" },
+      el("summary", { textContent: title }),
+      el("ol", {}, items.map((item) => el("li", { textContent: item }))),
+    );
   return el(
     "div",
     { class: "experiment-manager" },
-    variantForm({
-      title: "Create an advertisement campaign link",
-      endpoint: "/admin/experiments/campaign-links",
-      note: "Share this link to count visits and attributed activity.",
-      withLink: true,
-    }),
-    variantForm({
-      title: "Add a UI skin variant",
-      endpoint: "/admin/experiments/skin-variants",
-      note: "Add the matching CSS theme before the variant is assigned.",
-    }),
+    el(
+      "section",
+      { class: "experiment-manager-item" },
+      variantForm({
+        title: "Create an advertisement campaign link",
+        endpoint: "/admin/experiments/campaign-links",
+        note: "Share this link to count visits and attributed activity.",
+        withLink: true,
+      }),
+      steps("Step-by-step: create and use a campaign link", [
+        "Enter a name that will help you recognize this campaign in the results.",
+        "Choose a unique link key. The form suggests one from the name; use lowercase letters, numbers, and hyphens only.",
+        "Click Create campaign link. The new link appears in the campaign results above.",
+        "Copy the generated link using Open (or right-click it and choose Copy link). Share this exact link in the campaign you want to measure. Create a separate link for each campaign.",
+        "Return to this page to compare clicks, attributed signups, match starts, and 7-day returns. A signup is attributed when someone creates an account after visiting the link.",
+      ]),
+    ),
+    el(
+      "section",
+      { class: "experiment-manager-item" },
+      variantForm({
+        title: "Add a UI skin variant",
+        endpoint: "/admin/experiments/skin-variants",
+        note: "The matching skin design must be deployed before users are assigned to it.",
+      }),
+      steps("Step-by-step: prepare and add a UI skin", [
+        "Ask the developer or student creating the skin to provide its display name and exact key. The key uses lowercase letters, numbers, and hyphens.",
+        "Have them add and deploy the visual design for that exact key before adding it here. Adding a variant only registers it for assignment; it does not create, upload, or deploy the design.",
+        "Enter the agreed display name and key, then click Add skin variant. Check that the variant appears in the results above.",
+        "New assignments can use the new skin after it is added. Existing users keep their current assignment.",
+        "If a skin is retired, use its Delete button above. Deleting it also clears its assignments and recorded results; users assigned to it will receive another available skin next time.",
+      ]),
+    ),
   );
 }
 

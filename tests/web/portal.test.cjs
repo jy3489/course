@@ -376,3 +376,29 @@ test('current account avatar wins over stale match profile cache',()=>{
   run('state.pictureCache.set("other","/other-cat.png")');
   assert.equal(run('playerPicture({kind:"human",user_id:"other"})'),'/other-cat.png');
 });
+
+test('server games explain unavailable practice before a click; client games restore it',()=>{
+  const t=setup();
+  t.run('state.games[0].supports_local_practice=false;updateMatchSetup()');
+  assert.equal(t.node('practice').disabled,true);
+  assert.equal(t.node('practice-mode').disabled,true);
+  assert.equal(t.node('practice-unavailable').hidden,false);
+  t.run('state.games[0].supports_local_practice=true;updateMatchSetup()');
+  assert.equal(t.node('practice').disabled,false);
+  assert.equal(t.node('practice-mode').disabled,false);
+  assert.equal(t.node('practice-unavailable').hidden,true);
+});
+
+test('unsupported practice hides offline instructions and restores them for local games',()=>{
+ const t=setup();t.run('state.games[0].supports_local_practice=false;updateMatchSetup()');
+ assert.equal(t.node('practice-offline-note').hidden,true);
+ t.run('state.games[0].supports_local_practice=true;updateMatchSetup()');
+ assert.equal(t.node('practice-offline-note').hidden,false);
+});
+test('duplicate names have stable distinct labels across search and catalog filters',()=>{
+ const t=setup();t.run('state.games=[{id:"abcdefgh-one",name:"Gomoku",version:2},{id:"ijklmnop-two",name:" gomoku ",version:2},{id:"unique",name:"Chess",version:1}]');
+ assert.notEqual(t.run('catalogGameLabel(state.games[0])'),t.run('catalogGameLabel(state.games[1])'));
+ assert.equal(t.run('catalogGameLabel(state.games[2])'),'Chess');
+ t.run('state.games[1].id="abcdefgh-two"');
+ assert.match(t.run('catalogGameLabel(state.games[0])'),/abcdefgh-one/);
+});

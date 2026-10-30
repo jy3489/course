@@ -6,6 +6,20 @@ storage remains the default. Do not enable it for production until the release
 gates below are resolved. The existing QuickJS Game API, generated client/server
 code, deterministic execution checks and random-walk repair loop are preserved.
 
+Merging this implementation and enabling query storage are separate steps. An
+existing config containing only `firestore.enabled: true` continues using
+snapshot mode and `(default)`. Neither normal startup nor CI deployment invokes
+synthetic-data generators, the isolated demo wrapper, namespace initialization
+or migration. Test data stays in its explicitly configured database/namespace;
+separate VMs by themselves are not a data-isolation guarantee.
+
+The merge with main through `0091652` preserves the recent catalog/practice/replay
+UX changes and experiment deletion panel. Portal shell/script versions were
+bumped for the combined assets. Local verification: 556 backend/emulator tests,
+157 web checks and 18 affected desktop/mobile browser tests passed. Startup
+regression checks assert existing production-style configs keep the original
+database, create no users and expose none of the isolated demo routes.
+
 ## What changes
 
 `QueryStore` reads records on demand. Startup reads one schema marker; it does not
@@ -211,6 +225,9 @@ This release is not yet a replacement for every snapshot-mode feature:
 * Invite acceptances, linked-account arrays and some error/context
   endpoints still use bounded legacy representations. Records reject payloads
   above 800 KB; these features need their own child-record and pagination designs.
+  The recent experiment-variant deletion endpoint also retains the 100-record
+  legacy assignment/event limit in query mode; an oversized request returns 409
+  with its writes rolled back. Its snapshot-mode behavior remains unchanged.
 * Daily creation, A/B and transitive referral reports are available as offline
   snapshots. Per-game analytics and automated reconciliation jobs are not implemented.
   HTTP global exports are replaced by an offline CLI.

@@ -495,6 +495,42 @@ class GamePlatform:
             self._store.put_experiment(updated_experiment)
             return updated_variant
 
+    def delete_experiment_variant(
+        self, *, experiment_id: str, variant_id: str
+    ) -> None:
+        with self._lock:
+            experiment = self._active_experiment(experiment_id)
+            variant = next(
+                (item for item in experiment.variants if item.id == variant_id), None
+            )
+            if variant is None:
+                raise NotFoundError("experiment not found")
+
+            self._store.put_experiment(
+                replace(
+                    experiment,
+                    variants=tuple(
+                        item for item in experiment.variants if item.id != variant_id
+                    ),
+                    updated_at=self._clock(),
+                )
+            )
+            for assignment in self._store.list_experiment_assignments():
+                if (
+                    assignment.experiment_id == experiment_id
+                    and assignment.variant_id == variant_id
+                ):
+                    self._store.delete_experiment_assignment(
+                        user_id=assignment.user_id,
+                        experiment_id=experiment_id,
+                    )
+            for event in self._store.list_experiment_events():
+                if (
+                    event.experiment_id == experiment_id
+                    and event.variant_id == variant_id
+                ):
+                    self._store.delete_experiment_event(event.id)
+
     def assign_skin(
         self, *, user_id: str, assigned_at: dt.datetime | None = None
     ) -> ExperimentVariant | None:
