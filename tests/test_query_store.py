@@ -1164,3 +1164,30 @@ def test_generic_worker_wakes_for_work_without_half_second_idle_polling(store):
             assert jobs.call_count == 2
         finally:
             platform.close_workers()
+
+
+def test_offline_metrics_use_live_experiment_configuration_after_admin_changes(store):
+    from game_platform.scaling_experiment_report import rebuild, current
+
+    api = api_for(store)
+    api.new_user("existing")
+    _run_until_complete(rebuild, store=store, run_id="live-config", max_records=20)
+    old = store._get("experiments", "ui-skins")
+    added = replace(
+        old.variants[0], id="new-variant", key="new-variant", name="New variant"
+    )
+    store.put_experiment(
+        replace(
+            old, name="Updated name", active=False, variants=(*old.variants[1:], added)
+        )
+    )
+    result = current(store)
+    skin = result["skin_experiment"]
+    assert skin["name"] == "Updated name"
+    assert skin["active"] is False
+    assert old.variants[0].id not in {v["variant_id"] for v in skin["variants"]}
+    assert (
+        next(v for v in skin["variants"] if v["variant_id"] == added.id)["assigned"]
+        == 0
+    )
+    assert result["configuration_consistency"] == "live"
