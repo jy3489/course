@@ -45,6 +45,7 @@ def index_config(namespace):
         for fields in itertools.combinations(["status", "game_id"], count):
             queries["matches"].append((list(fields), "visible_to"))
     singles = {
+        "translations": {"locale": "order"},
         "libraries": {"user_id": "order"},
         "experiment_assignments": {"user_id": "order"},
         "experiment_events": {"user_id": "order"},

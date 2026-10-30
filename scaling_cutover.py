@@ -45,6 +45,7 @@ def rollback_snapshot(store, *, byte_limit=32 * 1024**2, record_limit=5000):
 
     fields = {}
     for kind in (
+        "translations",
         "users",
         "game_versions",
         "matches",

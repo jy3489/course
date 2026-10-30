@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from game_platform.models import (
+    Translation,
     MAX_PLAYERS,
     MIN_PLAYERS,
     AgentConversation,

@@ -110,6 +110,8 @@ def migrate(source, destination, *, source_prefix="", batch_records=None):
                     current = destination.get_match(record.id)
                     destination.put_match(replace(record, moves=current.moves))
                     scheduler._schedule_match(destination.get_match(record.id))
+            elif kind.field == "translations":
+                destination.put_translations([record])
             elif kind.field == "game_versions":
                 with destination.atomic():
                     destination._put(

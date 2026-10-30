@@ -1191,3 +1191,33 @@ def test_offline_metrics_use_live_experiment_configuration_after_admin_changes(s
         == 0
     )
     assert result["configuration_consistency"] == "live"
+
+
+def test_merged_translation_memory_works_in_query_mode_and_survives_rollback(store):
+    from game_platform.scaling_cutover import rollback_snapshot
+
+    api = api_for(store)
+    added = api.ok(
+        "PUT",
+        "/admin/translations",
+        json={"locale": "es", "source": "Start {name}", "text": "Comenzar {name}"},
+    )
+    second = QueryStore(store.client, namespace=store.namespace)
+    with patch.object(
+        second, "_list", side_effect=AssertionError("translation lookup must not scan")
+    ):
+        found = second.get_translations("es", [added["source_hash"]])
+    assert found[added["source_hash"]].text == "Comenzar {name}"
+    assert len(store.list_translations("es")) == 1
+    assert (
+        len(api.ok("GET", "/v2/admin/translations", params={"limit": "1"})["items"])
+        == 1
+    )
+    assert rollback_snapshot(store).translations[0].text == "Comenzar {name}"
+    assert (
+        api.request(
+            "DELETE", f"/admin/translations/es/{added['source_hash']}"
+        ).status_code
+        == 204
+    )
+    assert second.get_translations("es", [added["source_hash"]]) == {}

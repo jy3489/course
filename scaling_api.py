@@ -344,6 +344,7 @@ def install(app, *, debug_tools):
         ):
             if kind not in (
                 "users",
+                "translations",
                 "games",
                 "game_versions",
                 "matches",
