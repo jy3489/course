@@ -87,6 +87,17 @@ def test_the_log_policies_match_the_servers_alert_field_and_log_name() -> None:
     assert "/var/log/game-platform/server.log" in config
 
 
+def test_the_uptime_alert_names_the_resource_type_google_requires() -> None:
+    uptime = next(policy for file, policy in built().items() if "uptime" in file)
+    assert 'resource.type="uptime_url"' in uptime["conditions"][0]["conditionThreshold"]["filter"]
+
+
+def test_every_policy_carries_a_severity_so_the_email_subject_is_not_no_severity() -> None:
+    for file, policy in built().items():
+        paged = policy["notificationChannels"] == MAJOR
+        assert policy["severity"] == ("CRITICAL" if paged else "WARNING"), file
+
+
 def test_each_host_alert_is_stricter_than_its_minor_twin() -> None:
     thresholds: dict[str, float] = {}
     for file, policy in built().items():
