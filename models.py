@@ -218,6 +218,25 @@ class GameVersionError:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Translation:
+    """One text translated into one language, remembered so that the same text is never
+    translated (and paid for) twice, whichever game or version it appears in. The key is
+    the language and the hash of the source text (see translation.py)."""
+
+    locale: str
+    # sha256 of the source text, as translation.text_hash makes it.
+    source_hash: str
+    # The source text itself, so a reviewer can see what a translation is of.
+    source: str
+    text: str
+    # "google" for a machine translation, "manual" for one an administrator wrote.
+    provider: str
+    created_at: dt.datetime
+    # True once a person has looked at it (every manual one is).
+    reviewed: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
 class GameTestSeeds:
     """The random-walk test seeds that failed for a game (or a draft with
     the same id), replayed first on the next test run as regression seeds

@@ -145,6 +145,25 @@ class FirestoreConfig(_Section):
         return self
 
 
+class TranslationConfig(_Section):
+    """Translating the texts of games into the player's language (docs/game-translation.md).
+    A text is translated the first time it is asked for in a language, then remembered."""
+
+    # "google": Google Cloud Translation. "off": nothing is translated, and games show
+    # their own (English) texts. "fake": for trying it out with no key: every text is
+    # prefixed with its language, e.g. "[es] Your turn"; never use it on a real server.
+    provider: Literal["off", "google", "fake"] = "off"
+    # A Google Cloud API key restricted to the Cloud Translation API (Console > APIs &
+    # Services > Credentials). Prefer the GAME_PLATFORM_TRANSLATE_API_KEY environment
+    # variable to keeping it in this file. Empty (with "google") signs in as the Google
+    # Cloud VM's service account instead.
+    google_api_key: str = ""
+    # At most this many characters are sent to Google per (UTC) day: a cap on the cost.
+    # Beyond it, new texts stay in their original language until tomorrow.
+    daily_character_limit: Annotated[int, Field(ge=0)] = 200_000
+    timeout_seconds: Annotated[float, Field(gt=0)] = 10.0
+
+
 class MonitoringConfig(_Section):
     """What the server logs and when it raises an alert (see docs/monitoring.md).
 
@@ -211,6 +230,7 @@ class Config(_Section):
     master_password: str = ""
     log_level: LogLevel = "INFO"
     monitoring: MonitoringConfig = MonitoringConfig()
+    translation: TranslationConfig = TranslationConfig()
     model_api: ModelApiConfig = ModelApiConfig()
     auth: AuthConfig = AuthConfig()
     push: PushConfig = PushConfig()

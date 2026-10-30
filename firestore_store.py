@@ -86,6 +86,7 @@ _KINDS: Final = (
     _Kind(field="invites", key=lambda invite: invite.token),
     _Kind(field="game_version_errors", key=lambda error: error.id),
     _Kind(field="game_test_seeds", key=lambda record: record.game_id),
+    _Kind(field="translations", key=lambda item: f"{item.locale}@{item.source_hash}"),
     _Kind(field="experiments", key=lambda experiment: experiment.id),
     _Kind(
         field="experiment_assignments",

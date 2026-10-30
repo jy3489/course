@@ -5,6 +5,7 @@ Python memory. A database-backed implementation can replace it later without tou
 the service or the HTTP layer.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -17,6 +18,7 @@ from game_platform.models import (
     Game,
     GameDraft,
     GameTestSeeds,
+    Translation,
     GameVersionError,
     Invite,
     Match,
@@ -126,6 +128,23 @@ class Store(Protocol):
 
     def get_game_test_seeds(self, game_id: str) -> GameTestSeeds | None: ...
 
+    def get_translations(
+        self, locale: str, source_hashes: Sequence[str]
+    ) -> dict[str, Translation]:
+        """The remembered translations into [locale] of the texts with these hashes,
+        by hash. Texts never translated are missing."""
+        ...
+
+    def put_translations(self, translations: Sequence[Translation]) -> None:
+        """Remembers translations, replacing any for the same language and text."""
+        ...
+
+    def delete_translation(self, locale: str, source_hash: str) -> None: ...
+
+    def list_translations(self, locale: str | None = None) -> list[Translation]:
+        """Every remembered translation, optionally of one language, oldest first."""
+        ...
+
     def list_game_test_seeds(self) -> list[GameTestSeeds]: ...
 
     def put_invite(self, invite: Invite) -> None: ...
@@ -189,6 +208,8 @@ class Snapshot:
     # Optional so existing data files load without a migration. Failed
     # random-walk test seeds per game, replayed as regression seeds.
     game_test_seeds: tuple[GameTestSeeds, ...] = ()
+    # Optional so existing data files load without a translation memory.
+    translations: tuple[Translation, ...] = ()
     # Optional so existing data files load without an experiment framework.
     experiments: tuple[Experiment, ...] = ()
     experiment_assignments: tuple[ExperimentAssignment, ...] = ()
@@ -214,6 +235,7 @@ class InMemoryStore:
         self._invites: dict[str, Invite] = {}
         self._game_version_errors: list[GameVersionError] = []
         self._game_test_seeds: dict[str, GameTestSeeds] = {}
+        self._translations: dict[tuple[str, str], Translation] = {}
         self._experiments: dict[str, Experiment] = {}
         self._experiment_assignments: dict[tuple[str, str], ExperimentAssignment] = {}
         self._experiment_events: dict[str, ExperimentEvent] = {}
@@ -240,6 +262,7 @@ class InMemoryStore:
         store._game_version_errors.extend(snapshot.game_version_errors)
         for record in snapshot.game_test_seeds:
             store.put_game_test_seeds(record)
+        store.put_translations(snapshot.translations)
         for experiment in snapshot.experiments:
             store.put_experiment(experiment)
         for assignment in snapshot.experiment_assignments:
@@ -267,6 +290,7 @@ class InMemoryStore:
             invites=tuple(self._invites.values()),
             game_version_errors=tuple(self._game_version_errors),
             game_test_seeds=tuple(self._game_test_seeds.values()),
+            translations=tuple(self._translations.values()),
             experiments=tuple(self._experiments.values()),
             experiment_assignments=tuple(self._experiment_assignments.values()),
             experiment_events=tuple(self._experiment_events.values()),
@@ -436,6 +460,30 @@ class InMemoryStore:
 
     def list_game_test_seeds(self) -> list[GameTestSeeds]:
         return list(self._game_test_seeds.values())
+
+    def get_translations(
+        self, locale: str, source_hashes: Sequence[str]
+    ) -> dict[str, Translation]:
+        found = {}
+        for source_hash in source_hashes:
+            translation = self._translations.get((locale, source_hash))
+            if translation is not None:
+                found[source_hash] = translation
+        return found
+
+    def put_translations(self, translations: Sequence[Translation]) -> None:
+        for translation in translations:
+            self._translations[(translation.locale, translation.source_hash)] = translation
+
+    def delete_translation(self, locale: str, source_hash: str) -> None:
+        self._translations.pop((locale, source_hash), None)
+
+    def list_translations(self, locale: str | None = None) -> list[Translation]:
+        return [
+            translation
+            for translation in self._translations.values()
+            if locale is None or translation.locale == locale
+        ]
 
     def put_push_subscription(self, subscription: WebPushSubscription) -> None:
         old = self._push_subscriptions.get(subscription.id)

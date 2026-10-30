@@ -18,6 +18,7 @@ const I18n = (() => {
   const CHOICE_KEY = "game-platform.locale.v1"; // an explicit choice, e.g. "es"
   const CATALOG_KEY = "game-platform.i18n-catalog.v1:"; // + language code
   const LOCALES_KEY = "game-platform.i18n-locales.v1";
+  const GAMES_KEY = "game-platform.i18n-games.v1:"; // + language code
   const DEFAULT = "en";
   // Used until /i18n/locales answers (and offline), so the picker always works. The
   // server's list is the source of truth and replaces this one.
@@ -51,6 +52,11 @@ const I18n = (() => {
   let code = DEFAULT;
   let messages = {}; // of [code]; empty for English, whose texts are in the HTML
   let picker = null;
+  // The published games' names and descriptions in the current language (game id ->
+  // {name, description}); empty for English or until they arrive.
+  let gamesText = {};
+  // A game version's translations are asked for once per language, then kept.
+  const gameStrings = new Map();
   let revision = 0; // changes whenever the texts do, for scripts that skip unchanged redraws
 
   /** "es-MX" -> "es"; null when the language isn't supported. */
@@ -157,18 +163,82 @@ const I18n = (() => {
     document.dispatchEvent(new CustomEvent("i18n-changed", { detail: { locale: code } }));
   }
 
+  // Games' own texts (written by their builders) are translated by the server the first
+  // time they are asked for, so they show in English first and then fill in.
+
+  /** Fetches the games' names and descriptions in the current language. */
+  async function loadGamesText() {
+    const asked = code;
+    if (asked === DEFAULT) return;
+    const saved = read(GAMES_KEY + asked);
+    if (saved && code === asked && !Object.keys(gamesText).length) {
+      gamesText = saved;
+      apply();
+      announce();
+    }
+    try {
+      const response = await fetch(`/i18n/games/${encodeURIComponent(asked)}`);
+      if (!response.ok || code !== asked) return;
+      const data = await response.json();
+      if (data.status === "unavailable") return; // nothing translated: keep what we have
+      gamesText = data.games ?? {};
+      write(GAMES_KEY + asked, gamesText);
+      apply();
+      announce();
+    } catch {
+      // offline: the saved copy (or English) stays
+    }
+  }
+
+  /** A game's name in the current language, else [fallback] (the name as its builder wrote it). */
+  function gameName(id, fallback) {
+    return gamesText[id]?.name || fallback;
+  }
+
+  function gameDescription(id, fallback) {
+    return gamesText[id]?.description ?? fallback;
+  }
+
+  /** What a game needs to show itself in the current language, to put in its state_changed
+   * message: {locale, direction} and, if the game has a translatable string table and the
+   * language is not English, {strings}. Never fails: without a translation the game just
+   * shows its English. */
+  async function gameText(gameId, version) {
+    const asked = code;
+    const direction = locales.find((item) => item.code === asked)?.direction ?? "ltr";
+    const plain = { locale: asked, direction };
+    if (asked === DEFAULT) return plain;
+    const key = `${asked}|${gameId}@${version}`;
+    const known = gameStrings.get(key);
+    if (known && Date.now() < known.until) return known.value;
+    let value = plain;
+    let until = Date.now() + 30_000; // a failed or partial answer is asked for again soon
+    try {
+      const path = `/games/${encodeURIComponent(gameId)}/versions/${version}/strings?lang=${asked}`;
+      const data = await apiRequest("GET", path, { user: account() });
+      value = { locale: data.locale, direction: data.direction, ...(data.translatable ? { strings: data.strings } : {}) };
+      if (data.status === "translated" || data.status === "source") until = Infinity;
+    } catch {
+      // keep the English
+    }
+    gameStrings.set(key, { value, until });
+    return value;
+  }
+
   /** Switches the page to [language]. [remember] saves it as the person's choice. */
   async function setLanguage(language, { remember = false } = {}) {
     const next = normalize(language) ?? DEFAULT;
     if (remember) write(CHOICE_KEY, next);
     if (next === code && picker?.value === next) return;
     code = next;
+    gamesText = {};
     messages = await load(next);
     if (code !== next) return; // another switch happened meanwhile
     setDocument();
     apply();
     if (picker) picker.value = code;
     announce();
+    loadGamesText();
   }
 
   /** The person picked [language] in the picker. */
@@ -281,6 +351,7 @@ const I18n = (() => {
       messages = await load(code);
       apply();
       announce();
+      loadGamesText();
     }
     refreshLocales();
     if (document.readyState === "complete") syncWithAccount();
@@ -288,5 +359,5 @@ const I18n = (() => {
   })();
   document.addEventListener("auth-changed", syncWithAccount);
 
-  return { t, apply, choose, ready, locale: () => code, revision: () => revision };
+  return { t, apply, choose, ready, locale: () => code, revision: () => revision, gameName, gameDescription, gameText };
 })();

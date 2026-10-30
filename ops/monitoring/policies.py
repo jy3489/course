@@ -3,7 +3,8 @@
 One table says what raises which alert, and who is told:
 
 - **minor**: an email. Something to look at today.
-- **major**: an email *and* a phone call, text or PagerDuty page. Something to act on now.
+- **major**: an email *and* a text message and/or a PagerDuty page (PagerDuty can call a phone).
+  Something to act on now.
 
 Run it to write the files, then create them with `gcloud monitoring policies create
 --policy-from-file=FILE` (setup.sh does both):
@@ -165,7 +166,7 @@ def build_policies(
     host: str = "buildplay.fun",
 ) -> dict[str, dict[str, Any]]:
     """File name -> policy. Minor alerts go to [minor_channels] only (email); major
-    alerts go to [major_channels] (the email too, plus the phone, text or PagerDuty)."""
+    alerts go to [major_channels] (the email too, plus a text and/or PagerDuty)."""
     channels = {"minor": minor_channels, "major": major_channels}
     policies = {
         "log-minor.json": _log_policy("minor", channels["minor"]),
@@ -183,7 +184,7 @@ def build_policies(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--minor-channels", required=True, help="comma-separated channel names (email)")
-    parser.add_argument("--major-channels", required=True, help="comma-separated channel names (email, phone/text, PagerDuty)")
+    parser.add_argument("--major-channels", required=True, help="comma-separated channel names (email, text, PagerDuty)")
     parser.add_argument("--uptime-check-id", required=True)
     parser.add_argument("--host", default="buildplay.fun")
     parser.add_argument("--out-dir", type=Path, default=Path("policies"))

@@ -5,6 +5,10 @@
 #
 #   PROJECT_ID=my-project ALERT_EMAIL=me@example.com ./setup.sh
 #
+# ALERT_EMAIL may list several addresses, separated by commas ("a@x.org,b@y.org"): each
+# gets its own channel and every alert, minor and major, is emailed to all of them. Start
+# with your own address and hand over later (docs/monitoring.md, "Who gets the alerts").
+#
 # Optional, to also page for major alerts:
 #   PAGERDUTY_KEY=...        a PagerDuty "Google Cloud" integration (service) key
 #   SMS_NUMBER=+15551234567  a phone to text (Google may ask you to verify it in the console)
@@ -38,9 +42,17 @@ make_channel() {  # display name, type, label (key=value)
 }
 
 echo "== Notification channels"
-EMAIL_CHANNEL="$(make_channel "Game platform: email" email "email_address=$ALERT_EMAIL")"
-echo "email:     $EMAIL_CHANNEL"
-MAJOR="$EMAIL_CHANNEL"
+MINOR=""  # the channels every alert goes to: one email channel per address
+IFS=',' read -ra ADDRESSES <<< "$ALERT_EMAIL"
+for address in "${ADDRESSES[@]}"; do
+  address="$(echo "$address" | tr -d '[:space:]')"
+  [[ -z "$address" ]] && continue
+  channel="$(make_channel "Game platform: email $address" email "email_address=$address")"
+  echo "email:     $channel  ($address)"
+  MINOR="${MINOR:+$MINOR,}$channel"
+done
+[[ -n "$MINOR" ]] || { echo "ALERT_EMAIL has no address in it" >&2; exit 1; }
+MAJOR="$MINOR"  # major alerts email the same people, and also text / page below
 if [[ -n "${PAGERDUTY_KEY:-}" ]]; then
   # The channel type and label are those of the Monitoring API's PagerDuty descriptor;
   # check them with: gcloud beta monitoring channel-descriptors list
@@ -53,8 +65,8 @@ if [[ -n "${SMS_NUMBER:-}" ]]; then
   MAJOR="$MAJOR,$SMS_CHANNEL"
 fi
 if [[ -n "${MAJOR_EXTRA_CHANNELS:-}" ]]; then MAJOR="$MAJOR,$MAJOR_EXTRA_CHANNELS"; fi
-if [[ "$MAJOR" == "$EMAIL_CHANNEL" ]]; then
-  echo "WARNING: no phone, text or PagerDuty channel given, so major alerts only send email." >&2
+if [[ "$MAJOR" == "$MINOR" ]]; then
+  echo "WARNING: no text or PagerDuty channel given, so major alerts only send email." >&2
 fi
 
 echo "== Uptime check of https://$HOST/health"
@@ -71,7 +83,7 @@ CHECK_ID="${CHECK##*/}"
 echo "check id:  $CHECK_ID"
 
 echo "== Alert policies"
-python3 "$HERE/policies.py" --minor-channels "$EMAIL_CHANNEL" --major-channels "$MAJOR" \
+python3 "$HERE/policies.py" --minor-channels "$MINOR" --major-channels "$MAJOR" \
   --uptime-check-id "$CHECK_ID" --host "$HOST" --out-dir "$OUT" > /dev/null
 for file in "$OUT"/*.json; do
   name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["displayName"])' "$file")"

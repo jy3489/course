@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from game_platform.models import (
+    Translation,
     MAX_PLAYERS,
     MIN_PLAYERS,
     AgentConversation,
@@ -38,8 +39,8 @@ from game_platform.models import (
     WebPushSubscription,
 )
 from game_platform.game_testing import GameTestReport, TestFailure
-from game_platform.i18n import LOCALE_CODES, Locale, normalize_locale
-from game_platform.service import AllData
+from game_platform.i18n import LOCALE_CODES, Locale, get_locale, normalize_locale
+from game_platform.service import AllData, GameStrings
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
@@ -1277,3 +1278,84 @@ class HealthOut(BaseModel):
     uptime_seconds: int
     # "ok", or the kind of error that stops the data file from being saved.
     storage: str
+
+
+class GameStringsOut(BaseModel):
+    """A game version's texts in one language. A game shows its own texts where there is
+    no translation, so every text is always present."""
+
+    game_id: str
+    game_version: int
+    locale: str
+    direction: Literal["ltr", "rtl"]
+    # "source": the language needs no translation (English); "translated": every text;
+    # "partial": some; "unavailable": none (no translator is set up, or it failed).
+    status: Literal["source", "translated", "partial", "unavailable"]
+    name: str
+    description: str
+    # Whether the game has a string table (a block `id="i18n-strings"` in its code).
+    translatable: bool
+    # key -> text, from the game's string table.
+    strings: dict[str, str]
+    # Why the game may translate badly.
+    warnings: list[str]
+
+    @classmethod
+    def of(cls, strings: GameStrings) -> "GameStringsOut":
+        return cls(
+            game_id=strings.game_id,
+            game_version=strings.game_version,
+            locale=strings.locale,
+            direction=get_locale(strings.locale).direction,
+            status=strings.status,  # type: ignore[arg-type]
+            name=strings.name,
+            description=strings.description,
+            translatable=strings.translatable,
+            strings=strings.strings,
+            warnings=strings.warnings,
+        )
+
+
+class GameTextOut(BaseModel):
+    name: str
+    description: str
+
+
+class GamesTextOut(BaseModel):
+    """The names and descriptions of the published games in one language."""
+
+    locale: str
+    direction: Literal["ltr", "rtl"]
+    status: Literal["source", "translated", "partial", "unavailable"]
+    games: dict[str, GameTextOut]
+
+
+class TranslationOut(BaseModel):
+    locale: str
+    source_hash: str
+    source: str
+    text: str
+    # "google" (machine) or "manual" (an administrator's).
+    provider: str
+    reviewed: bool
+    created_at: dt.datetime
+
+    @classmethod
+    def of(cls, translation: Translation) -> "TranslationOut":
+        return cls(
+            locale=translation.locale,
+            source_hash=translation.source_hash,
+            source=translation.source,
+            text=translation.text,
+            provider=translation.provider,
+            reviewed=translation.reviewed,
+            created_at=translation.created_at,
+        )
+
+
+class TranslationSet(_Request):
+    model_config = _example({"locale": "es", "source": "{name} wins!", "text": "¡{name} gana!"})
+
+    locale: LocaleCode
+    source: Annotated[str, StringConstraints(min_length=1, max_length=1000)]
+    text: Annotated[str, StringConstraints(min_length=1, max_length=1000)]

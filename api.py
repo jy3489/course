@@ -37,6 +37,9 @@ from game_platform.schemas import (
     RefactorGameResultOut,
     RefactorJobOut,
     CatalogOut,
+    GameStringsOut,
+    GamesTextOut,
+    GameTextOut,
     CampaignLinkCreate,
     CampaignSpendUpdate,
     LocaleOut,
@@ -81,6 +84,8 @@ from game_platform.schemas import (
     SkinAssignmentOut,
     QuickMatchRequest,
     ReferralsOut,
+    TranslationOut,
+    TranslationSet,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -677,6 +682,24 @@ def get_game_version(platform: Platform, game_id: str, version: int, caller_id: 
     return GameOut.of(platform.get_game_version(game_id, version, caller_id=caller_id))
 
 
+@router.get("/games/{game_id}/versions/{version}/strings")
+def get_game_strings(
+    request: Request,
+    platform: Platform,
+    game_id: str,
+    version: int,
+    caller_id: OptionalCallerId,
+    lang: str | None = None,
+) -> GameStringsOut:
+    """The texts of this game version in the viewer's language (`lang`, else their saved
+    language, else Accept-Language): its name, description and the game's own string
+    table. A text is translated the first time it is asked for, then remembered. What
+    cannot be translated comes back as the game wrote it, so a game can always show it."""
+    return GameStringsOut.of(
+        platform.game_strings(game_id, version, request.state.locale, caller_id=caller_id)
+    )
+
+
 @router.patch("/games/{game_id}")
 def update_game(
     platform: Platform, caller_id: CallerId, game_id: str, body: GameUpdate
@@ -997,6 +1020,23 @@ def list_locales() -> LocalesOut:
     )
 
 
+@i18n_router.get("/games/{locale}")
+def get_games_text(platform: Platform, locale: str) -> GamesTextOut:
+    """The names and descriptions of every published game in [locale], for a portal's game
+    cards. Translated the first time they are asked for, then remembered; whatever cannot be
+    translated is as its builder wrote it."""
+    code = i18n.normalize_locale(locale)
+    if code is None:
+        raise NotFoundError(f"language not supported: {locale}")
+    status, games = platform.games_text(code)
+    return GamesTextOut(
+        locale=code,
+        direction=i18n.get_locale(code).direction,
+        status=status,  # type: ignore[arg-type]
+        games={game_id: GameTextOut(**text) for game_id, text in games.items()},
+    )
+
+
 @i18n_router.get("/{locale}", response_model=CatalogOut)
 def get_catalog(
     request: Request, locale: str, prefix: str = "", fallback: bool = True
@@ -1200,6 +1240,30 @@ def all_data(platform: Platform) -> AllDataOut:
 def admin_stats(platform: Platform) -> dict[str, JsonValue]:
     """Counts about users, games and matches (the backoffice's statistics page)."""
     return platform.stats()
+
+
+@debug_router.get("/admin/translations", dependencies=[MasterPassword])
+def admin_list_translations(platform: Platform, locale: str | None = None) -> list[TranslationOut]:
+    """Every remembered translation of games' texts (of one language), to review them."""
+    return [TranslationOut.of(item) for item in platform.list_translations(locale)]
+
+
+@debug_router.put("/admin/translations", dependencies=[MasterPassword])
+def admin_set_translation(platform: Platform, body: TranslationSet) -> TranslationOut:
+    """Writes the translation of a text, replacing the machine one for good."""
+    return TranslationOut.of(
+        platform.set_translation(locale=body.locale, source=body.source, text=body.text)
+    )
+
+
+@debug_router.delete(
+    "/admin/translations/{locale}/{source_hash}",
+    dependencies=[MasterPassword],
+    status_code=HTTPStatus.NO_CONTENT,
+)
+def admin_delete_translation(platform: Platform, locale: str, source_hash: str) -> None:
+    """Forgets a translation: the text is machine-translated again when next asked for."""
+    platform.delete_translation(locale, source_hash)
 
 
 @debug_router.get("/admin/monitoring", dependencies=[MasterPassword])

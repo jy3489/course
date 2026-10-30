@@ -32,12 +32,14 @@ from game_platform.models import (
     Move,
     User,
     WebPushSubscription,
+    Translation,
 )
 from game_platform.move_history import MoveHistory
 from game_platform.scaling_library import LibraryEntry
 from game_platform.paging import Page, decode_cursor, encode_cursor, page_size
 
 TYPES = {
+    "translations": Translation,
     "libraries": LibraryEntry,
     "experiments": Experiment,
     "experiment_assignments": ExperimentAssignment,
@@ -214,6 +216,25 @@ class QueryStore:
     def put_experiment(self, experiment):
         self._put("experiments", experiment.id, experiment)
 
+    def get_translations(self, locale, source_hashes):
+        found = {}
+        for source_hash in dict.fromkeys(source_hashes):
+            row = self._get("translations", json.dumps([locale, source_hash]))
+            if row is not None:
+                found[source_hash] = row
+        return found
+
+    def put_translations(self, translations):
+        # Keep each translation atomic without creating an unbounded batch.
+        for row in translations:
+            self._put("translations", json.dumps([row.locale, row.source_hash]), row)
+
+    def delete_translation(self, locale, source_hash):
+        self._delete("translations", json.dumps([locale, source_hash]))
+
+    def list_translations(self, locale=None):
+        return self._list("translations", [("locale", "==", locale)] if locale else ())
+
     def list_experiments(self):
         return self._list("experiments")
 
@@ -379,6 +400,7 @@ class QueryStore:
                     "variant_id",
                     "kind",
                     "occurred_at",
+                    "locale",
                 )
                 if hasattr(record, name)
             }
