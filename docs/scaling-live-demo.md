@@ -1,7 +1,7 @@
 # Small live scaling demonstration
 
 This is a dedicated protected virtual host on the existing scaling VM. It does
-not replace Ian's port-8000 service, change buildplay.fun, merge the PR into main,
+not replace the pre-existing port-8000 service, change buildplay.fun, merge the PR into main,
 or use the default Firestore database. The live entrypoint is
 `python -m game_platform.scaling_live_demo --config PRIVATE_CONFIG`.
 
@@ -13,15 +13,22 @@ including its fixture-account buttons and backoffice pages. Credentials/config,
 fixture IDs, allowance ledger and certificates stay outside Git.
 
 The current free address is
-https://buildplay-demo.34.26.223.67.sslip.io/demo . The previous sc5386 hostname
+https://buildplay-demo.34.26.223.67.sslip.io/ . The previous sc5386 hostname
 redirects there, with TLS valid for both. No domain was purchased. The operator
 requested simplified demonstration credentials, configured outside Git.
 
-`demo-site/index.html` is the responsive BuildPlay landing page. Its month chart
+The root and legacy `/demo` entry both redirect to the usual `/portal`. Builder,
+`/admin`, `/stats`, `/invites` and `/browse` are the existing application pages.
+The extra presentation page is optional at `/admin/demo-fixtures`, not the site
+homepage. Normal production `main.py` calls `create_app` directly and does not
+import this wrapper or serve the extra page. Deploying through that normal
+entrypoint therefore does not replace the production homepage with it.
+
+`demo-site/index.html` is the optional fixture shortcut page. Its month chart
 and totals come from an existing dashboard snapshot saved as private
 `overview.json`; `/demo/overview` reads that file, so reopening the landing page
 does not scan Firestore. `/demo/accounts` supplies only the synthetic demo
-accounts after the site sign-in. Desktop/mobile checks cover chart rendering,
+accounts after the site sign-in. Earlier desktop/mobile checks covered chart rendering,
 navigation, responsive layout and the demo-controls menu. The game pages remain
 the existing Portal/Builder implementations.
 
@@ -73,7 +80,7 @@ non-playable catalog entries. Rebuild September daily, experiment and referral
 reports before publishing. Keep an earlier report visible until publication.
 
 Rollback stops only `sc5386-live-demo.service` and disables only its nginx virtual
-host. Ian's original service and host remain untouched. Do not delete the demo
+host. The pre-existing scaling service and host remain untouched. Do not delete the demo
 namespace or remove existing data as part of a routing rollback. Keep the budget
 ledger to prevent accidental allowance resets during recovery.
 

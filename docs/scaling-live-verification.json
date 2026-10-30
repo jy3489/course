@@ -50,5 +50,13 @@
       "playroomNavigation": true,
       "pageErrors": []
     }
-  ]
+  ],
+  "normal_entry_checks": {
+    "url": "https://buildplay-demo.34.26.223.67.sslip.io",
+    "rootOpensUsualPortal": true,
+    "legacyDemoRedirects": true,
+    "ordinaryPagesAccessible": true,
+    "pageErrors": []
+  },
+  "optional_fixture_page": "/admin/demo-fixtures"
 }

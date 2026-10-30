@@ -179,6 +179,14 @@ def test_real_sdk_and_event_driven_worker_use_budgeted_emulator(tmp_path):
         )
         with TestClient(app) as http:
             assert http.get("/storage/capabilities").status_code == 401
+            for entry in ("/", "/demo"):
+                response = http.get(
+                    entry, auth=("demo", "test"), follow_redirects=False
+                )
+                assert response.headers["location"] == "/portal"
+            portal = http.get("/portal", auth=("demo", "test"))
+            assert "Game platform · Portal" in portal.text
+            assert "Play. Replay." not in portal.text
             assert http.get("/storage/capabilities", auth=("demo", "test")).json()[
                 "pagination"
             ]

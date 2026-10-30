@@ -17,7 +17,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 import uvicorn
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from game_platform.api import create_app
 from game_platform.config import ModelApiConfig
 from game_platform.query_store import QueryStore
@@ -225,8 +225,12 @@ def app_for(config, platform, budget):
     async def exhausted(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=503)
 
-    @app.get("/demo", response_class=HTMLResponse)
+    @app.get("/demo")
     def demo():
+        return RedirectResponse("/portal", status_code=302)
+
+    @app.get("/admin/demo-fixtures", response_class=HTMLResponse)
+    def demo_fixtures():
         return Path(config["html_path"]).read_text(encoding="utf-8")
 
     @app.get("/demo/accounts")
@@ -235,7 +239,9 @@ def app_for(config, platform, budget):
 
     @app.get("/demo/overview")
     def overview():
-        return json.loads(Path(config["fixture_path"]).with_name("overview.json").read_text())
+        return json.loads(
+            Path(config["fixture_path"]).with_name("overview.json").read_text()
+        )
 
     @app.get("/demo/budget")
     def allowance():
