@@ -30,5 +30,25 @@
     "conservative_operation_allowance_usd": 0.5,
     "note": "Local deployment allowance, not an invoice or project-wide billing cap."
   },
-  "scope": "Separate scaling VM, named test database, scaling_v1 namespace. Production and original scaling service untouched."
+  "scope": "Separate scaling VM, named test database, scaling_v1 namespace. Production and original scaling service untouched.",
+  "current_url": "https://buildplay-demo.34.26.223.67.sslip.io",
+  "old_address_redirect": true,
+  "redesign_checks": [
+    {
+      "viewport": "desktop",
+      "layout": true,
+      "monthChart": true,
+      "demoLogin": true,
+      "playroomNavigation": true,
+      "pageErrors": []
+    },
+    {
+      "viewport": "mobile",
+      "layout": true,
+      "monthChart": true,
+      "demoLogin": true,
+      "playroomNavigation": true,
+      "pageErrors": []
+    }
+  ]
 }

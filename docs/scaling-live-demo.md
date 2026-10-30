@@ -12,6 +12,19 @@ credentials are configured. The site requires separate HTTP Basic credentials,
 including its fixture-account buttons and backoffice pages. Credentials/config,
 fixture IDs, allowance ledger and certificates stay outside Git.
 
+The current free address is
+https://buildplay-demo.34.26.223.67.sslip.io/demo . The previous sc5386 hostname
+redirects there, with TLS valid for both. No domain was purchased. The operator
+requested simplified demonstration credentials, configured outside Git.
+
+`demo-site/index.html` is the responsive BuildPlay landing page. Its month chart
+and totals come from an existing dashboard snapshot saved as private
+`overview.json`; `/demo/overview` reads that file, so reopening the landing page
+does not scan Firestore. `/demo/accounts` supplies only the synthetic demo
+accounts after the site sign-in. Desktop/mobile checks cover chart rendering,
+navigation, responsive layout and the demo-controls menu. The game pages remain
+the existing Portal/Builder implementations.
+
 ## Allowance and limitations
 
 `scaling_live_budget.py` wraps this Firestore client's RPCs before QueryStore is

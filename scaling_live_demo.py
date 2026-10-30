@@ -233,6 +233,10 @@ def app_for(config, platform, budget):
     def accounts():
         return json.loads(Path(config["fixture_path"]).read_text())
 
+    @app.get("/demo/overview")
+    def overview():
+        return json.loads(Path(config["fixture_path"]).with_name("overview.json").read_text())
+
     @app.get("/demo/budget")
     def allowance():
         return budget.status()
