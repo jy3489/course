@@ -323,6 +323,8 @@ def run_setup(tmp_path: Path, **env: str) -> tuple[int, str, list[str], dict[str
     # setup.sh runs `python3`: use this test's Python wherever python3 is missing or a stub.
     (stubs / "python3").write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "$@"\n',
                                    encoding="utf-8", newline="\n")
+    for stub in (stubs / "gcloud", stubs / "python3"):
+        stub.chmod(0o755)  # on Linux a script can only be run if it is marked executable
     out = tmp_path / "policies"
     out.mkdir()
     full_env = {**os.environ, "STUB_DIR": stubs.as_posix(), "OUT": out.as_posix(), "PROJECT_ID": "p",
