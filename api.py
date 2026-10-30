@@ -12,7 +12,7 @@ from dataclasses import replace
 from collections.abc import Awaitable, Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
