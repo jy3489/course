@@ -46,16 +46,24 @@ def index_config(namespace):
             queries["matches"].append((list(fields), "visible_to"))
     singles = {
         "libraries": {"user_id": "order"},
+        "experiment_assignments": {"user_id": "order"},
+        "experiment_events": {"user_id": "order"},
         "games": {"deleted": "order", "published": "order", "owner_user_id": "order"},
         "game_versions": {"owner_user_id": "order"},
         "matches": {
             "joinable": "order",
             "participants": "array",
+            "historical_participants": "array",
             "visible_to": "array",
         },
         "game_drafts": {"owner_user_id": "order"},
         "push_subscriptions": {"user_id": "order"},
-        "invites": {"created_by_user_id": "order", "match_id": "order"},
+        "invites": {
+            "created_by_user_id": "order",
+            "match_id": "order",
+            "participants": "array",
+        },
+        "users": {"invited_by_user_id": "order"},
         "jobs": {"due_at": "order"},
         "outbox": {"due_at": "order"},
     }

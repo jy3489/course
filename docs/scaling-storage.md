@@ -1,9 +1,9 @@
 # Query-based storage: isolated test release
 
 This branch implements the first end-to-end release of the backend scaling plan.
-It is **opt-in and restricted to a separate named Firestore database**. Snapshot
-storage remains the default. Do not enable it for production until the release
-gates below are resolved. The existing QuickJS Game API, generated client/server
+It is **opt-in**. Snapshot storage remains the configuration default. A converted
+namespace in the existing production database requires explicit opt-in; see
+`scaling-production-cutover.md`. The existing QuickJS Game API, generated client/server
 code, deterministic execution checks and random-walk repair loop are preserved.
 
 Merging this implementation and enabling query storage are separate steps. An
@@ -205,9 +205,12 @@ explicit named test database. CI includes a dedicated emulator workflow.
 
 This release is not yet a replacement for every snapshot-mode feature:
 
-* Account merging and account deletion do not run inside HTTP requests in
-  query mode; the service rejects them before mutation and points at the
-  resumable maintenance jobs in `scaling_accounts.py`. With source writers
+* Ordinary account merges/deletions run atomically through bounded, user-filtered
+  lookups, preserving sign-in, libraries, logical player IDs and token balances.
+  Online merges require migrated historical-membership metadata and have a
+  250-move ceiling. Legacy queries cap at 100 records; transactions cap at 450
+  writes. Oversized requests roll back and require the resumable maintenance
+  jobs in `scaling_accounts.py`. With source writers
   stopped, run `scaling_tools merge --run-id RUN --from-user SRC --into-user DST`
   or `scaling_tools delete-user --run-id RUN --user-id UID` (along with the
   normal project/database/namespace flags) repeatedly until `complete` is
@@ -219,9 +222,9 @@ This release is not yet a replacement for every snapshot-mode feature:
   before any mutation when both accounts share a match that is not over.
   Deletion mirrors `admin_delete_user` (owned games soft-deleted, owned
   matches deleted with their invites, other live matches left through the
-  platform, invitees repointed, reservations released). Compatible client
-  flows for starting these jobs from the UI, and signing in when two existing
-  accounts need merging, remain to be implemented.
+  platform, invitees repointed, reservations released). UI flows for starting
+  large maintenance jobs remain a follow-up; ordinary bounded sign-in merges
+  are implemented.
 * Invite acceptances, linked-account arrays and some error/context
   endpoints still use bounded legacy representations. Records reject payloads
   above 800 KB; these features need their own child-record and pagination designs.
@@ -239,6 +242,7 @@ This release is not yet a replacement for every snapshot-mode feature:
   Before production cutover, rehearse full migration, failure recovery and
   two-process load, validate counts/checksums/ledger invariants, verify indexes
   and backups, and define rollback that preserves writes made after cutover.
-* The production database, website and service configuration remain untouched.
+* Production activation is an explicit maintenance procedure. Merging code alone
+  does not convert records or change runtime storage configuration.
 
 The local emulator milestone measurements are in `scaling-validation.md`.

@@ -12,7 +12,12 @@ from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
 from game_platform.saving_store import SavingStore
 from game_platform.push import PushNotifier, generate_vapid_keys, make_push_notifier
-from game_platform.senders import make_email_sender, make_sms_sender, make_voice_sender, make_verify_client
+from game_platform.senders import (
+    make_email_sender,
+    make_sms_sender,
+    make_voice_sender,
+    make_verify_client,
+)
 from game_platform.service import GamePlatform
 
 logger = logging.getLogger(__name__)
@@ -90,12 +95,24 @@ def main() -> None:
     logging.basicConfig(level=config.log_level)
     store: SavingStore
     if config.firestore.enabled and config.firestore.mode == "query":
-        if config.firestore.database == "(default)" and not os.environ.get("FIRESTORE_EMULATOR_HOST"):
-            raise ValueError("query mode currently requires a separate named test database")
+        if (
+            config.firestore.database == "(default)"
+            and not config.firestore.allow_default_database_query
+            and not os.environ.get("FIRESTORE_EMULATOR_HOST")
+        ):
+            raise ValueError(
+                "query mode in the default database requires explicit production opt-in after migration"
+            )
         from google.cloud import firestore
         from game_platform.query_store import QueryStore
-        store = QueryStore(firestore.Client(project=config.firestore.project_id or None,
-                           database=config.firestore.database),namespace=config.firestore.namespace)
+
+        store = QueryStore(
+            firestore.Client(
+                project=config.firestore.project_id or None,
+                database=config.firestore.database,
+            ),
+            namespace=config.firestore.namespace,
+        )
     elif config.firestore.enabled:
         # Imported here so that servers using the data file don't load the client.
         from game_platform.firestore_store import FirestoreStore
@@ -127,6 +144,7 @@ def main() -> None:
         platform_class = GamePlatform
         if getattr(store, "scalable", False):
             from game_platform.scaling_service import ScalablePlatform
+
             platform_class = ScalablePlatform
         platform = platform_class(
             store=store,
