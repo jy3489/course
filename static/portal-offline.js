@@ -76,7 +76,7 @@ class PortalOffline {
       const history = localId.endsWith("/moves") || snapshot;
       const match = this.read().local[snapshot ? localId.slice(0, -8) : history ? localId.slice(0, -6) : localId];
       if (!match) throw new Error("Local practice is no longer saved.");
-      if (snapshot) return {initial_state: null, initial_turn_player_indices: match.historyStart === 0 ? [0] : null, moves: match.moves || []};
+      if (snapshot) return {initial_state: match.initialState ?? null, initial_turn_player_indices: Object.hasOwn(match,"initialTurn") ? match.initialTurn : (match.historyStart === 0 ? [0] : null), moves: match.moves || []};
       return history ? (match.moves || []) : match;
     }
     let value;
@@ -341,7 +341,7 @@ class PortalOffline {
     if (conflict.remote) d.responses[`/matches/${id}`] = conflict.remote;
     this.write(d);
   }
-  practice(game, mode = "computer") {
+  async practice(game, mode = "computer") {
     const user = this.user();
     if (!user)
       throw new Error("Log in online once before starting offline practice.");
@@ -354,6 +354,7 @@ class PortalOffline {
       owner_user_id: user.id,
       players: Array.from({ length: count }, (_, i) => ({
         player_index: i,
+        id: `local-player-${i}`,
         kind: i === 0 || mode === "pass" ? "human" : "computer",
         user_id: i === 0 ? user.id : null,
       })),
@@ -364,13 +365,74 @@ class PortalOffline {
       end_reason: null,
       created_at: new Date().toISOString(),
       localMode: mode,
+      token_pot: 0,
+      bet_per_player: 0,
+      practiceSeed: crypto.getRandomValues(new Uint32Array(1))[0],
       historyStart: 0,
     };
+    const identity = this.key();
+    if (game.server_code) {
+      const result = await PortalPractice.call(game, "newMatch", [], match);
+      await this.practiceResult(game, match, result, false);
+      match.initialState = match.state;
+      match.initialTurn = match.turn_of_player_indices;
+      await this.practiceComputers(game, match);
+    }
+    if (identity !== this.key()) throw new Error("Account changed; practice was not saved.");
     const d = this.read();
     d.local[id] = match;
     d.responses[`/games/${game.id}/versions/${game.version}`] = game;
     this.write(d);
     return match;
+  }
+  async practiceResult(game, match, result, record = true) {
+    const ids = match.players.map(p=>p.id);
+    if (!result || !("state" in result) || !(result.turn === null ||
+        (Array.isArray(result.turn) && result.turn.length &&
+         new Set(result.turn).size === result.turn.length && result.turn.every(id=>ids.includes(id)))))
+      throw new Error("Local game returned an invalid state or turn.");
+    match.logicState = result.state;
+    match.turn_of_player_indices = result.turn === null ? null : result.turn.map(id=>ids.indexOf(id));
+    match.status = result.turn === null ? "over" : "ongoing";
+    match.end_reason = result.turn === null ? "finished" : null;
+    if (record) match.move_count++;
+    const seat = match.localMode === "pass" ? (match.turn_of_player_indices?.[0] ?? 0) : 0;
+    match.state = await PortalPractice.call(game,"viewFor",[match.logicState,ids[seat]],match);
+    if (record) match.moves = [...(match.moves || []), {
+      new_state:match.state,next_turn_player_indices:match.turn_of_player_indices}];
+  }
+  async practiceComputers(game, match) {
+    for (let count=0;match.status === "ongoing";count++) {
+      const computer = match.turn_of_player_indices.map(i=>match.players[i]).find(p=>p.kind === "computer");
+      if (!computer) return;
+      if (count >= 200) throw new Error("Local game exceeded the computer move limit.");
+      const move = await PortalPractice.call(game,"computerMove",[match.logicState,computer.id],match);
+      const result = await PortalPractice.call(game,"applyMove",[match.logicState,computer.id,move],match);
+      await this.practiceResult(game,match,result);
+    }
+  }
+  async practiceMove(match, move) {
+    if (!match.id.startsWith("local-") || !match.localMode)
+      throw new Error("Only device practice can run game rules locally.");
+    const identity = this.key();
+    const original = this.read().local[match.id];
+    if (!original || original.move_count !== match.move_count || original.status !== "ongoing")
+      throw new Error("Local practice changed. Refresh before moving.");
+    const next = JSON.parse(JSON.stringify(original));
+    const game = this.cached(`/games/${match.game_id}/versions/${match.game_version}`);
+    if (!game?.server_code) throw new Error("Practice rules are not saved on this device.");
+    const seat = next.localMode === "pass" ? next.turn_of_player_indices[0] : 0;
+    if (!next.turn_of_player_indices.includes(seat)) throw new Error("It isn't your turn.");
+    const result = await PortalPractice.call(game,"applyMove",[next.logicState,next.players[seat].id,move],next);
+    await this.practiceResult(game,next,result);
+    await this.practiceComputers(game,next);
+    if (identity !== this.key()) throw new Error("Account changed; move was not saved.");
+    const data = this.read();
+    if (!PortalOffline.equal(data.local[match.id],original))
+      throw new Error("Local practice changed in another tab. Refresh before moving.");
+    data.local[match.id] = next;
+    this.write(data);
+    return next;
   }
   static equal(a, b) {
     if (a === b) return true;

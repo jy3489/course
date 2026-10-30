@@ -14,8 +14,7 @@ test.describe('Choosing and playing a game (logged in, real server)', () => {
     await page.getByRole('option', { name: new RegExp(gameName) }).click();
 
     await expect(page.locator('#selected-game-name')).toHaveText(gameName);
-    // Server-side games run their logic on the server, so there is no
-    // local practice: play a real match against a computer opponent.
+    // Online computer matches remain server-authoritative.
     await page.getByRole('button', { name: /Create match/ }).click();
     await expect(page.locator('#match')).toBeVisible();
     await page.getByRole('button', { name: 'Add computer opponent' }).click();
