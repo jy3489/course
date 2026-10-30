@@ -1,10 +1,29 @@
 """Index deployment preserves ready fields and waits for changed fields."""
 
 from unittest.mock import Mock, patch
+import pytest
 
 from game_platform.scaling_index_deploy import deploy
 from google.api_core.exceptions import NotFound
 from google.cloud import firestore_admin_v1 as admin
+
+
+def test_default_database_indexes_require_deliberate_opt_in():
+    with pytest.raises(ValueError, match="opt-in"):
+        deploy(project="production", database="(default)", namespace="production_v1")
+    with (
+        patch(
+            "game_platform.scaling_index_deploy.index_config",
+            return_value={"indexes": [], "fieldOverrides": []},
+        ),
+        patch("game_platform.scaling_index_deploy.admin.FirestoreAdminClient"),
+    ):
+        assert deploy(
+            project="production",
+            database="(default)",
+            namespace="production_v1",
+            allow_production=True,
+        )["ready"]
 
 
 def test_ready_override_is_not_reapplied():

@@ -13,9 +13,9 @@ from google.cloud import firestore_admin_v1 as admin
 from google.protobuf.field_mask_pb2 import FieldMask
 
 
-def deploy(*, project, database, namespace, credentials=None):
-    if database == "(default)":
-        raise ValueError("index deployment requires a separate named database")
+def deploy(*, project, database, namespace, credentials=None, allow_production=False):
+    if database == "(default)" and not allow_production:
+        raise ValueError("default-database indexes require explicit production opt-in")
     config = index_config(namespace)
     client = admin.FirestoreAdminClient(credentials=credentials)
     prefix = f"projects/{project}/databases/{database}/collectionGroups/"
@@ -121,7 +121,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     for argument in ("project", "database", "namespace"):
         parser.add_argument("--" + argument, required=True)
+    parser.add_argument("--allow-production", action="store_true")
     args = parser.parse_args()
     print(
-        deploy(project=args.project, database=args.database, namespace=args.namespace)
+        deploy(
+            project=args.project,
+            database=args.database,
+            namespace=args.namespace,
+            allow_production=args.allow_production,
+        )
     )

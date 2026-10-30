@@ -82,17 +82,30 @@ def migrate(source, destination, *, source_prefix="", batch_records=None):
                 destination.put_match(
                     replace(record, moves=())
                 ) if not destination.get_match(record.id) else None
-                for move_doc in documents(doc.reference.collection("moves")):
-                    move = TypeAdapter(Move).validate_json(_read_text(move_doc))
+                pending = []
+
+                def append_batch():
                     with destination.atomic():
                         current = destination.get_match(record.id)
-                        if move.move_number <= len(current.moves):
-                            continue
-                        if move.move_number != len(current.moves) + 1:
-                            raise ValueError("non-contiguous source history")
-                        destination.put_match(
-                            replace(current, moves=current.moves.append(move))
-                        )
+                        updated = current
+                        for move in pending:
+                            if move.move_number <= len(updated.moves):
+                                continue
+                            if move.move_number != len(updated.moves) + 1:
+                                raise ValueError("non-contiguous source history")
+                            updated = replace(updated, moves=updated.moves.append(move))
+                        if updated is not current:
+                            destination.put_match(updated)
+                    pending.clear()
+
+                for move_doc in documents(doc.reference.collection("moves")):
+                    pending.append(
+                        TypeAdapter(Move).validate_json(_read_text(move_doc))
+                    )
+                    if len(pending) == 100:
+                        append_batch()
+                if pending:
+                    append_batch()
                 with destination.atomic():
                     current = destination.get_match(record.id)
                     destination.put_match(replace(record, moves=current.moves))
@@ -352,6 +365,11 @@ def main():
     parser.add_argument("--project", required=True)
     parser.add_argument("--database", required=True)
     parser.add_argument("--namespace", required=True)
+    parser.add_argument(
+        "--allow-production",
+        action="store_true",
+        help="allow maintenance of an explicitly named production namespace; never permits fake-data seeding",
+    )
     parser.add_argument("--source-database", default="(default)")
     parser.add_argument("--source-prefix", default="")
     parser.add_argument("--source-writers-stopped", action="store_true")
@@ -391,7 +409,10 @@ def main():
         and args.database == "(default)"
         and not os.environ.get("FIRESTORE_EMULATOR_HOST")
     ):
-        parser.error("writes require a separate named destination database")
+        if args.command in ("seed", "activity") or not args.allow_production:
+            parser.error(
+                "default-database maintenance requires --allow-production; fake-data generation is forbidden"
+            )
     client = firestore.Client(project=args.project, database=args.database)
     store = (
         QueryStore.initialize(client, namespace=args.namespace)

@@ -58,7 +58,9 @@ def test_restart_and_second_instance_read_committed_move_without_loading_history
     assert second.get_match(match).moves[0].new_state == record.state
 
 
-def test_recent_experiment_variant_deletion_is_atomic_when_legacy_limit_is_exceeded(store):
+def test_recent_experiment_variant_deletion_is_atomic_when_legacy_limit_is_exceeded(
+    store,
+):
     import datetime as dt
     from game_platform.models import ExperimentAssignment
 
@@ -68,14 +70,22 @@ def test_recent_experiment_variant_deletion_is_atomic_when_legacy_limit_is_excee
     before = store._get("experiments", "ui-skins")
     variant = before.variants[0]
     for index in range(101):
-        store.put_experiment_assignment(ExperimentAssignment(
-            user_id=f"variant-limit-{index}", experiment_id=before.id,
-            variant_id=variant.id, assigned_at=dt.datetime.now(dt.timezone.utc),
-        ))
-    response = api.request("DELETE", f"/admin/experiments/{before.id}/variants/{variant.id}")
+        store.put_experiment_assignment(
+            ExperimentAssignment(
+                user_id=f"variant-limit-{index}",
+                experiment_id=before.id,
+                variant_id=variant.id,
+                assigned_at=dt.datetime.now(dt.timezone.utc),
+            )
+        )
+    response = api.request(
+        "DELETE", f"/admin/experiments/{before.id}/variants/{variant.id}"
+    )
     assert response.status_code == 409
     assert store._get("experiments", before.id) == before
-    assert store.get_experiment_assignment(user_id="variant-limit-0", experiment_id=before.id)
+    assert store.get_experiment_assignment(
+        user_id="variant-limit-0", experiment_id=before.id
+    )
 
 
 def test_history_page_uses_one_batch_and_preserves_move_order(store):
@@ -709,6 +719,109 @@ def test_merge_job_resumes_and_rewrites_everything(store):
     assert merge_users(store, run_id="merge-1", max_records=1)["processed"] == 0
 
 
+def test_online_merge_preserves_signin_balances_library_and_logic_ids_without_global_scans(
+    store,
+):
+    import datetime as dt
+    from game_platform.models import LinkedAccount
+
+    api = api_for(store)
+    alice, bob, carol = (api.new_user(x) for x in ("alice", "bob", "carol"))
+    game = api.new_game(owner=alice)
+    match = api.new_match(owner=alice, game_id=game, joiners=[carol], start=True)
+    assert (
+        api.move(match, as_user=alice, next_turn=1, state={"turn": 1}).status_code
+        == 201
+    )
+    now = dt.datetime.now(dt.timezone.utc)
+    store.put_user(
+        replace(
+            store.get_user(alice),
+            token_balance=17,
+            linked_accounts=(
+                LinkedAccount(
+                    kind="email", identifier="alice@example.com", linked_at=now
+                ),
+            ),
+        )
+    )
+    store.put_user(
+        replace(
+            store.get_user(bob),
+            token_balance=11,
+            linked_accounts=(
+                LinkedAccount(kind="google", identifier="google-bob", linked_at=now),
+            ),
+        )
+    )
+    api.request("PUT", f"/v2/users/me/saved-games/{game}", as_user=alice)
+    with (
+        patch.object(
+            store,
+            "list_all_game_versions",
+            side_effect=AssertionError("global versions"),
+        ),
+        patch.object(
+            store, "list_all_matches", side_effect=AssertionError("global matches")
+        ),
+        patch.object(store, "list_users", side_effect=AssertionError("global users")),
+    ):
+        merged = api.ok(
+            "POST", f"/users/{alice}/merge", json={"into_user_id": bob}, as_user=alice
+        )
+    assert merged["id"] == bob
+    assert store.get_user(bob).token_balance == 28
+    assert store.get_user(alice).token_balance == 0
+    assert store.find_linked_account("email", "alice@example.com").id == bob
+    assert store.get_game(game).owner_user_id == bob
+    result = store.get_match(match)
+    assert result.seat_of(bob).logic_player_id == alice
+    assert result.moves[0].made_by_user_id == bob
+    assert api.ok("GET", "/auth/me", as_user=alice)["user_id"] == bob
+    assert (
+        api.ok("GET", "/v2/users/me/saved-games", as_user=bob)["items"][0]["id"] == game
+    )
+
+
+def test_online_merge_waits_for_shared_live_match_before_any_changes(store):
+    api = api_for(store)
+    alice, bob = (api.new_user(x) for x in ("alice", "bob"))
+    game = api.new_game(owner=alice)
+    api.new_match(owner=alice, game_id=game, joiners=[bob], start=True)
+    response = api.request(
+        "POST", f"/users/{alice}/merge", json={"into_user_id": bob}, as_user=alice
+    )
+    assert response.status_code == 409
+    assert "wait until shared matches end" in response.json()["detail"]
+    assert store.get_user(alice).replaced_by_user_id is None
+    assert store.get_game(game).owner_user_id == alice
+
+
+def test_online_delete_leaves_other_matches_and_repoints_referrals_without_global_scans(
+    store,
+):
+    api = api_for(store)
+    carol, dave, erin = (api.new_user(x) for x in ("carol", "dave", "erin"))
+    game = api.new_game(owner=carol)
+    owned = api.new_match(owner=carol, game_id=game)
+    other = api.new_game(owner=erin)
+    shared = api.new_match(owner=erin, game_id=other, joiners=[carol], start=True)
+    store.put_user(replace(store.get_user(dave), invited_by_user_id=carol))
+    with (
+        patch.object(store, "list_users", side_effect=AssertionError("global users")),
+        patch.object(
+            store, "list_experiment_events", side_effect=AssertionError("global events")
+        ),
+    ):
+        response = api.request("DELETE", f"/admin/users/{carol}")
+    assert response.status_code == 204
+    assert store.get_user(carol) is None
+    assert store.get_game(game).deleted
+    assert store.get_match(owned) is None
+    assert store.get_match(shared).status == "over"
+    assert store.get_user(dave).invited_by_user_id is None
+
+
 def test_merge_job_waits_for_shared_active_match_without_mutating(store):
     from game_platform.scaling_accounts import merge_users
 
@@ -992,3 +1105,62 @@ def test_referral_report_breaks_cycles_without_changing_source_users(store):
     assert len(users(store, parent_id="")["items"]) == 1
     assert store.get_user(a).invited_by_user_id == b
     assert store.get_user(b).invited_by_user_id == a
+
+
+def test_rollback_exports_post_cutover_writes_to_a_fresh_legacy_prefix(store):
+    from game_platform.scaling_cutover import restore_legacy, rollback_snapshot
+    from game_platform.firestore_store import FirestoreStore
+
+    api = api_for(store)
+    alice, bob = (api.new_user(x) for x in ("alice", "bob"))
+    game = api.new_game(owner=alice)
+    match = api.new_match(owner=alice, game_id=game, joiners=[bob], start=True)
+    api.move(match, as_user=alice, next_turn=1, state={"post_cutover": True})
+    api.request("PUT", f"/v2/users/me/saved-games/{game}", as_user=alice)
+    store.put_user(
+        replace(
+            store.get_user(alice),
+            display_name="updated after cutover",
+            token_balance=42,
+        )
+    )
+    with pytest.raises(ValueError, match="byte limit"):
+        rollback_snapshot(store, byte_limit=1)
+    prefix = "rollback_" + uuid.uuid4().hex + "_"
+    restore_legacy(store, store.client, prefix=prefix)
+    legacy = FirestoreStore(store.client, collection_prefix=prefix)
+    try:
+        assert legacy.get_user(alice).display_name == "updated after cutover"
+        assert legacy.get_user(alice).token_balance == 42
+        assert legacy.get_user(alice).saved_game_ids == (game,)
+        assert (
+            legacy.get_game_version(game, 1).code
+            == store.get_game_version(game, 1).code
+        )
+        assert tuple(legacy.get_match(match).moves) == tuple(
+            store.get_match(match).moves
+        )
+    finally:
+        legacy.close()
+
+
+def test_generic_worker_wakes_for_work_without_half_second_idle_polling(store):
+    import threading, time
+
+    platform = ScalablePlatform(store=store)
+    ran = threading.Event()
+    with (
+        patch.object(platform, "run_due_jobs", side_effect=lambda: ran.set()) as jobs,
+        patch.object(platform, "run_outbox"),
+    ):
+        platform.resume_computer_moves()
+        try:
+            assert ran.wait(3)
+            time.sleep(0.8)
+            assert jobs.call_count == 1
+            ran.clear()
+            platform._wake_after(0.1)
+            assert ran.wait(3)
+            assert jobs.call_count == 2
+        finally:
+            platform.close_workers()

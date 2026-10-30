@@ -18,6 +18,7 @@
     "enabled": false,
     "project_id": "",
     "database": "(default)",
+    "allow_default_database_query": false,
     "collection_prefix": "",
     "save_interval_seconds": 1.0
   },

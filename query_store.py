@@ -134,6 +134,9 @@ class QueryStore:
         marker = client.collection(namespace + "_meta").document("schema")
         try:
             marker.create({"version": SCHEMA})
+            client.collection(namespace + "_meta").document("account_lookups").set(
+                {"ready": True}
+            )
         except AlreadyExists:
             if marker.get().to_dict().get("version") != SCHEMA:
                 raise ValueError("incompatible schema")
@@ -528,6 +531,12 @@ class QueryStore:
                 replace(match, moves=()),
                 move_count=len(match.moves),
                 participants=participants,
+                historical_participants=sorted(
+                    set(old.get("historical_participants", ()))
+                    | set(participants)
+                    | set(match.hidden_for_user_ids)
+                    | {m.made_by_user_id for m in new_moves if m.made_by_user_id}
+                ),
                 visible_to=[
                     u for u in participants if u not in match.hidden_for_user_ids
                 ],
@@ -703,7 +712,14 @@ class QueryStore:
                 self._put("games", game_id, replace(game, deleted=True))
 
     def put_invite(self, invite):
-        self._put("invites", invite.token, invite)
+        self._put(
+            "invites",
+            invite.token,
+            invite,
+            participants=sorted(
+                {invite.created_by_user_id, *(a.user_id for a in invite.acceptances)}
+            ),
+        )
 
     def get_invite(self, token):
         return self._get("invites", token)

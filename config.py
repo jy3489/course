@@ -120,6 +120,9 @@ class FirestoreConfig(_Section):
     # (on a Google Cloud VM, the VM's project).
     project_id: str = ""
     database: str = "(default)"
+    # A separate acknowledgement is required before using the query schema in
+    # the existing production database. It never migrates data at startup.
+    allow_default_database_query: bool = False
     # Prepended to every collection name, to keep several servers (e.g. staging) apart
     # in one database.
     collection_prefix: str = ""
@@ -129,8 +132,14 @@ class FirestoreConfig(_Section):
     @model_validator(mode="after")
     def _validate_query_mode(self):
         if self.enabled and self.mode == "query":
-            if not self.project_id or not self.namespace or not self.namespace.replace("_", "").replace("-", "").isalnum():
-                raise ValueError("query mode requires an explicit project_id and alphanumeric namespace")
+            if (
+                not self.project_id
+                or not self.namespace
+                or not self.namespace.replace("_", "").replace("-", "").isalnum()
+            ):
+                raise ValueError(
+                    "query mode requires an explicit project_id and alphanumeric namespace"
+                )
             if self.collection_prefix:
                 raise ValueError("query mode uses namespace, not collection_prefix")
         return self

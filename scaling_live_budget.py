@@ -117,8 +117,10 @@ class BudgetedFirestoreAPI:
         "rollback": "RollbackRequest",
     }
 
-    def __init__(self, api, budget, *, project, database, namespace):
-        if database == "(default)" or not namespace:
+    def __init__(
+        self, api, budget, *, project, database, namespace, allow_default_database=False
+    ):
+        if (database == "(default)" and not allow_default_database) or not namespace:
             raise ValueError(
                 "live demonstration requires an isolated named database and namespace"
             )
@@ -195,12 +197,13 @@ class BudgetedFirestoreAPI:
         return call
 
 
-def protect_client(client, budget, *, namespace):
+def protect_client(client, budget, *, namespace, allow_default_database=False):
     client._firestore_api_internal = BudgetedFirestoreAPI(
         client._firestore_api,
         budget,
         project=client.project,
         database=client._database,
         namespace=namespace,
+        allow_default_database=allow_default_database,
     )
     return client

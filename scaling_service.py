@@ -7,6 +7,8 @@ import json
 import logging
 import secrets
 import threading
+import time
+from dataclasses import replace
 from pydantic import TypeAdapter
 from game_platform.push import PushMessage
 
@@ -25,10 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class OutboxNotifier:
-    def __init__(self, store, target):
+    def __init__(self, store, target, wake=None):
         self.store, self.target = store, target
+        self.wake = wake
 
     def enqueue(self, messages):
+        if self.target is None:
+            return
         with self.store.atomic():
             for message in messages:
                 self.store.raw_put(
@@ -39,6 +44,8 @@ class OutboxNotifier:
                         "attempts": 0,
                     },
                 )
+            if messages and self.wake:
+                self.store._local.uow["after"].append(self.wake)
 
     def close(self):
         pass
@@ -51,9 +58,36 @@ class ScalablePlatform(GamePlatform):
         super().__init__(**kwargs)
         self._cache_lock = threading.Lock()
         self._delivery = self._push_notifier
-        self._push_notifier = OutboxNotifier(self._store, self._delivery)
         self._stop_workers = threading.Event()
+        self._worker_event = threading.Event()
+        self._worker_event.set()
+        self._timer_lock = threading.Lock()
+        self._timer = None
+        self._timer_at = float("inf")
+        self._push_notifier = OutboxNotifier(
+            self._store, self._delivery, self._wake_after
+        )
         self._worker = None
+
+    def _wake_after(self, delay=0.1):
+        with self._timer_lock:
+            if self._stop_workers.is_set():
+                return
+            target = time.monotonic() + max(0.1, delay)
+            if target >= self._timer_at:
+                return
+            if self._timer:
+                self._timer.cancel()
+            self._timer_at = target
+
+            def wake():
+                with self._timer_lock:
+                    self._timer_at = float("inf")
+                self._worker_event.set()
+
+            self._timer = threading.Timer(max(0.1, delay), wake)
+            self._timer.daemon = True
+            self._timer.start()
 
     def _logic_for(self, game):
         # GameLogic serializes access to its QuickJS context internally.
@@ -190,20 +224,129 @@ class ScalablePlatform(GamePlatform):
         )
 
     def _merge_locked(self, *, source, into):
-        # Refuse before changing identity reservations. The snapshot implementation
-        # rewrites all historical records and cannot safely run in a request here;
-        # use the resumable maintenance job instead (scaling_accounts.merge_users,
-        # via `scaling_tools merge --from-user ... --into-user ...`).
-        raise ConflictError(
-            "account merging in query mode runs as a resumable maintenance job; "
-            "see scaling_tools merge"
+        from game_platform import scaling_accounts as jobs
+        from game_platform.query_store import MOVE_ADAPTER
+
+        # Small account operations retain the normal sign-in flow. Larger ones
+        # refuse atomically and use the existing resumable maintenance path.
+        ready = self._store.raw_get(
+            self._store.collection("meta").document("account_lookups")
         )
+        if not ready or not ready.get("ready"):
+            raise ConflictError(
+                "account lookup migration is required before online merging"
+            )
+        source, into = self._resolve_replaced(source), self._resolve_replaced(into)
+        if source.id == into.id:
+            raise InvalidRequestError("cannot merge a user into itself")
+        store = self._store
+        matches = store._list(
+            "matches", [("historical_participants", "array_contains", source.id)]
+        )
+        for match in matches:
+            if (
+                match.status != "over"
+                and match.seat_of(source.id)
+                and match.seat_of(into.id)
+            ):
+                raise ConflictError(
+                    "wait until shared matches end before merging these accounts"
+                )
+        if sum(len(m.moves) for m in matches) > 250:
+            raise ConflictError(
+                "large account merge requires the resumable maintenance job"
+            )
+        for kind, field in (
+            ("game_versions", "owner_user_id"),
+            ("game_drafts", "owner_user_id"),
+            ("push_subscriptions", "user_id"),
+        ):
+            for row in store._list(kind, [(field, "==", source.id)]):
+                updated = replace(row, **{field: into.id})
+                getattr(
+                    store,
+                    {
+                        "game_versions": "put_game_version",
+                        "game_drafts": "put_game_draft",
+                        "push_subscriptions": "put_push_subscription",
+                    }[kind],
+                )(updated)
+        for match in matches:
+            jobs._merge_match(store, match, source.id, into.id)
+            ref = store.ref("matches", match.id)
+            for index, move in enumerate(match.moves):
+                if move.made_by_user_id == source.id:
+                    store.raw_put(
+                        ref.collection("moves").document(f"{index:012}"),
+                        {
+                            "json": MOVE_ADAPTER.dump_json(
+                                replace(move, made_by_user_id=into.id)
+                            ).decode()
+                        },
+                    )
+            self._schedule_match(store.get_match(match.id))
+        for row in store._list(
+            "experiment_assignments", [("user_id", "==", source.id)]
+        ):
+            jobs._merge_assignment(store, row, source.id, into.id)
+        for row in store._list("libraries", [("user_id", "==", source.id)]):
+            jobs._merge_library(store, row, source.id, into.id)
+        for row in store._list(
+            "invites", [("participants", "array_contains", source.id)]
+        ):
+            jobs._merge_invite(store, row, source.id, into.id)
+        jobs._merge_finalize(store, {"source_id": source.id, "into_id": into.id})
+        return store.get_user(into.id)
 
     def admin_delete_user(self, user_id):
-        raise ConflictError(
-            "account deletion in query mode runs as a resumable maintenance job; "
-            "see scaling_tools delete-user"
-        )
+        from game_platform import scaling_accounts as jobs
+        from game_platform.scaling_library import identity
+
+        with self._store.atomic():
+            user = self._require_user(user_id)
+            store = self._store
+            for game in store.list_games(
+                owner_user_id=user_id, include_unpublished=True
+            ):
+                store.delete_game(game.id)
+            for match in store.list_matches_involving(user_id):
+                if match.owner_user_id == user_id:
+                    self._delete_match_and_invites(match.id)
+                elif match.status != "over" and match.seat_of(user_id):
+                    self.leave_match(caller_id=user_id, match_id=match.id)
+            for row in store.list_game_drafts(owner_user_id=user_id):
+                store.delete_game_draft(row.id)
+            for row in store.list_push_subscriptions(user_id=user_id):
+                store.delete_push_subscription(row.id)
+            for row in store.list_invites(created_by_user_id=user_id):
+                store.delete_invite(row.token)
+            for row in store._list("libraries", [("user_id", "==", user_id)]):
+                store._delete("libraries", identity(user_id, row.game_id))
+            for account_id in (user_id, *user.replaced_user_ids):
+                for row in store._list(
+                    "experiment_assignments", [("user_id", "==", account_id)]
+                ):
+                    store.delete_experiment_assignment(
+                        user_id=account_id, experiment_id=row.experiment_id
+                    )
+                for row in store._list(
+                    "experiment_events", [("user_id", "==", account_id)]
+                ):
+                    store.delete_experiment_event(row.id)
+            inviter = self._inviter_of(user)
+            for account_id in (user_id, *user.replaced_user_ids):
+                for row in store._list(
+                    "users", [("invited_by_user_id", "==", account_id)]
+                ):
+                    if row.id != user_id:
+                        store.put_user(
+                            replace(
+                                row,
+                                invited_by_user_id=inviter,
+                                updated_at=self._clock(),
+                            )
+                        )
+            jobs._delete_finalize(store, {"user_id": user_id})
 
     def _schedule_computer_moves(self, match):
         self._schedule_match(match)
@@ -246,6 +389,10 @@ class ScalablePlatform(GamePlatform):
             )
         elif self._store.raw_get(ref):
             self._store.raw_put(ref, None)
+        if computer or deadline:
+            due = self._store.raw_get(ref)["due_at"]
+            delay = max(0.1, (due - dt.datetime.now(dt.timezone.utc)).total_seconds())
+            self._store._local.uow["after"].append(lambda: self._wake_after(delay))
 
     def resume_computer_moves(self):
         # Pending jobs already persist. Do not enumerate matches at startup.
@@ -257,17 +404,48 @@ class ScalablePlatform(GamePlatform):
 
     def close_workers(self):
         self._stop_workers.set()
+        self._worker_event.set()
+        with self._timer_lock:
+            if self._timer:
+                self._timer.cancel()
         if self._worker:
             self._worker.join(timeout=15)
 
     def _work_loop(self):
-        while not self._stop_workers.wait(0.5):
+        while not self._stop_workers.is_set():
+            # Prompt local notifications; bounded recovery for another process's
+            # committed work or a worker crash, without continuous idle queries.
+            self._worker_event.wait(60)
+            self._worker_event.clear()
+            if self._stop_workers.is_set():
+                break
             try:
                 self.run_due_jobs()
                 self.run_outbox()
+                due = []
+                for kind in ("jobs", "outbox"):
+                    if kind == "outbox" and self._delivery is None:
+                        continue
+                    rows = list(
+                        self._store.collection(kind)
+                        .order_by("due_at")
+                        .limit(1)
+                        .stream()
+                    )
+                    if rows:
+                        due.append(rows[0].to_dict()["due_at"])
+                if due:
+                    self._wake_after(
+                        max(
+                            0.1,
+                            (
+                                min(due) - dt.datetime.now(dt.timezone.utc)
+                            ).total_seconds(),
+                        )
+                    )
             except Exception:
-                logger.exception("durable job polling failed")
-                self._stop_workers.wait(3)
+                logger.exception("durable worker paused after an error")
+                self._wake_after(30)
 
     def run_outbox(self, limit=10):
         from google.cloud.firestore_v1.base_query import FieldFilter
