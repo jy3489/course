@@ -1,0 +1,33 @@
+{
+  "runId": "portal-friends",
+  "namespace": "scaling_v1",
+  "month": "2026-09",
+  "startedAt": "2026-10-29T22:33:05.018Z",
+  "finishedAt": "2026-10-29T22:33:40.871Z",
+  "actions": 28,
+  "completed": [
+    {
+      "date": "2026-09-01",
+      "index": 0,
+      "mode": "two humans",
+      "moves": 2,
+      "left": true,
+      "referredGuests": 1,
+      "matchId": "9d38161c-12b9-4568-a7a7-84f222da975f",
+      "status": "over"
+    },
+    {
+      "date": "2026-09-02",
+      "index": 1,
+      "mode": "two humans",
+      "moves": 6,
+      "left": false,
+      "referredGuests": 2,
+      "matchId": "66d76f8a-cb3a-46bc-b5cb-f21a47e82e66",
+      "status": "over"
+    }
+  ],
+  "pageErrors": [],
+  "httpErrors": [],
+  "success": true
+}

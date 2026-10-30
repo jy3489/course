@@ -460,6 +460,7 @@ class GameSummaryOut(BaseModel):
     updated_at: dt.datetime
     deleted: bool
     published: bool
+    supports_local_practice: bool = True
 
     @classmethod
     def of(cls, game: Game) -> "GameSummaryOut":
@@ -476,6 +477,7 @@ class GameSummaryOut(BaseModel):
             updated_at=game.updated_at,
             deleted=game.deleted,
             published=game.published,
+            supports_local_practice=not bool(game.server_code),
         )
 
 

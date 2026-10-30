@@ -1,4 +1,5 @@
 {
+  "error.merge_shared_active_match": "wait until shared matches end before merging these accounts",
   "error.unauthorized": "missing or invalid X-User-Id / X-User-Password headers",
   "error.master_password_required": "the master password is required (any username)",
   "error.user_not_found": "user not found",

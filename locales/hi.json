@@ -1,4 +1,5 @@
 {
+  "error.merge_shared_active_match": "इन खातों को मिलाने से पहले साझा मैच समाप्त होने की प्रतीक्षा करें",
   "error.unauthorized": "X-User-Id / X-User-Password हेडर गायब हैं या अमान्य हैं",
   "error.master_password_required": "मास्टर पासवर्ड आवश्यक है (कोई भी उपयोगकर्ता नाम)",
   "error.user_not_found": "उपयोगकर्ता नहीं मिला",

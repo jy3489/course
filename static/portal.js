@@ -9,11 +9,12 @@
 
 const $ = (id) => document.getElementById(id);
 const POLL_MS = 2000;
-async function portalTransport(method, path, { body, user } = {}) {
+async function portalTransport(method, path, { body, user, requestId } = {}) {
   const controller = new AbortController(),
     timer = setTimeout(() => controller.abort(), 6000);
   try {
     const headers = {};
+    if (requestId) headers["Idempotency-Key"] = requestId;
     const campaignCode = window.ExperimentCampaignCode?.();
     if (campaignCode) headers["X-Campaign-Code"] = campaignCode;
     if (user) {
@@ -308,6 +309,10 @@ async function ensureDetails() {
   state.myMatches.forEach(collect);
   state.openMatches.forEach(collect);
   if (state.match) collect(state.match);
+  // Keep only visible data plus a small recent cache as users traverse pages.
+  for (const [cache, needed] of [[state.gameCache,gameKeys],[state.nameCache,userIds],[state.pictureCache,userIds]]) {
+    for (const key of cache.keys()) if (cache.size > 128 && !needed.has(key)) cache.delete(key);
+  }
   await Promise.all([
     ...[...userIds]
       .filter((id) => !state.nameCache.has(id) || !state.pictureCache.get(id))
@@ -358,13 +363,17 @@ async function refreshLocked() {
     if (!user) $("token-wallet").hidden = true;
     await offline.sync();
     const [games, myMatches, openMatches] = await Promise.all([
-      portalRequest("GET", "/games"),
-      user ? portalRequest("GET", "/matches", { user }) : [],
-      portalRequest("GET", "/matches/open"),
+      StoragePages.list(portalRequest, "/games", {user}),
+      user ? StoragePages.list(portalRequest, "/matches", {user}) : [],
+      StoragePages.list(portalRequest, "/matches/open", {user}),
     ]);
     state.games = games;
     state.myMatches = myMatches;
     state.openMatches = openMatches;
+    if (state.detailGameId && !state.games.some(game=>game.id===state.detailGameId)) {
+      try { state.games.push(await portalRequest("GET", `/games/${encodeURIComponent(state.detailGameId)}`)); }
+      catch (error) { if(error.status!==404) throw error; }
+    }
     if (state.selectedId) {
       try {
         state.match = await portalRequest(
@@ -492,6 +501,10 @@ function renderLists() {
     }
   }
   renderGameSearch();
+  StoragePages.controls("/games", user, $("game-results"), refresh);
+  StoragePages.controls("/games", user, $("game-library"), refresh);
+  StoragePages.controls("/matches", user, $("group-over"), refresh);
+  StoragePages.controls("/matches/open", user, $("open-matches"), refresh);
   updateMatchSetup();
 }
 
@@ -516,8 +529,8 @@ async function joinRandomMatch() {
   renderLibrary();
   try {
     const [openMatches, games] = await Promise.all([
-      portalRequest("GET", "/matches/open"),
-      portalRequest("GET", "/games"),
+      StoragePages.list(portalRequest,"/matches/open",{user}),
+      StoragePages.list(portalRequest,"/games",{user}),
     ]);
     state.openMatches = openMatches;
     state.games = games;
@@ -576,10 +589,20 @@ function libraryGames() {
   ];
 }
 
+// Distinguish games that share a name, even when filtering hides one of them.
+function catalogGameLabel(game) {
+  const name = game.name.trim().toLocaleLowerCase();
+  const duplicate = state.games.some(other => other.id !== game.id && other.name.trim().toLocaleLowerCase() === name);
+  const short = game.id.slice(0, 8);
+  const id = state.games.some(other => other.id !== game.id && other.id.slice(0, 8) === short) ? game.id : short;
+  const shown = I18n.gameName(game.id, game.name);
+  return duplicate ? `${shown} · v${game.version} · ${id}` : shown;
+}
+
 function renderLibrary() {
   const games = libraryGames();
   const selected = $("new-game").value;
-  const key = JSON.stringify([games, selected, state.libraryView, state.libraryFilter, state.randomJoining, I18n.revision()]);
+  const key = JSON.stringify([games, games.map(catalogGameLabel), selected, state.libraryView, state.libraryFilter, state.randomJoining, I18n.revision()]);
   if (state.libraryKey === key) return;
   state.libraryKey = key;
   $("library-count").textContent = I18n.t("ui.games.count", { count: games.length }, `${games.length} ${games.length === 1 ? "game" : "games"} to explore`);
@@ -589,7 +612,7 @@ function renderLibrary() {
     const hue = Array.from(game.id).reduce((value, letter) => value + letter.charCodeAt(0), 0) % 360;
     const random = isRandomGame(game);
     // The "Random" card is built into the page; every other game's text is its builder's.
-    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : I18n.gameName(game.id, game.name);
+    const name = random ? I18n.t("ui.games.random_name", {}, game.name) : catalogGameLabel(game);
     const description = random ? I18n.t("ui.games.random_description", {}, game.description) : I18n.gameDescription(game.id, game.description);
     const initials = name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || "").join("");
     return el("button", {type:"button", class:"library-card", "aria-pressed":String(game.id === selected),
@@ -619,7 +642,7 @@ function renderGameSearch() {
   state.filteredGames = results;
   state.gameSearchActive = Math.min(state.gameSearchActive, Math.max(0, state.filteredGames.length - 1));
   const key = JSON.stringify([state.gameSearchOpen, state.gameSearchQuery, state.gameSearchActive,
-    results.map((game) => [game.id, game.version])]);
+    results.map((game) => [game.id, game.version, catalogGameLabel(game)])]);
   if (key === state.gameSearchKey) return;
   state.gameSearchKey = key;
   input.setAttribute("aria-activedescendant", state.gameSearchOpen && state.filteredGames.length ? `game-result-${state.gameSearchActive}` : "");
@@ -628,7 +651,7 @@ function renderGameSearch() {
     class: "game-option", "aria-selected": String(index === state.gameSearchActive),
     onclick: () => isRandomGame(game) ? joinRandomMatch() : openGamePage(game.id),
   }, el("span", {class: "game-option-copy"},
-    el("span", {textContent: game.name}),
+    el("span", {textContent: isRandomGame(game) ? game.name : catalogGameLabel(game)}),
     ...(game.description ? [el("span", {class: "game-option-description", textContent: game.description})] : [])),
     el("small", {textContent: gameCountLabel(game)}))));
   $("game-results-note").textContent = results.length === 0 ? "No matching games. Try a different name."
@@ -667,6 +690,10 @@ function onGameSearchInput() {
   $("new-game").value = "";
   renderGameSearch();
   updateMatchSetup();
+  if (StoragePages.search("/games", me(), state.gameSearchQuery)) {
+    clearTimeout(state.catalogSearchTimer);
+    state.catalogSearchTimer = setTimeout(refresh, 300);
+  }
 }
 
 function onGameSearchKey(event) {
@@ -714,7 +741,11 @@ function updateMatchSetup() {
   $("show-creator").hidden = detailPage;
   const maximum = game ? Math.max(...game.allowed_player_counts) - 1 : 0;
   $("create").disabled = !me() || !game || state.creating || !navigator.onLine;
-  $("practice").disabled = !me() || !game;
+  const serverOnly = game?.supports_local_practice === false || Boolean(game?.server_code);
+  $("practice").disabled = !me() || !game || serverOnly;
+  $("practice-mode").disabled = serverOnly;
+  $("practice-unavailable").hidden = !serverOnly;
+  $("practice-offline-note").hidden = serverOnly;
   const solo = game?.allowed_player_counts.length === 1 && maximum === 0;
   $("speed-choice").hidden = solo;
   updateStakePreview();
@@ -1140,6 +1171,16 @@ async function browseHistory(direction) {
   if (!match || !match.move_count) return;
   if (direction === "live") state.replay = null;
   else try {
+    if (await StoragePages.enabled() && !match.localMode) {
+      const current = state.replay?.id === match.id ? state.replay.index : match.move_count;
+      let index = Math.max(0, Math.min(match.move_count, current + direction));
+      const data = await portalRequest("GET", `/v2/matches/${match.id}/history?start=${Math.max(0,index-1)}&limit=1`, {user:me()});
+      if (state.match?.id !== match.id) return;
+      const minimum = data.initial_turn_player_indices === null ? 1 : 0;
+      index = Math.max(minimum,index);
+      const move = index === 0 ? {new_state:data.initial_state,next_turn_player_indices:data.initial_turn_player_indices} : data.items[0];
+      if (move) state.replay = {id:match.id,index,minimum,move};
+    } else {
     const data = await portalRequest("GET", `/matches/${match.id}/history`, {user: me()});
     const moves = data.moves;
     const minimum = data.initial_turn_player_indices === null ? 1 : 0;
@@ -1149,6 +1190,7 @@ async function browseHistory(direction) {
     const move = index === 0 ? {new_state: data.initial_state, next_turn_player_indices: data.initial_turn_player_indices} : moves[index - 1];
     if (!move) return;
     state.replay = {id: match.id, index, minimum, move};
+    }
   } catch (error) { showMessage(`History unavailable: ${error.message}`, "error"); return; }
   renderHistory();await syncGame();
 }
@@ -1214,6 +1256,8 @@ async function syncGame() {
     actingFor: !replay && user && !match.conflict ? actingFor(match, user.id) : null,
   });
   message.token_pot = view.token_pot ?? 0;
+  // Let game UIs distinguish a historical snapshot from a live opponent turn.
+  message.replay = replay ? { index: replay.index, total: match.move_count } : null;
   // The viewer's language and, for a game with a string table, its texts in that language.
   Object.assign(message, await I18n.gameText(match.game_id, match.game_version));
   const json = JSON.stringify(message);

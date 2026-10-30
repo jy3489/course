@@ -1,4 +1,5 @@
 {
+  "error.merge_shared_active_match": "Espera a que terminen las partidas compartidas antes de fusionar estas cuentas",
   "error.unauthorized": "faltan las cabeceras X-User-Id / X-User-Password o no son válidas",
   "error.master_password_required": "se requiere la contraseña maestra (cualquier nombre de usuario)",
   "error.user_not_found": "usuario no encontrado",

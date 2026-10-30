@@ -3,13 +3,16 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
+function browserContext(sandbox) {
+  return vm.createContext({URLSearchParams, location:{search:''}, ...sandbox});
+}
 const source=fs.readFileSync(path.join(__dirname,'../../static/common.js'),'utf8');
 
 function reporter(width,height) {
   const callbacks={},queue=[],messages=[];
   const root={};
   const body={scrollWidth:width,scrollHeight:height,getBoundingClientRect(){return {left:0,top:0,right:body.scrollWidth,bottom:body.scrollHeight};}};
-  const ctx=vm.createContext({document:{documentElement:root,body},innerWidth:390,innerHeight:480,
+  const ctx=browserContext({document:{documentElement:root,body},innerWidth:390,innerHeight:480,
     getComputedStyle:()=>({marginRight:'0',marginBottom:'0'}),parent:{postMessage:m=>messages.push(m)},
     addEventListener:(name,fn)=>callbacks[name]=fn,requestAnimationFrame:fn=>queue.push(fn),
     MutationObserver:class {constructor(fn){callbacks.mutation=fn;}observe(){}},
@@ -24,7 +27,7 @@ function host(builder=false,initialHeight=480) {
   let focused=false;
   const container={id:builder?'test-frame':'game-box',clientWidth:390,clientHeight:initialHeight,
     get offsetHeight(){return this.clientHeight+2;},style:{removeProperty(){container.clientHeight=initialHeight;},setProperty(k,v){container.clientHeight=parseFloat(v)-2;}}};
-  const ctx=vm.createContext({window:{addEventListener(){}},document:{body:{classList:{contains:()=>focused}}},container,iframe});
+  const ctx=browserContext({window:{addEventListener(){}},document:{body:{classList:{contains:()=>focused}}},container,iframe});
   vm.runInContext(source,ctx);
   vm.runInContext('frame=new GameFrame(container,()=>{},()=>{});frame.iframe=iframe;frame.resizeViewport()',ctx);
   return {iframe,container,ctx,focus(value){focused=value;vm.runInContext('frame.resizeViewport()',ctx);},report(width,height,extra={}){
@@ -69,7 +72,7 @@ test('viewport-dependent games are bounded and stale or invalid resize messages 
 
 test('fitting stays inside the script-only sandbox and preserves the move protocol',()=>{
   const calls=[],nodes=[];
-  const context=vm.createContext({window:{addEventListener(){}},document:{createElement(tag){
+  const context=browserContext({window:{addEventListener(){}},document:{createElement(tag){
     const node={tag,contentWindow:{},style:{},setAttribute(k,v){this[k]=v;},addEventListener(){}};nodes.push(node);return node;
   }},Node:class{},container:{replaceChildren(node){this.child=node;}},onMove:move=>calls.push(move),onBad:assert.fail});
   vm.runInContext(source,context);vm.runInContext('frame = new GameFrame(container,onMove,onBad);frame.load("<h1>Game</h1>")',context);
@@ -110,7 +113,7 @@ test('inline previews bound viewport-dependent growth and reset for a narrower p
 test('observed resize work is deferred and independent of page scroll position',()=>{
   const observers=[],queue=[];let measurements=0;
   const container={};
-  const ctx=vm.createContext({window:{addEventListener(){}},document:{},container,
+  const ctx=browserContext({window:{addEventListener(){}},document:{},container,
     requestAnimationFrame:fn=>queue.push(fn),ResizeObserver:class{constructor(fn){observers.push(fn);}observe(){}}});
   vm.runInContext(source,ctx);vm.runInContext('frame=new GameFrame(container,()=>{},()=>{})',ctx);
   ctx.measure=()=>measurements++;vm.runInContext('frame.resizeViewport=measure',ctx);

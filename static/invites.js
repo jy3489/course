@@ -219,6 +219,7 @@ function load(stats) {
 
 async function refresh() {
   try {
+    if (await window.ReferralPages?.enabled()) { await window.ReferralPages.refresh(); return; }
     const response = await fetch("/admin/invites");
     if (!response.ok) throw new Error(`GET /admin/invites: ${response.status}`);
     const stats = await response.json();
@@ -231,5 +232,5 @@ async function refresh() {
 }
 
 $("refresh").addEventListener("click", refresh);
-$("search").addEventListener("input", renderSearch);
+$("search").addEventListener("input", () => window.ReferralPages?.active() ? window.ReferralPages.search() : renderSearch());
 refresh();

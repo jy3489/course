@@ -72,6 +72,9 @@ class LogPushNotifier:
     def close(self) -> None:
         pass
 
+    def deliver(self, message: PushMessage) -> None:
+        self.enqueue([message])
+
 
 class WebPushNotifier:
     """Sends real Web Push messages from a worker thread.
@@ -129,7 +132,11 @@ class WebPushNotifier:
             finally:
                 self._queue.task_done()
 
-    def _send(self, message: PushMessage) -> None:
+    def deliver(self, message: PushMessage) -> None:
+        """Synchronous outbox delivery; transient failures remain retryable."""
+        self._send(message, retry_errors=True)
+
+    def _send(self, message: PushMessage, *, retry_errors: bool = False) -> None:
         subscription = message.subscription
         try:
             webpush(
@@ -164,6 +171,8 @@ class WebPushNotifier:
                 )
                 self._store.delete_push_subscription_by_endpoint(subscription.endpoint)
             else:
+                if retry_errors:
+                    raise
                 logger.warning("push to %s failed: %s", subscription.endpoint, error)
 
 
