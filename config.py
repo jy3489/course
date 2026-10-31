@@ -177,6 +177,11 @@ class MonitoringConfig(_Section):
     # Also write the log as JSON lines to this file (rotated at 50 MB, 5 kept), for the
     # Google Cloud Ops Agent to read. Empty writes only to the terminal / journal.
     log_file: str = ""
+    # Report API call counts (per handler function and HTTP response code) to
+    # Google Cloud Monitoring as a custom metric (see metrics.py). Off unless
+    # the deployment's service account may write metrics; reporting is
+    # best-effort and off the request path either way.
+    cloud_metrics_enabled: bool = False
     # A request slower than this is logged with its arguments (WARNING)...
     slow_request_ms: Annotated[int, Field(ge=1)] = 1000
     # ...and one slower than this is a minor alert (ERROR).

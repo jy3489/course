@@ -15,3 +15,6 @@ quickjs>=1.19,<2
 segno>=1.6,<2
 # Saves the data in Firestore when firestore.enabled is set (firestore_store.py).
 google-cloud-firestore>=2.34,<3
+# Reports API call counts to Google Cloud Monitoring when
+# monitoring.cloud_metrics_enabled is set (metrics.py).
+google-cloud-monitoring>=2.0,<3

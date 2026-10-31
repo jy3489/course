@@ -30,6 +30,7 @@
   "monitoring": {
     "log_format": "text",
     "log_file": "",
+    "cloud_metrics_enabled": false,
     "slow_request_ms": 1000,
     "very_slow_request_ms": 5000,
     "stuck_request_seconds": 30.0,

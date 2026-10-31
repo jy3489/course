@@ -7,7 +7,7 @@ from pathlib import Path
 
 import uvicorn
 
-from game_platform import observability
+from game_platform import metrics, observability
 from game_platform.api import create_app
 from game_platform.config import Config, load_config
 from game_platform.json_file_store import JsonFileStore
@@ -192,6 +192,16 @@ def main() -> None:
             ai_max_fix_attempts=config.ai_max_fix_attempts,
             monitor=monitor,
         )
+        if config.monitoring.cloud_metrics_enabled:
+            # API call counts to Cloud Monitoring (metrics.py): counted by a
+            # middleware, published by a background thread, never on the
+            # request path. Best-effort: if the VM's account may not write
+            # metrics, the reporter logs that once and stays off.
+            reporter = metrics.ApiMetricsReporter()
+            app.add_middleware(
+                metrics.ApiCallMetricsMiddleware, counter=reporter.counter
+            )
+            reporter.start()
         monitor.start()
         observability.log_event(
             "server_started",
