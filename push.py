@@ -96,12 +96,12 @@ class WebPushNotifier:
                 'push.provider is "webpush" but vapid_subject is empty: give push '
                 'services an operator contact, e.g. "mailto:you@example.com"'
             )
-        # pywebpush signs with PEM, so keep the key in that form.
-        self._private_pem = _load_private_key(config.vapid_private_key).private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
+        # Fail fast on a malformed key. pywebpush wants the key as a base64url
+        # string: its Vapid.from_string base64-decodes what it is given, so the
+        # configured value (base64url PKCS#8, like generate_vapid_keys makes)
+        # is passed through unchanged — a PEM rendering, bytes or text, breaks it.
+        _load_private_key(config.vapid_private_key)
+        self._private_key = config.vapid_private_key
         self._subject = config.vapid_subject
         self._ttl = config.ttl_seconds
         self._store = store
@@ -155,7 +155,7 @@ class WebPushNotifier:
                         "tag": message.tag,
                     }
                 ),
-                vapid_private_key=self._private_pem,
+                vapid_private_key=self._private_key,
                 vapid_claims={"sub": self._subject},
                 ttl=self._ttl,
                 headers={"Urgency": "high"},

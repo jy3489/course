@@ -6,11 +6,13 @@ by the log-provider default everywhere else.
 """
 
 import base64
+import datetime as dt
 import os
 from collections.abc import Sequence
 
 from game_platform.config import PushConfig
-from game_platform.push import PushMessage, generate_vapid_keys
+from game_platform.models import WebPushSubscription
+from game_platform.push import PushMessage, WebPushNotifier, generate_vapid_keys
 from game_platform.store import InMemoryStore
 from game_platform.tests.helpers import Api, validation_errors
 
@@ -426,3 +428,55 @@ def test_push_test_notifies_the_callers_subscriptions() -> None:
     (message,) = _messages_to(notifier, alice)
     assert message.body == "Test notification from the game platform"
     assert message.url == "/static/portal.html"
+
+
+# Real delivery (WebPushNotifier)
+
+
+def test_webpush_notifier_hands_pywebpush_a_text_key(monkeypatch) -> None:
+    """Regression: the notifier used to hand pywebpush the VAPID key as PEM
+    bytes; its Vapid.from_string calls .encode() on the key (and only accepts
+    the base64url form besides), so every real delivery died with
+    AttributeError before anything reached a push service. The notifier must
+    pass the configured base64url key through as a string."""
+    from py_vapid import Vapid
+
+    import game_platform.push as push_module
+
+    sent: dict = {}
+    monkeypatch.setattr(push_module, "webpush", lambda **kwargs: sent.update(kwargs))
+    private_key, _public_key = generate_vapid_keys()
+    notifier = WebPushNotifier(
+        config=PushConfig(
+            provider="webpush",
+            vapid_private_key=private_key,
+            vapid_subject="mailto:ops@example.com",
+        ),
+        store=InMemoryStore(),
+    )
+    keys = _keys()
+    now = dt.datetime.now(dt.timezone.utc)
+    message = PushMessage(
+        subscription=WebPushSubscription(
+            id="sub-1",
+            user_id="user-1",
+            endpoint="https://push.example.com/s/1",
+            p256dh=keys["p256dh"],
+            auth=keys["auth"],
+            created_at=now,
+            updated_at=now,
+        ),
+        title="Your turn in Poker",
+        body="Test",
+        url="/static/portal.html",
+        tag="match-1-turn",
+    )
+    try:
+        notifier.deliver(message)
+    finally:
+        notifier.close()
+    key = sent["vapid_private_key"]
+    assert isinstance(key, str)
+    assert key == private_key
+    # The exact call that used to crash: py_vapid must accept what we hand over.
+    Vapid.from_string(private_key=key)
