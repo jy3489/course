@@ -39,6 +39,8 @@ from typing import Any, Final
 from google.cloud import firestore
 from pydantic import TypeAdapter
 
+from game_platform.observability import timed_external
+
 from game_platform.json_file_store import FORMAT_VERSION, read_snapshot, write_snapshot
 from game_platform.saving_store import SavingStore
 from game_platform.store import InMemoryStore, Snapshot
@@ -204,7 +206,8 @@ class _Writes:
 
     def commit(self) -> None:
         if self._writes:
-            self._batch.commit()
+            with timed_external("firestore"):
+                self._batch.commit()
         self._batch = self._client.batch()
         self._writes = 0
         self._bytes = 0
@@ -237,7 +240,8 @@ def _read_text(snapshot: Any) -> str:
     if count == 1:
         return data["json"]
     rest = snapshot.reference.collection("chunks").order_by("__name__").stream()
-    parts = [data["json"], *(chunk.to_dict()["json"] for chunk in rest)]
+    with timed_external("firestore"):
+        parts = [data["json"], *(chunk.to_dict()["json"] for chunk in rest)]
     if len(parts) != count:
         raise ValueError(f"{snapshot.reference.path}: expected {count} chunks, found {len(parts)}")
     return "".join(parts)
@@ -296,7 +300,8 @@ class FirestoreStore(SavingStore):
         return self._collection("meta").document("format")
 
     def _check_format(self) -> None:
-        stored = self._format_ref().get()
+        with timed_external("firestore"):
+            stored = self._format_ref().get()
         version = stored.to_dict().get("version", 0) if stored.exists else 0
         if version > FORMAT_VERSION:
             raise ValueError(
@@ -304,7 +309,8 @@ class FirestoreStore(SavingStore):
                 f"understands up to {FORMAT_VERSION}; update the server"
             )
         if version < FORMAT_VERSION:
-            self._format_ref().set({"version": FORMAT_VERSION})
+            with timed_external("firestore"):
+                self._format_ref().set({"version": FORMAT_VERSION})
 
     def _load(self) -> tuple[Snapshot, dict[str, int]]:
         fields: dict[str, list[Any]] = {}
@@ -320,17 +326,21 @@ class FirestoreStore(SavingStore):
         for kind in _KINDS:
             adapter = _RECORD_ADAPTERS[kind.field]
             records = []
-            for document in self._collection(kind.field).stream():
+            with timed_external("firestore"):
+                documents = list(self._collection(kind.field).stream())
+            for document in documents:
                 record = adapter.validate_json(text_of(document))
                 if kind.items_field is not None:
                     item_adapter = _ITEM_ADAPTERS[kind.field]
                     items = document.reference.collection(kind.items_field)
+                    with timed_external("firestore"):
+                        item_documents = list(items.order_by("__name__").stream())
                     record = dataclasses.replace(
                         record,
                         **{
                             kind.items_field: tuple(
                                 item_adapter.validate_json(text_of(item))
-                                for item in items.order_by("__name__").stream()
+                                for item in item_documents
                             )
                         },
                     )

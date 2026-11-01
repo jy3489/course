@@ -13,6 +13,8 @@ import os
 import time
 from dataclasses import dataclass
 
+from game_platform.observability import timed_external
+
 ENV_VAR = "MUSE_SPARK_API_KEY"
 DEFAULT_BASE_URL = "https://api.ai.meta.com/v1"
 DEFAULT_MODEL = "muse-spark-1.3"
@@ -71,13 +73,14 @@ class ModelApiClient:
     def _completions(self, messages, *, max_tokens, temperature, **kwargs):  # type: ignore[no-untyped-def]
         client = self._client()
         try:
-            return client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                **kwargs,
-            )
+            with timed_external("model_api"):
+                return client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    **kwargs,
+                )
         except Exception as exc:
             from openai import APITimeoutError
             if isinstance(exc, APITimeoutError):

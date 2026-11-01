@@ -14,6 +14,7 @@ from typing import Protocol
 import httpx
 
 from game_platform.config import EmailAuthConfig, SmsAuthConfig
+from game_platform.observability import timed_external
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +120,13 @@ class TwilioVerifyClient:
         if not (self.sid and self.token and self.service_sid):
             raise SenderError("Twilio Verify credentials are not configured")
         try:
-            result = httpx.post(
-                f"https://verify.twilio.com/v2/Services/{self.service_sid}/{action}",
-                auth=(self.sid, self.token),
-                data=payload,
-                timeout=10,
-            )
+            with timed_external("sms"):
+                result = httpx.post(
+                    f"https://verify.twilio.com/v2/Services/{self.service_sid}/{action}",
+                    auth=(self.sid, self.token),
+                    data=payload,
+                    timeout=10,
+                )
         except httpx.HTTPError as exc:
             raise SenderError("Could not connect to Twilio Verify") from exc
 
@@ -200,12 +202,13 @@ class SmtpSender:
             "If you didn't ask for this, just ignore this email."
         )
         try:
-            with smtplib.SMTP(self._host, self._port, timeout=10) as smtp:
-                if self._use_tls:
-                    smtp.starttls()
-                if self._username:
-                    smtp.login(self._username, self._password)
-                smtp.send_message(message)
+            with timed_external("email"):
+                with smtplib.SMTP(self._host, self._port, timeout=10) as smtp:
+                    if self._use_tls:
+                        smtp.starttls()
+                    if self._username:
+                        smtp.login(self._username, self._password)
+                    smtp.send_message(message)
         except (smtplib.SMTPException, OSError) as error:
             raise SenderError(f"couldn't send the email: {error}") from error
 

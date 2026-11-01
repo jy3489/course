@@ -88,6 +88,32 @@ To repeat a problem the line has:
 **Never logged:** passwords, tokens, API keys, cookies and verification codes (replaced by
 `<redacted>`). A game's source code is replaced by its length and a hash. See `observability.redact`.
 
+## The per-call log line
+
+At the end of every API call the middleware writes one `API_CALL {...}` line (a single JSON
+object in the message, so it parses the same whether the log format is text or JSON). Static
+assets and the docs pages are excluded. Fields:
+
+- `method`, `route` (the route template with placeholders, e.g. `/matches/<match_id>`, never
+  actual ids), `handler` (the endpoint function name), `path`, redacted `query`, `client`,
+  `request_id`.
+- `status` and `result` (`ok` for 2xx/3xx, `error` otherwise), `crashed` (an uncaught exception
+  became the 500).
+- `request_arrived_at` and `response_sent_at` (UTC ISO-8601 with milliseconds), `duration_s` /
+  `duration_ms` (wall time) and `cpu_s` (process CPU time across the call).
+- `memory_rss_before_bytes`, `memory_rss_after_bytes`, `memory_rss_delta_bytes`: process
+  resident memory around the call. They are process-wide readings, not isolated per-request
+  allocation — other requests served at the same time share the process.
+- `request_bytes` and `response_bytes`, plus the redacted, capped (`max_logged_body_bytes`)
+  `request_body` and `response_body`.
+- `external_calls`: per service, how many calls the request waited on and their total seconds —
+  `firestore` (snapshot store reads/writes and query-store reads/queries), `model_api` (builder
+  agent model calls), `email` (SMTP login-code mail) and `sms` (Twilio Verify). Push
+  notifications are not attributed: they are delivered from a background thread after the
+  response, outside any request.
+
+The daily API summary (see below) parses these lines from the journal.
+
 ## Set it up
 
 1. **The server's config.** In `config.json` on the VM:

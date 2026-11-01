@@ -35,6 +35,7 @@ from game_platform.models import (
     Translation,
 )
 from game_platform.move_history import MoveHistory
+from game_platform.observability import timed_external
 from game_platform.scaling_library import LibraryEntry
 from game_platform.paging import Page, decode_cursor, encode_cursor, page_size
 
@@ -198,9 +199,11 @@ class QueryStore:
             if ref.path in uow["writes"]:
                 return uow["writes"][ref.path][1]
             if ref.path not in uow["reads"]:
-                uow["reads"][ref.path] = ref.get(transaction=uow["tx"]).to_dict()
+                with timed_external("firestore"):
+                    uow["reads"][ref.path] = ref.get(transaction=uow["tx"]).to_dict()
             return uow["reads"][ref.path]
-        return ref.get().to_dict()
+        with timed_external("firestore"):
+            return ref.get().to_dict()
 
     def raw_put(self, ref, data):
         if getattr(self._local, "uow", None) is None:
@@ -290,7 +293,8 @@ class QueryStore:
                 {"__name__": self.collection(kind).document(after)}
             )
         uow = getattr(self._local, "uow", None)
-        return list(query.limit(limit).stream(transaction=uow["tx"] if uow else None))
+        with timed_external("firestore"):
+            return list(query.limit(limit).stream(transaction=uow["tx"] if uow else None))
 
     def page(self, kind, *, filters=(), limit=50, cursor=None, scope=None):
         page_size(limit)

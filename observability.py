@@ -15,6 +15,7 @@ requests at once, and too much memory.
 from __future__ import annotations
 
 import collections
+import contextlib
 import contextvars
 import hashlib
 import json
@@ -47,6 +48,69 @@ REQUEST_ID: Final[contextvars.ContextVar[str | None]] = contextvars.ContextVar(
 CLIENT: Final[contextvars.ContextVar[str | None]] = contextvars.ContextVar(
     "client", default=None
 )
+
+
+class ExternalCallStats:
+    """Counts and total seconds per external service for one request."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._calls: dict[str, dict[str, float | int]] = {}
+
+    def record(self, service: str, seconds: float) -> None:
+        with self._lock:
+            entry = self._calls.setdefault(service, {"calls": 0, "seconds": 0.0})
+            entry["calls"] += 1
+            entry["seconds"] = round(float(entry["seconds"]) + seconds, 3)
+
+    def snapshot(self) -> dict[str, dict[str, float | int]]:
+        with self._lock:
+            return {service: dict(entry) for service, entry in self._calls.items()}
+
+
+# Per-request external-call stats, keyed by request_id. A registry, not a
+# contextvar: endpoints run in a thread pool, where a contextvar set by the
+# middleware is visible but mutations to it do not propagate back to the
+# middleware's task. The accumulator object itself is shared, so recording
+# from any thread lands in the same record the middleware reads at the end.
+_CALL_STATS: dict[str, ExternalCallStats] = {}
+_CALL_STATS_LOCK = threading.Lock()
+
+
+def begin_call_stats(request_id: str) -> ExternalCallStats:
+    stats = ExternalCallStats()
+    with _CALL_STATS_LOCK:
+        _CALL_STATS[request_id] = stats
+    return stats
+
+
+def end_call_stats(request_id: str) -> ExternalCallStats | None:
+    with _CALL_STATS_LOCK:
+        return _CALL_STATS.pop(request_id, None)
+
+
+def current_call_stats() -> ExternalCallStats | None:
+    request_id = REQUEST_ID.get()
+    if request_id is None:
+        return None
+    with _CALL_STATS_LOCK:
+        return _CALL_STATS.get(request_id)
+
+
+@contextlib.contextmanager
+def timed_external(service: str):  # type: ignore[no-untyped-def]
+    """Records one call to [service] (count + seconds) on the current request.
+
+    A no-op outside a request (background threads, CLI tools): there the
+    request_id is None and nothing is recorded.
+    """
+    stats = current_call_stats()
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        if stats is not None:
+            stats.record(service, time.perf_counter() - started)
 
 _SEVERITY: Final = {
     logging.DEBUG: "DEBUG",
@@ -606,11 +670,27 @@ def _client_of(scope: Scope, headers: dict[str, str]) -> str:
     return client[0] if client else "unknown"
 
 
+def _iso_time(epoch: float) -> str:
+    """UTC ISO-8601 with milliseconds, e.g. 2026-11-01T13:40:52.123Z."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(epoch)) + (
+        f".{int(epoch % 1 * 1000):03d}Z"
+    )
+
+
 class RequestLogMiddleware:
     """Gives every request an id (returned as X-Request-Id), measures it, and logs the
     ones worth investigating together with everything needed to repeat them: slow ones,
     5xx answers and unexpected exceptions. Pure ASGI, so the body can be read for the
-    log without disturbing the app."""
+    log without disturbing the app.
+
+    It also writes one `API_CALL {...}` JSON line at the end of every API call
+    (static assets and the docs pages excluded): the route template with
+    placeholders instead of actual arguments, the HTTP result, wall and CPU
+    time, process memory before and after, request and response sizes and
+    (redacted, capped) bodies, and the external-service calls the request
+    waited on. The line is one JSON object so log queries and the daily
+    summary can parse it.
+    """
 
     def __init__(self, app: Callable[..., Awaitable[None]], monitor: Callable[[], Monitor] = current) -> None:
         self.app = app
@@ -632,6 +712,9 @@ class RequestLogMiddleware:
         query = scope.get("query_string", b"").decode("latin-1")
         body = bytearray()
         body_size = 0
+        response_body = bytearray()
+        response_size = 0
+        response_headers: dict[str, str] = {}
         status = 0
         crashed = False
 
@@ -646,11 +729,24 @@ class RequestLogMiddleware:
             return message
 
         async def send_with_id(message: MutableMapping[str, Any]) -> None:
-            nonlocal status
+            nonlocal status, response_size
             if message["type"] == "http.response.start":
                 status = message["status"]
                 message.setdefault("headers", [])
                 message["headers"] = [*message["headers"], (b"x-request-id", request_id.encode())]
+                response_headers.update(
+                    {
+                        key.decode("latin-1").lower(): value.decode("latin-1")
+                        for key, value in message.get("headers", [])
+                    }
+                )
+            elif message["type"] == "http.response.body":
+                chunk = message.get("body", b"")
+                response_size += len(chunk)
+                if len(response_body) < config.max_logged_body_bytes + 1:
+                    response_body.extend(
+                        chunk[: config.max_logged_body_bytes + 1 - len(response_body)]
+                    )
             await send(message)
 
         def describe() -> dict[str, Any]:
@@ -672,6 +768,10 @@ class RequestLogMiddleware:
         scope.setdefault("state", {})["request_id"] = request_id
         id_token = REQUEST_ID.set(request_id)
         client_token = CLIENT.set(client)
+        arrived_at = time.time()
+        started_cpu = time.process_time()
+        memory_before = read_memory()
+        begin_call_stats(request_id)
         started = time.perf_counter()
         monitor.request_started(
             {"request_id": request_id, "method": method, "path": path, "client": client,
@@ -698,9 +798,109 @@ class RequestLogMiddleware:
         finally:
             duration_ms = (time.perf_counter() - started) * 1000
             monitor.request_finished(request_id, status or 500, duration_ms)
+            self._log_api_call(
+                config,
+                request_id=request_id,
+                method=method,
+                path=path,
+                query=query,
+                headers=headers,
+                scope=scope,
+                client=client,
+                status=status or 500,
+                duration_ms=duration_ms,
+                started_cpu=started_cpu,
+                arrived_at=arrived_at,
+                request_body=body,
+                request_size=body_size,
+                response_body=response_body,
+                response_size=response_size,
+                response_headers=response_headers,
+                memory_before=memory_before,
+                crashed=crashed,
+            )
             self._log_if_noteworthy(monitor, status, duration_ms, describe, crashed=crashed)
             REQUEST_ID.reset(id_token)
             CLIENT.reset(client_token)
+
+    @staticmethod
+    def _log_api_call(
+        config: MonitoringConfig,
+        *,
+        request_id: str,
+        method: str,
+        path: str,
+        query: str,
+        headers: dict[str, str],
+        scope: Scope,
+        client: str | None,
+        status: int,
+        duration_ms: float,
+        started_cpu: float,
+        arrived_at: float,
+        request_body: bytearray,
+        request_size: int,
+        response_body: bytearray,
+        response_size: int,
+        response_headers: dict[str, str],
+        memory_before: tuple[int, int] | None,
+        crashed: bool,
+    ) -> None:
+        """One JSON line at the end of every API call (see the class docstring).
+
+        Static assets and the docs pages are not API calls and are skipped.
+        CPU seconds and memory are process-wide readings around the call, not
+        isolated per-request accounting: other requests served at the same time
+        share the process. Bodies are redacted like every other log line
+        (passwords, tokens and codes never land in logs) and capped at
+        max_logged_body_bytes.
+        """
+        stats = end_call_stats(request_id)
+        route = scope.get("route")
+        template = getattr(route, "path", None) or path
+        if template.startswith("/static") or template in {
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/favicon.ico",
+        }:
+            return
+        template = re.sub(r"\{([^}]+)\}", r"<\1>", template)
+        endpoint = scope.get("endpoint")
+        memory_after = read_memory()
+        record: dict[str, Any] = {
+            "method": method,
+            "route": template,
+            "handler": getattr(endpoint, "__name__", None),
+            "path": path,
+            "query": redact_query(query),
+            "client": client,
+            "request_id": request_id,
+            "status": status,
+            "result": "ok" if 200 <= status < 400 else "error",
+            "crashed": crashed,
+            "request_arrived_at": _iso_time(arrived_at),
+            "response_sent_at": _iso_time(time.time()),
+            "duration_s": round(duration_ms / 1000, 3),
+            "duration_ms": round(duration_ms),
+            "cpu_s": round(time.process_time() - started_cpu, 3),
+            "request_bytes": request_size,
+            "response_bytes": response_size,
+            "external_calls": stats.snapshot() if stats is not None else {},
+        }
+        if memory_before is not None and memory_after is not None:
+            record["memory_rss_before_bytes"] = memory_before[0]
+            record["memory_rss_after_bytes"] = memory_after[0]
+            record["memory_rss_delta_bytes"] = memory_after[0] - memory_before[0]
+        if request_body:
+            record["request_body"] = RequestLogMiddleware._body_for_log(
+                bytes(request_body), headers, config, request_size
+            )
+        if response_body:
+            record["response_body"] = RequestLogMiddleware._body_for_log(
+                bytes(response_body), response_headers, config, response_size
+            )
+        logger.info("API_CALL %s", json.dumps(record, default=str, ensure_ascii=False))
 
     @staticmethod
     def _body_for_log(
