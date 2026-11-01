@@ -1093,6 +1093,21 @@ class GamePlatform:
             raise NotFoundError("user not found")
         return self._resolve_replaced(user)
 
+    def get_users(self, user_ids: list[str]) -> list[User]:
+        """The users for [user_ids], in request order, skipping unknown ids.
+
+        Backs the portal's batched profile fetch: one API call instead of one
+        request per visible player. Reads only, so no lock (see get_user); in
+        snapshot mode the store is in memory, so the whole batch costs no
+        Firestore fetches.
+        """
+        users = []
+        for user_id in user_ids:
+            user = self._store.get_user(user_id)
+            if user is not None:
+                users.append(self._resolve_replaced(user))
+        return users
+
     def authenticate(self, *, user_id: str | None, password: str | None) -> User:
         """Checks the caller's credentials. The error doesn't say which part was wrong,
         so it can't be used to find out which user ids exist.

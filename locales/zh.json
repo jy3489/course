@@ -3,6 +3,7 @@
   "error.unauthorized": "缺少 X-User-Id / X-User-Password 请求头，或其无效",
   "error.master_password_required": "需要主密码（用户名任意）",
   "error.user_not_found": "找不到该用户",
+  "error.too_many_user_ids": "每个请求最多 200 个用户 ID",
   "error.users_only_change_themselves": "用户只能修改自己的信息",
   "error.merge_into_self": "不能将用户合并到自己",
   "error.merge_wrong_user": "只有被合并的用户才能发起合并",

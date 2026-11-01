@@ -313,18 +313,31 @@ async function ensureDetails() {
   for (const [cache, needed] of [[state.gameCache,gameKeys],[state.nameCache,userIds],[state.pictureCache,userIds]]) {
     for (const key of cache.keys()) if (cache.size > 128 && !needed.has(key)) cache.delete(key);
   }
+  // One batched request for every missing profile: fetching them one by one
+  // was the portal's worst slow-request offender under load.
+  const missingUserIds = [...userIds].filter(
+    (id) => !state.nameCache.has(id) || !state.pictureCache.get(id),
+  );
   await Promise.all([
-    ...[...userIds]
-      .filter((id) => !state.nameCache.has(id) || !state.pictureCache.get(id))
-      .map(async (id) => {
-        try {
-          const profile = await portalRequest("GET", `/users/${id}`);
-          state.nameCache.set(id, profile.display_name);
-          state.pictureCache.set(id, profile.picture_url);
-        } catch {
-          state.nameCache.set(id, shortId(id));
+    (async () => {
+      if (!missingUserIds.length) return;
+      try {
+        const profiles = await portalRequest(
+          "GET",
+          `/users?ids=${missingUserIds.map(encodeURIComponent).join(",")}`,
+        );
+        const found = new Set();
+        for (const profile of profiles) {
+          found.add(profile.id);
+          state.nameCache.set(profile.id, profile.display_name);
+          state.pictureCache.set(profile.id, profile.picture_url);
         }
-      }),
+        for (const id of missingUserIds)
+          if (!found.has(id)) state.nameCache.set(id, shortId(id));
+      } catch {
+        for (const id of missingUserIds) state.nameCache.set(id, shortId(id));
+      }
+    })(),
     ...[...gameKeys]
       .filter((key) => !state.gameCache.has(key))
       .map(async (key) => {

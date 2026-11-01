@@ -286,6 +286,28 @@ def referrals(platform: Platform, request: Request, caller_id: CallerId) -> Refe
     )
 
 
+@router.get("/users")
+def list_users(
+    platform: Platform, caller_id: OptionalCallerId, ids: str = ""
+) -> list[UserOut]:
+    """Public profiles for the comma-separated [ids] query parameter, in request
+    order. The portal loads every visible player this way in a single call;
+    fetching them one by one was the platform's worst slow-request offender
+    under load, as dozens of near-instant calls queued behind each other.
+    Unknown ids are skipped rather than failing the whole batch, and duplicate
+    ids collapse. Includes [referral_code] only for the caller's own profile.
+    """
+    wanted = list(
+        dict.fromkeys(part.strip() for part in ids.split(",") if part.strip())
+    )
+    if len(wanted) > 200:
+        raise InvalidRequestError("at most 200 user ids per request")
+    return [
+        UserOut.of(user, own=caller_id is not None and caller_id == user.id)
+        for user in platform.get_users(wanted)
+    ]
+
+
 @router.get("/users/{user_id}")
 def get_user(platform: Platform, user_id: str, caller_id: OptionalCallerId) -> UserOut:
     """Includes [referral_code] only when the caller is this user."""
