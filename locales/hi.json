@@ -4,6 +4,7 @@
   "error.master_password_required": "मास्टर पासवर्ड आवश्यक है (कोई भी उपयोगकर्ता नाम)",
   "error.user_not_found": "उपयोगकर्ता नहीं मिला",
   "error.too_many_user_ids": "प्रति अनुरोध अधिकतम 200 उपयोगकर्ता आईडी",
+  "error.too_many_game_versions": "प्रति अनुरोध अधिकतम 200 गेम संस्करण",
   "error.users_only_change_themselves": "उपयोगकर्ता केवल स्वयं को बदल सकते हैं",
   "error.merge_into_self": "किसी उपयोगकर्ता को स्वयं में मर्ज नहीं किया जा सकता",
   "error.merge_wrong_user": "केवल मर्ज किया जाने वाला उपयोगकर्ता ही मर्ज का अनुरोध कर सकता है",

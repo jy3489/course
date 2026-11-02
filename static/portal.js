@@ -338,22 +338,25 @@ async function ensureDetails() {
         for (const id of missingUserIds) state.nameCache.set(id, shortId(id));
       }
     })(),
-    ...[...gameKeys]
-      .filter((key) => !state.gameCache.has(key))
-      .map(async (key) => {
-        const at = key.lastIndexOf("@");
-        try {
-          state.gameCache.set(
-            key,
-            await portalRequest(
-              "GET",
-              `/games/${key.slice(0, at)}/versions/${key.slice(at + 1)}`,
-            ),
-          );
-        } catch {
-          // A transient network error must not permanently poison this version.
-        }
-      }),
+    // One batched request for every missing game version, for the same reason
+    // as the profiles above: one fetch per game was a top slow pattern.
+    (async () => {
+      const missingGameKeys = [...gameKeys].filter(
+        (key) => !state.gameCache.has(key),
+      );
+      if (!missingGameKeys.length) return;
+      try {
+        const games = await portalRequest(
+          "GET",
+          `/games/versions?refs=${missingGameKeys.map(encodeURIComponent).join(",")}`,
+        );
+        for (const game of games)
+          state.gameCache.set(`${game.id}@${game.version}`, game);
+      } catch {
+        // A transient network error must not permanently poison these
+        // versions: they stay uncached and are retried on the next refresh.
+      }
+    })(),
   ]);
 }
 

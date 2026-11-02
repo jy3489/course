@@ -4,6 +4,7 @@
   "error.master_password_required": "كلمة المرور الرئيسية مطلوبة (أي اسم مستخدم)",
   "error.user_not_found": "لم يتم العثور على المستخدم",
   "error.too_many_user_ids": "200 معرف مستخدم كحد أقصى لكل طلب",
+  "error.too_many_game_versions": "200 إصدار لعبة كحد أقصى لكل طلب",
   "error.users_only_change_themselves": "لا يمكن للمستخدمين تعديل غير حساباتهم",
   "error.merge_into_self": "لا يمكن دمج مستخدم مع نفسه",
   "error.merge_wrong_user": "المستخدم الذي سيتم دمجه فقط يمكنه طلب الدمج",

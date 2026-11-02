@@ -703,6 +703,39 @@ def list_owned_games(platform: Platform, caller_id: CallerId) -> list[GameOut]:
     return [GameOut.of(g) for g in platform.list_owned_games(caller_id=caller_id)]
 
 
+@router.get("/games/versions")
+def list_game_versions(
+    platform: Platform, caller_id: OptionalCallerId, refs: str = ""
+) -> list[GameOut]:
+    """Full games for the comma-separated [refs] query parameter, each ref of the
+    form `game_id@version`, in request order. The portal loads every visible
+    match's game this way in a single call; fetching them one by one was a top
+    slow-request pattern under load (some 250 slow calls on 2026-10-30).
+    Unknown, malformed, or not-visible refs are skipped rather than failing the
+    whole batch, and duplicates collapse. Declared before /games/{game_id} so
+    "versions" is not taken for a game id.
+    """
+    wanted: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    for part in refs.split(","):
+        game_id, at, version_text = part.strip().rpartition("@")
+        if not at or not game_id:
+            continue
+        try:
+            ref = (game_id, int(version_text))
+        except ValueError:
+            continue
+        if ref not in seen:
+            seen.add(ref)
+            wanted.append(ref)
+    if len(wanted) > 200:
+        raise InvalidRequestError("at most 200 game versions per request")
+    return [
+        GameOut.of(game)
+        for game in platform.get_game_versions(wanted, caller_id=caller_id)
+    ]
+
+
 @router.post("/games/{game_id}/unpublish")
 def unpublish_game(platform: Platform, caller_id: CallerId, game_id: str) -> GameOut:
     return GameOut.of(platform.unpublish_game(caller_id=caller_id, game_id=game_id))

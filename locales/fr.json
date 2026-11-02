@@ -4,6 +4,7 @@
   "error.master_password_required": "le mot de passe maître est requis (n'importe quel nom d'utilisateur)",
   "error.user_not_found": "utilisateur introuvable",
   "error.too_many_user_ids": "au maximum 200 identifiants utilisateur par requête",
+  "error.too_many_game_versions": "au maximum 200 versions de jeu par requête",
   "error.users_only_change_themselves": "les utilisateurs ne peuvent modifier que leur propre compte",
   "error.merge_into_self": "impossible de fusionner un utilisateur avec lui-même",
   "error.merge_wrong_user": "seul l'utilisateur fusionné peut demander la fusion",

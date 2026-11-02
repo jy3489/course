@@ -4,6 +4,7 @@
   "error.master_password_required": "das Master-Passwort ist erforderlich (beliebiger Benutzername)",
   "error.user_not_found": "Benutzer nicht gefunden",
   "error.too_many_user_ids": "höchstens 200 Benutzer-IDs pro Anfrage",
+  "error.too_many_game_versions": "höchstens 200 Spielversionen pro Anfrage",
   "error.users_only_change_themselves": "Benutzer können nur sich selbst ändern",
   "error.merge_into_self": "ein Benutzer kann nicht mit sich selbst zusammengeführt werden",
   "error.merge_wrong_user": "nur der zusammenzuführende Benutzer kann die Zusammenführung beantragen",

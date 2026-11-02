@@ -4,6 +4,7 @@
   "error.master_password_required": "a senha mestra é obrigatória (qualquer nome de usuário)",
   "error.user_not_found": "usuário não encontrado",
   "error.too_many_user_ids": "no máximo 200 ids de usuário por solicitação",
+  "error.too_many_game_versions": "no máximo 200 versões de jogo por solicitação",
   "error.users_only_change_themselves": "os usuários só podem alterar a si mesmos",
   "error.merge_into_self": "não é possível mesclar um usuário com ele mesmo",
   "error.merge_wrong_user": "somente o usuário que será mesclado pode solicitar a mesclagem",

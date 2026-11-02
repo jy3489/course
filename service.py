@@ -1792,6 +1792,26 @@ class GamePlatform:
                     raise NotFoundError("game version not found")
             return game
 
+    def get_game_versions(
+        self, refs: list[tuple[str, int]], *, caller_id: str | None = None
+    ) -> list[Game]:
+        """The game versions for [refs] ((game_id, version) pairs), in request
+        order, skipping any that don't exist or aren't visible to the caller.
+
+        Backs the portal's batched version fetch: one API call instead of one
+        request per game on screen. Every ref goes through [get_game_version],
+        so the visibility rules are exactly the single-fetch ones.
+        """
+        games = []
+        for game_id, version in refs:
+            try:
+                games.append(
+                    self.get_game_version(game_id, version, caller_id=caller_id)
+                )
+            except NotFoundError:
+                continue
+        return games
+
     def game_strings(
         self, game_id: str, version: int, locale: str, *, caller_id: str | None = None
     ) -> GameStrings:

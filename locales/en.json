@@ -4,6 +4,7 @@
   "error.master_password_required": "the master password is required (any username)",
   "error.user_not_found": "user not found",
   "error.too_many_user_ids": "at most 200 user ids per request",
+  "error.too_many_game_versions": "at most 200 game versions per request",
   "error.users_only_change_themselves": "users can only change themselves",
   "error.merge_into_self": "cannot merge a user into itself",
   "error.merge_wrong_user": "only the merged-away user can request the merge",

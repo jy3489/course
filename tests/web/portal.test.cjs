@@ -161,7 +161,7 @@ test('random game joins a randomly selected open multiplayer match',async()=>{
     calls.push([method,path,options?.body]);
     if(path==='/matches/open')return [match];
     if(path==='/games')return [{id:'party',version:1,name:'Party',allowed_player_counts:[2],published:true}];
-    if(path==='/games/party/versions/1')return {id:'party',version:1,name:'Party',allowed_player_counts:[2],published:true};
+    if(path.startsWith('/games/versions?refs='))return [{id:'party',version:1,name:'Party',allowed_player_counts:[2],published:true}];
     if(path==='/matches/open-1/join')return {...match,players:[...match.players,{player_index:1,kind:'human',user_id:'owner'}]};
     throw new Error(`Unexpected request ${method} ${path}`);
   });

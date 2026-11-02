@@ -4,6 +4,7 @@
   "error.master_password_required": "se requiere la contraseña maestra (cualquier nombre de usuario)",
   "error.user_not_found": "usuario no encontrado",
   "error.too_many_user_ids": "como máximo 200 ids de usuario por solicitud",
+  "error.too_many_game_versions": "como máximo 200 versiones de juego por solicitud",
   "error.users_only_change_themselves": "los usuarios solo pueden modificarse a sí mismos",
   "error.merge_into_self": "no se puede fusionar un usuario consigo mismo",
   "error.merge_wrong_user": "solo el usuario que se va a fusionar puede solicitar la fusión",
