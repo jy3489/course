@@ -51,7 +51,7 @@ def test_publish_is_explicit_and_later_saves_leave_public_game_unchanged(api: Ap
     public = publish(api, owner, draft)
     assert public["id"] == draft["id"]
     assert public["version"] == 1
-    assert api.ok("GET", "/games") == [public]
+    assert api.ok("GET", "/games", params={"include_code": "true"}) == [public]
     assert publish(api, owner, draft) == public  # retry does not duplicate the game/version
     path = f"/game-drafts/{draft['id']}"
     revised = api.ok("PUT", path, as_user=owner,

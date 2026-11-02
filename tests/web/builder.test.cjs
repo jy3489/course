@@ -193,7 +193,7 @@ test('a completed AI update respects a panel closed while the request was runnin
 
 test('an existing public game becomes an autosaved independent copy without an AI request',async()=>{
   const calls=[],source=JSON.stringify(game);
-  const t=setup(async(method,url,{body})=>{calls.push([method,url,body]);return saved(body,'copy-id');},async()=>[game]);
+  const t=setup(async(method,url,{body}={})=>{if(method==='GET')return game;calls.push([method,url,body]);return saved(body,'copy-id');},async()=>[game]);
   await t.run('select("new")');assert.equal(t.node('starter-game').value,'game');await t.run('useStarter()');
   assert.equal(t.run('state.editor.name'),'Counter (copy)');assert.equal(t.run('state.editor.code'),game.code);
   assert.equal(t.node('starter-view').hidden,true);assert.equal(t.run('state.test.players.length'),1);

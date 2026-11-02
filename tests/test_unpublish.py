@@ -57,7 +57,7 @@ def test_unpublish_preserves_newer_draft_then_republish_and_delete(api: Api):
     published = api.ok('POST', f'/game-drafts/{game}/publish', as_user=owner, json={'expected_revision':draft['revision']})
     assert published['published'] and published['version'] == 2
     assert published['code'] == draft['code']
-    assert api.ok('GET', '/games') == [published]
+    assert api.ok('GET', '/games', params={'include_code': 'true'}) == [published]
     api.ok('POST', f'/games/{game}/unpublish', as_user=owner)
     api.ok('DELETE', f'/games/{game}', as_user=owner)
     assert api.ok('GET', '/builder/games', as_user=owner) == []

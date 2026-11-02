@@ -685,11 +685,13 @@ def list_games(
     platform: Platform,
     owner_user_id: str | None = None,
     q: str = "",
-    include_code: bool = True,
+    include_code: bool = False,
 ) -> list[GameOut] | list[GameSummaryOut]:
     """Published games, oldest first. `q` searches names and descriptions (every word
-    must match, ignoring case). `include_code=false` leaves out each game's code, which
-    is most of the response; load it per game from /games/{id}/versions/{version}."""
+    must match, ignoring case). Code is left out by default: with every game's client
+    and server code included, this list was over a megabyte and over a second, and
+    nobody reads code from a list. Pass `include_code=true` for full games, or load
+    one game from /games/{id}/versions/{version}."""
     games = platform.list_games(owner_user_id=owner_user_id, query=q)
     if include_code:
         return [GameOut.of(game) for game in games]
