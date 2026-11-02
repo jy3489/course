@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from game_platform import metrics
 from game_platform.metrics import (
+    LATENCY_BOUNDS_SECONDS,
+    LATENCY_METRIC_TYPE,
     METRIC_TYPE,
     ApiCallCounter,
     ApiCallMetricsMiddleware,
@@ -26,6 +28,22 @@ def test_counter_aggregates_by_function_and_status() -> None:
         ("get_user", 404): 1,
         ("create_match", 201): 1,
     }
+
+
+def test_counter_buckets_latencies_by_function() -> None:
+    counter = ApiCallCounter()
+    counter.record("get_user", 200, duration_seconds=0.03)
+    counter.record("get_user", 200, duration_seconds=0.7)
+    counter.record("get_user", 404)  # no duration: counted, not timed
+    counter.record("create_match", 201, duration_seconds=2.0)
+    latency = counter.latency_snapshot()
+    sample = latency["get_user"]
+    assert sample.count == 2
+    # 0.03 lands in the 0.025-0.05 bucket (index 3), 0.7 in 0.5-1.0 (index 7).
+    assert sample.bucket_counts == (0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+    assert sample.sum_seconds == 0.73
+    assert sample.mean == 0.365
+    assert latency["create_match"].bucket_counts[8] == 1  # the 1.0-2.5 bucket
 
 
 def test_function_name_for_scope_reads_the_matched_endpoint() -> None:
@@ -62,6 +80,9 @@ def test_middleware_counts_api_calls_with_their_status() -> None:
     # Unmatched paths have no handling function: not API calls, not counted.
     assert client.get("/nope").status_code == 404
     assert counter.snapshot() == {("list_things", 200): 2, ("broken", 500): 1}
+    latency = counter.latency_snapshot()
+    assert latency["list_things"].count == 2
+    assert latency["broken"].count == 1
 
 
 def test_middleware_counts_the_platforms_own_handlers() -> None:
@@ -110,6 +131,28 @@ def test_flush_writes_cumulative_series_with_function_and_code_labels() -> None:
     assert int(series.points[0].interval.start_time.timestamp()) == int(counter.started_at)
     assert series.resource.type == "global"
     assert series.resource.labels["project_id"] == "test-project"
+
+
+def test_flush_writes_latency_distribution_series() -> None:
+    counter = ApiCallCounter()
+    counter.record("get_user", 200, duration_seconds=0.03)
+    counter.record("get_user", 200, duration_seconds=0.7)
+    counter.record("create_match", 404)  # counted but never timed: no series
+    reporter, client = _reporter_with(counter)
+    reporter.flush()
+    counts_write, latency_write = client.writes
+    assert {s.metric.type for s in counts_write} == {METRIC_TYPE}
+    (series,) = latency_write
+    assert series.metric.type == LATENCY_METRIC_TYPE
+    assert series.metric.labels["function_name"] == "get_user"
+    value = series.points[0].value.distribution_value
+    assert value.count == 2
+    assert value.mean == 0.365
+    assert list(value.bucket_counts) == [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+    assert list(value.bucket_options.explicit_buckets.bounds) == list(
+        LATENCY_BOUNDS_SECONDS
+    )
+    assert int(series.points[0].interval.start_time.timestamp()) == int(counter.started_at)
 
 
 def test_flush_chunks_writes_at_200_series() -> None:
