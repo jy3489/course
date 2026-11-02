@@ -22,8 +22,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 import segno
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import State
+from starlette.datastructures import MutableHeaders, State
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pydantic import JsonValue
 
 from game_platform.invariants import InvariantRequest, InvariantReport, check_invariants
@@ -1915,6 +1917,36 @@ async def _choose_locale(
     return response
 
 
+class _VersionedStaticCacheMiddleware:
+    """Immutable caching for versioned static files.
+
+    The pages reference their scripts and styles with a ?v= version in the
+    URL, so a changed file is a changed URL: a browser may keep a versioned
+    response for a year and never revalidate it. Unversioned static files
+    keep the default revalidation behaviour (see [_revalidate_pages]).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or not scope["path"].startswith("/static/")
+            or b"v=" not in scope.get("query_string", b"")
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_immutable(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            await send(message)
+
+        await self.app(scope, receive, send_immutable)
+
+
 async def _revalidate_pages(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
@@ -2012,6 +2044,16 @@ def create_app(
     app.add_exception_handler(PlatformError, _handle_platform_error)
     app.add_exception_handler(StarletteHTTPException, _handle_http_exception)
     app.add_exception_handler(Exception, _handle_unexpected_exception)
-    # Last added, so outermost: it times everything, including the other middleware.
+    # Added after the other middleware, so it wraps and times them.
     app.add_middleware(observability.RequestLogMiddleware, monitor=lambda: monitor)
+    # Compression and static caching wrap the logged response on its way
+    # out, so the request log above keeps recording readable bodies at
+    # their full size while browsers receive gzipped bytes and may keep
+    # versioned static files without revalidating them. (The locale
+    # middleware streams responses without a content length, so every
+    # response a client accepts gzip for is compressed; a small body
+    # grows by a few bytes of gzip framing, which the large payloads —
+    # game lists, match lists, the portal script — repay many times over.)
+    app.add_middleware(_VersionedStaticCacheMiddleware)
+    app.add_middleware(GZipMiddleware, compresslevel=6)
     return app
