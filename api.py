@@ -72,6 +72,7 @@ from game_platform.schemas import (
     InviteViewOut,
     MatchCreate,
     MatchOut,
+    MatchSummaryOut,
     MatchHistoryOut,
     MatchStart,
     MatchUpdate,
@@ -199,6 +200,12 @@ def _match_out(
         replace(match, state=platform.view_state(match, caller_id)),
         now=platform.now(),
     )
+
+
+def _match_summary_out(platform: GamePlatform, match: Match) -> MatchSummaryOut:
+    """A match for a list: no state, so no per-match view work — see
+    [MatchSummaryOut]."""
+    return MatchSummaryOut.of(match, now=platform.now())
 
 
 # Users
@@ -838,16 +845,16 @@ def list_matches(
     caller_id: CallerId,
     status: MatchStatus | None = None,
     game_id: str | None = None,
-) -> list[MatchOut]:
+) -> list[MatchSummaryOut]:
     matches = platform.list_matches(caller_id=caller_id, status=status, game_id=game_id)
-    return [_match_out(platform, match, caller_id=caller_id) for match in matches]
+    return [_match_summary_out(platform, match) for match in matches]
 
 
 @router.get("/matches/open")
-def list_open_matches(platform: Platform) -> list[MatchOut]:
+def list_open_matches(platform: Platform) -> list[MatchSummaryOut]:
     """Matches anyone may join: waiting for players, or ongoing with mid-match joins
     allowed. Public, like match details themselves."""
-    return [_match_out(platform, match) for match in platform.list_open_matches()]
+    return [_match_summary_out(platform, match) for match in platform.list_open_matches()]
 
 
 @router.get("/matches/{match_id}")

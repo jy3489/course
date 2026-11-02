@@ -118,14 +118,14 @@ class PortalOffline {
         }
         d.responses[paged[1]]=value.items;
         if(paged[1]==="/matches") for(const match of value.items) {
-          if(!d.queues[match.id]?.length) d.responses[`/matches/${match.id}`]=match;
+          if(!d.queues[match.id]?.length && "state" in match) d.responses[`/matches/${match.id}`]=match;
         }
       }
       const matchId = /^\/matches\/([^/]+)$/.exec(path)?.[1];
       if (!(matchId && d.queues[matchId]?.length)) d.responses[path] = value;
       if (path === "/matches")
         for (const match of value)
-          if (!d.queues[match.id]?.length)
+          if (!d.queues[match.id]?.length && "state" in match)
             d.responses[`/matches/${match.id}`] = match;
       try {
         this.write(d);

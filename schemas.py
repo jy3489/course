@@ -843,6 +843,70 @@ class MatchOut(BaseModel):
         )
 
 
+class MatchResultOut(BaseModel):
+    """The outcome of a finished match, as the game reports it in its
+    state: the winning seat, or a draw. Small enough for list responses,
+    which show "you won / you lost / draw" badges without the state."""
+
+    winner: int | None = None
+    draw: bool = False
+    done: bool = False
+
+    @classmethod
+    def of(cls, match: Match) -> "MatchResultOut | None":
+        state = match.state
+        if not isinstance(state, dict):
+            return None
+        winner = state.get("winner")
+        if not isinstance(winner, int) or isinstance(winner, bool):
+            winner = None
+        result = cls(
+            winner=winner,
+            draw=state.get("draw") is True,
+            done=state.get("done") is True,
+        )
+        return result if winner is not None or result.draw or result.done else None
+
+
+class MatchSummaryOut(BaseModel):
+    """A match without its state: what match lists need, at a fraction of
+    the size — and building one never runs the game's view code, which a
+    full [MatchOut] needs once per match for server-side games. The one
+    thing lists did read from the state, who won, travels as [result]."""
+
+    id: str
+    game_id: str
+    game_version: int
+    owner_user_id: str
+    status: MatchStatus
+    end_reason: EndReason | None
+    players: list[PlayerOut]
+    turn_of_player_indices: list[int] | None
+    move_count: int
+    bet_per_player: int = 0
+    max_loss: int = 0
+    token_pot: int = 0
+    token_payouts: dict[int, int] | None = None
+    seed: int = 0
+    pending_leave_player_id: str | None = None
+    pending_leave_payout: int | None = None
+    rematch_match_id: str | None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    private: bool = False
+    matchmaking_player_count: int | None = None
+    turn_seconds: int | None = None
+    turn_deadline: dt.datetime | None = None
+    timeouts: list[SeatTimeoutOut] = []
+    server_time: dt.datetime | None = None
+    result: MatchResultOut | None = None
+
+    @classmethod
+    def of(cls, match: Match, now: dt.datetime | None = None) -> "MatchSummaryOut":
+        full = MatchOut.of(match, now=now).model_dump(exclude={"state"})
+        return cls(**full, result=MatchResultOut.of(match))
+
+
 class MoveOut(BaseModel):
     move_number: int
     player_index: int

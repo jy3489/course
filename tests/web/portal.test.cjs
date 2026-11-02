@@ -285,6 +285,17 @@ test('finished results are personalized including seat zero, draws, and spectato
   assert.equal(run('matchOutcome(state.match,"owner").label'),'Draw');
 });
 
+test('list summaries carry the outcome as result, without a state',()=>{
+  const {run}=setup();
+  run('state.match={status:"over",end_reason:"finished",players:[{player_index:0,user_id:"owner",kind:"human"},{player_index:1,user_id:"other",kind:"human"}],result:{winner:0,draw:false,done:false}}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'You won');
+  assert.equal(run('matchOutcome(state.match,"other").label'),'You lost');
+  run('state.match.result={winner:null,draw:true,done:false}');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Draw');
+  run('state.match.result=null');
+  assert.equal(run('matchOutcome(state.match,"owner").label'),'Result unavailable');
+});
+
 test('unfinished, abandoned, unknown and unsynced results are not false confirmed losses',()=>{
   const {run}=setup();
   run('state.match={status:"ongoing",players:[],state:{winner:0}}');

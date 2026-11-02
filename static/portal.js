@@ -458,7 +458,7 @@ function matchOutcome(match, userId) {
   if (match.status !== "over") return null;
   if (match.end_reason && match.end_reason !== "finished")
     return {label:I18n.t("ui.match.ended_early", {}, "Ended early"), kind:"neutral"};
-  const result = match.state;
+  const result = match.state ?? match.result;
   const seat = seatOf(match, userId);
   let outcome = {label:I18n.t("ui.match.result_unavailable", {}, "Result unavailable"), kind:"neutral"};
   if (result && typeof result === "object") {
