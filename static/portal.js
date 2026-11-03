@@ -248,6 +248,30 @@ function gameOf(gameId, version) {
   return state.gameCache.get(`${gameId}@${version}`) ?? null;
 }
 
+/** Display metadata for a game: its full record when that version is cached,
+ * otherwise the slim catalog entry. The catalog carries names and join rules
+ * (but no code), which is all match lists need; the server still enforces the
+ * pinned version's exact rules when someone actually joins. */
+function gameMetaOf(gameId, version) {
+  return (
+    gameOf(gameId, version) ??
+    state.games.find((game) => game.id === gameId) ??
+    null
+  );
+}
+
+/** Fetches one full game version (code included) into the cache. Loading the
+ * whole catalog's code on every page load made one enormous response; a
+ * single game's call stays small. */
+async function fetchGameVersion(gameId, version) {
+  const game = await portalRequest(
+    "GET",
+    `/games/${gameId}/versions/${version}`,
+  );
+  state.gameCache.set(`${gameId}@${version}`, game);
+  return game;
+}
+
 function seatOf(match, userId) {
   return match.players.find((player) => player.user_id === userId) ?? null;
 }
@@ -282,7 +306,7 @@ function isYourTurn(match, userId) {
 
 function isJoinable(match, userId) {
   if (match.localMode || !userId || seatOf(match, userId)) return false;
-  const game = gameOf(match.game_id, match.game_version);
+  const game = gameMetaOf(match.game_id, match.game_version);
   if (!game) return false;
   if (game.published === false) return false;
   const max = Math.max(...game.allowed_player_counts);
@@ -296,21 +320,25 @@ function isJoinable(match, userId) {
   return false;
 }
 
-/** Fetches the names and game versions for everything on screen. */
+/** Fetches the player names for everything on screen, plus the full version
+ * of the open match's game. Match lists render names and joinability from
+ * the slim catalog (gameMetaOf), so their games' code is not fetched here;
+ * the rest of the catalog warms lazily in the background (warmGameCache). */
 async function ensureDetails() {
   const userIds = new Set();
-  const gameKeys = new Set();
   const collect = (match) => {
     userIds.add(match.owner_user_id);
     for (const player of match.players)
       if (player.user_id) userIds.add(player.user_id);
-    gameKeys.add(`${match.game_id}@${match.game_version}`);
   };
   state.myMatches.forEach(collect);
   state.openMatches.forEach(collect);
   if (state.match) collect(state.match);
   // Keep only visible data plus a small recent cache as users traverse pages.
-  for (const [cache, needed] of [[state.gameCache,gameKeys],[state.nameCache,userIds],[state.pictureCache,userIds]]) {
+  const openGameKeys = new Set(
+    state.match ? [`${state.match.game_id}@${state.match.game_version}`] : [],
+  );
+  for (const [cache, needed] of [[state.gameCache,openGameKeys],[state.nameCache,userIds],[state.pictureCache,userIds]]) {
     for (const key of cache.keys()) if (cache.size > 128 && !needed.has(key)) cache.delete(key);
   }
   // One batched request for every missing profile: fetching them one by one
@@ -338,26 +366,43 @@ async function ensureDetails() {
         for (const id of missingUserIds) state.nameCache.set(id, shortId(id));
       }
     })(),
-    // One batched request for every missing game version, for the same reason
-    // as the profiles above: one fetch per game was a top slow pattern.
+    // Only the open match needs its game's full version (code) right now,
+    // and that is a single small request.
     (async () => {
-      const missingGameKeys = [...gameKeys].filter(
-        (key) => !state.gameCache.has(key),
-      );
-      if (!missingGameKeys.length) return;
+      if (!state.match) return;
+      const key = `${state.match.game_id}@${state.match.game_version}`;
+      if (state.gameCache.get(key)?.code) return;
       try {
-        const games = await portalRequest(
-          "GET",
-          `/games/versions?refs=${missingGameKeys.map(encodeURIComponent).join(",")}`,
-        );
-        for (const game of games)
-          state.gameCache.set(`${game.id}@${game.version}`, game);
+        await fetchGameVersion(state.match.game_id, state.match.game_version);
       } catch {
-        // A transient network error must not permanently poison these
-        // versions: they stay uncached and are retried on the next refresh.
+        // A transient network error must not permanently poison this
+        // version: it stays uncached and is retried on the next refresh.
       }
     })(),
   ]);
+}
+
+let gameWarmupRunning = false;
+/** Fills the game cache with the rest of the catalog, one game at a time in
+ * the background, so games are ready (and saved for offline play) without a
+ * giant up-front download. Page loads never wait on this. */
+async function warmGameCache() {
+  if (gameWarmupRunning || typeof setTimeout !== "function") return;
+  gameWarmupRunning = true;
+  try {
+    for (const game of state.games) {
+      if (state.gameCache.get(`${game.id}@${game.version}`)?.code) continue;
+      if (!navigator.onLine || document.hidden) break;
+      try {
+        await fetchGameVersion(game.id, game.version);
+      } catch {
+        // Skip this game; a later refresh starts the warm-up again.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  } finally {
+    gameWarmupRunning = false;
+  }
 }
 
 // Coalesce polls before they enter Web Locks, so slow requests cannot build an
@@ -438,6 +483,7 @@ async function refreshLocked() {
       outcome: state.match ? matchOutcome(state.match, user?.id)?.kind : null,
     });
     await syncGame();
+    warmGameCache();
     showPageError("");
     offlineStatus();
   } catch (error) {
@@ -475,7 +521,7 @@ function matchOutcome(match, userId) {
 }
 
 function matchItem(match) {
-  const game = gameOf(match.game_id, match.game_version);
+  const game = gameMetaOf(match.game_id, match.game_version);
   const user = me();
   const yourTurn = user && isYourTurn(match, user.id);
   const badges = [el("span", { class: `badge ${match.status}`, textContent: I18n.t(`status.${match.status}`, {}, match.status.replaceAll("_", " ")) })];
@@ -756,7 +802,7 @@ function renderMatchList(node, matches) {
   // Keep the native details/summary nodes stable: polling must not reopen groups,
   // move keyboard focus, or replace unchanged buttons while someone is clicking.
   const key = JSON.stringify([matches, state.selectedId, [...state.nameCache],
-    matches.map((m) => gameOf(m.game_id, m.game_version)?.name)]);
+    matches.map((m) => gameMetaOf(m.game_id, m.game_version)?.name)]);
   if (node.dataset.key === key) return;
   node.dataset.key = key;
   node.replaceChildren(...(matches.length ? matches.map(matchItem)
@@ -1197,13 +1243,7 @@ function render() {
 async function gameCode(match) {
   const key = `${match.game_id}@${match.game_version}`;
   let game = state.gameCache.get(key);
-  if (!game?.code) {
-    game = await portalRequest(
-      "GET",
-      `/games/${match.game_id}/versions/${match.game_version}`,
-    );
-    state.gameCache.set(key, game);
-  }
+  if (!game?.code) game = await fetchGameVersion(match.game_id, match.game_version);
   return game.code;
 }
 

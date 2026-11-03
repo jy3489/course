@@ -161,7 +161,6 @@ test('random game joins a randomly selected open multiplayer match',async()=>{
     calls.push([method,path,options?.body]);
     if(path==='/matches/open')return [match];
     if(path==='/games')return [{id:'party',version:1,name:'Party',allowed_player_counts:[2],published:true}];
-    if(path.startsWith('/games/versions?refs='))return [{id:'party',version:1,name:'Party',allowed_player_counts:[2],published:true}];
     if(path==='/matches/open-1/join')return {...match,players:[...match.players,{player_index:1,kind:'human',user_id:'owner'}]};
     throw new Error(`Unexpected request ${method} ${path}`);
   });
@@ -169,6 +168,35 @@ test('random game joins a randomly selected open multiplayer match',async()=>{
   assert.equal(run('state.selectedId'),'open-1');
   assert.ok(calls.some(([,path])=>path==='/matches/open-1/join'));
   assert.equal(calls.some(([,path])=>path==='/matches'),false);
+});
+
+test('match lists use the slim catalog and never fetch game code',async()=>{
+  const calls=[];
+  const {node,run}=setup(async(method,path)=>{
+    calls.push(path);
+    if(path==='/users?ids=other')return [{id:'other',display_name:'Other',picture_url:''}];
+    throw new Error(`Unexpected request ${method} ${path}`);
+  });
+  run('state.games[0].allowed_player_counts=[2];state.myMatches=[];state.openMatches=[{id:"open-1",game_id:"game",game_version:2,owner_user_id:"other",status:"waiting_for_players",players:[{player_index:0,kind:"human",user_id:"other"}],move_count:0}]');
+  await run('ensureDetails()');
+  assert.deepEqual(calls,['/users?ids=other']);
+  run('renderLists()');
+  assert.equal(node('count-open').textContent,'1');
+  assert.equal(node('open-matches').children[0].children[0].children[0],'Hanoi');
+});
+
+test('ensureDetails fetches only the open match game version',async()=>{
+  const calls=[];
+  const {run}=setup(async(method,path)=>{
+    calls.push(path);
+    if(path==='/users?ids=owner')return [{id:'owner',display_name:'Owner',picture_url:''}];
+    if(path==='/games/game/versions/2')return {id:'game',version:2,name:'Hanoi',code:'CODE',allowed_player_counts:[1]};
+    throw new Error(`Unexpected request ${method} ${path}`);
+  });
+  run('state.myMatches=[];state.openMatches=[];state.match={id:"m1",game_id:"game",game_version:2,owner_user_id:"owner",status:"ongoing",players:[{player_index:0,kind:"human",user_id:"owner"}],move_count:0,turn_of_player_indices:[0]}');
+  await run('ensureDetails()');
+  assert.deepEqual(calls.sort(),['/games/game/versions/2','/users?ids=owner']);
+  assert.equal(run('state.gameCache.get("game@2").code'),'CODE');
 });
 
 test('random game creates a multiplayer lobby when no open matches exist',async()=>{
