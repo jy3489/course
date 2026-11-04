@@ -1,0 +1,97 @@
+[
+  {
+    "id": "77181f30-f03a-4524-b662-33c1f6131389",
+    "name": "Battleship",
+    "expected_version": 9,
+    "client": "battleship.html",
+    "server": "battleship.server.js",
+    "original_client_sha256": "dfe35acb99f37cfc6a64fa8a5e194e9a8826bcadc1b34126a7f5220725b16415",
+    "original_server_sha256": "87774e03d3ce7f316789f0632a2d9cee4e166ba693f4b66fe46377a9a4b1e900",
+    "allowed_player_counts": [
+      2
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  },
+  {
+    "id": "97b92313-84a8-4c0e-9a3c-9e23c270c970",
+    "name": "President",
+    "expected_version": 6,
+    "client": "president.html",
+    "server": "president.server.js",
+    "original_client_sha256": "9f8199ac1a03e0fd7f85bcbb9dcc18c5a58f49dcf1227913799ff38e4a9cc0f9",
+    "original_server_sha256": "fbfb76fceeccc28191e7027c477f0360fc9372a9bd2e6f42b25e88bddd232701",
+    "allowed_player_counts": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  },
+  {
+    "id": "22260b8e-cd94-4664-98e6-de8db8173ef9",
+    "name": "Crazy Eights",
+    "expected_version": 3,
+    "client": "crazy-eights.html",
+    "server": "crazy-eights.server.js",
+    "original_client_sha256": "3e2814dd6492686a28ef1f49c5bb600e51faae561b11b367ff1e29a362fb45b2",
+    "original_server_sha256": "5eeb46fabeb70c5ef370b0e40dbbee94fde35cd2926ad24630f3bac9517ac5a8",
+    "allowed_player_counts": [
+      2,
+      3,
+      4
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  },
+  {
+    "id": "db3a74e1-0df1-44bf-a060-4da18b3a7e6e",
+    "name": "Lost Cities",
+    "expected_version": 3,
+    "client": "lost-cities.html",
+    "server": "lost-cities.server.js",
+    "original_client_sha256": "7f3db17150797e2f526325d8ff7b0157434e71f81954672fc571316740a351ea",
+    "original_server_sha256": "9f868f321066e4d84628bb425cc7703a8b86ae148dae954729a98594d140f2a7",
+    "allowed_player_counts": [
+      2
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  },
+  {
+    "id": "f7a5f84d-dfed-496c-b1d3-fafda5cea92c",
+    "name": "Go Fish",
+    "expected_version": 2,
+    "client": "go-fish.html",
+    "server": "go-fish.server.js",
+    "original_client_sha256": "75fa15c9eda5ca5c3ea424596b375f26d6bb692e3fbfc90fe6c5c85df111d209",
+    "original_server_sha256": "1c042264a60c5062436a903e26ac35177dabbc3edc00bedd17f1652e65c6e35c",
+    "allowed_player_counts": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  },
+  {
+    "id": "5119b8b8-44b7-415b-b0d8-07c9e36fc273",
+    "name": "Beat the Landlord",
+    "expected_version": 2,
+    "client": "beat-the-landlord.html",
+    "server": "beat-the-landlord.server.js",
+    "original_client_sha256": "df6143b028c5d3b7d426be7f655fe1d13b23dd5237676ef261e117587a1c8911",
+    "original_server_sha256": "4bd7c8fb53c4291aeabc12d5ad1034ec1d922fd1a45e46df4aab2553789809aa",
+    "allowed_player_counts": [
+      3
+    ],
+    "allows_leave_mid_match": false,
+    "allows_join_mid_match": false
+  }
+]

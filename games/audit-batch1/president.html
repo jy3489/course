@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>President</title><style>body{margin:0;padding:16px;background:#101827;color:#edf2ff;font:16px system-ui}*{box-sizing:border-box}h1{font-size:23px;margin:0 0 8px}#status{font-weight:650;margin:12px 0;color:#8ee7cd}.hand{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.card{min-width:46px;min-height:60px;padding:5px;border-radius:8px;border:1px solid #64748b;background:#f8fafc;color:#0f172a;font-weight:700;font-size:16px;cursor:pointer}.card.red{color:#dc2626}.card.sel{outline:3px solid #fcd34d;transform:translateY(-6px)}.card:disabled{cursor:default;opacity:.5}.pile{display:flex;gap:6px;margin:8px 0;min-height:60px}.meta{font-size:14px;color:#bec9dc;white-space:pre-line}button.act{font:inherit;min-height:48px;padding:0 20px;border:1px solid #64748b;border-radius:8px;background:#25344e;color:white;cursor:pointer;margin-right:8px}button.act:disabled{opacity:.5;cursor:default}.rules{font-size:14px;color:#bec9dc;max-width:480px}</style></head><body><h1>President</h1><p class="rules">Climb the pile: play cards of a single rank, matching the pile's count and beating its rank (3 is low, 2 is high, jokers highest). Playing the same rank skips the next player; completing a set of four — or playing a 2 — clears the pile. Finish your hand to score; first to 6 points wins the match. Between rounds, the top finishers tax the bottom finishers' best cards.</p><div id="status">Waiting for the platform…</div><div class="meta" id="meta"></div><div>Pile:</div><div class="pile" id="pile"></div><div>Your hand — tap cards to select:</div><div class="hand" id="hand"></div><div><button class="act" id="play">Play selected</button><button class="act" id="pass">Pass</button></div><script>
+"use strict";
+let latest=null,sentFor=-1,sel=new Set();
+const $=id=>document.getElementById(id);
+const SUITS={C:"♣",D:"♦",H:"♥",S:"♠"};
+const RLBL={11:"J",12:"Q",13:"K",14:"A",15:"2"};
+function label(c){if(c.r===16)return "🃏 small";if(c.r===17)return "🃏 BIG";return (RLBL[c.r]||String(c.r))+(SUITS[c.s]||"");}
+function red(c){return c.s==="H"||c.s==="D";}
+function moveCount(){return latest?(latest.move_count??latest.moveCount??0):0;}
+function myTurn(){return latest&&latest.status==="ongoing"&&latest.acting_for_player_index!==null&&latest.acting_for_player_index!==undefined;}
+function send(move){if(!myTurn()||sentFor===moveCount())return;sentFor=moveCount();sel.clear();parent.postMessage({type:"make_move",move},"*");render();}
+function render(){
+ if(!latest)return;
+ const v=latest.view,status=$("status");
+ const name=i=>(latest.players&&latest.players[i]&&latest.players[i].name)||("Player "+(i+1));
+ if(!v){status.textContent="Waiting…";return;}
+ const over=latest.status==="over"||(v.matchWinner!==null&&v.matchWinner!==undefined);
+ $("meta").textContent="Round "+v.round+" · first to "+v.target+" pts\n"+
+   (latest.players||[]).map((p,i)=>p.name+": "+v.scores[i]+" pts · "+v.counts[i]+" cards"+(v.finished.includes(i)?" · finished #"+(v.finished.indexOf(i)+1):"")+(v.passed[i]?" · passed":"")).join("\n")+
+   (v.lastEvent?"\n"+v.lastEvent:"")+(v.tradeInfo?"\nTax: "+v.tradeInfo:"");
+ if(over)status.textContent=name(v.matchWinner)+" wins the match! 🏆";
+ else if(sentFor===moveCount())status.textContent="Saving move…";
+ else if(myTurn())status.textContent=name(latest.acting_for_player_index)+" — your turn"+(v.pileCount?" (pile: "+v.pileCount+" card"+(v.pileCount>1?"s":"")+" of rank "+(RLBL[v.pileRank]||v.pileRank)+")":" (you lead)");
+ else{const t=latest.turn_of_player_indices||latest.turn;status.textContent=t&&t.length?("Waiting for "+t.map(name).join(", ")):"Waiting…";}
+ const pile=$("pile");pile.replaceChildren();
+ for(const c of (v.pile||[])){const d=document.createElement("button");d.className="card"+(red(c)?" red":"");d.textContent=label(c);d.disabled=true;pile.append(d);}
+ if(!(v.pile||[]).length)pile.textContent="(empty — next player leads)";
+ const hand=$("hand");hand.replaceChildren();
+ (v.hand||[]).forEach((c,i)=>{
+   const b=document.createElement("button");
+   b.className="card"+(red(c)?" red":"")+(sel.has(i)?" sel":"");
+   b.textContent=label(c);b.disabled=!myTurn()||over;
+   b.onclick=()=>{sel.has(i)?sel.delete(i):sel.add(i);render();};
+   hand.append(b);
+ });
+ const selCards=[...sel].map(i=>(v.hand||[])[i]).filter(Boolean);
+ const sameRank=selCards.length>0&&selCards.every(c=>c.r===selCards[0].r);
+ $("play").disabled=!myTurn()||over||sentFor===moveCount()||!sameRank;
+ $("play").textContent="Play selected"+(selCards.length?" ("+selCards.length+")":"");
+ $("pass").disabled=!myTurn()||over||sentFor===moveCount()||!(v.pileCount>0);
+}
+$("play").onclick=()=>{const v=latest.view;const cards=[...sel].map(i=>v.hand[i]).filter(Boolean);if(cards.length)send({cards});};
+$("pass").onclick=()=>send({pass:true});
+addEventListener("message",e=>{if(e.source!==parent||!e.data||e.data.type!=="state_changed")return;latest=e.data;sel.clear();render();});
+</script></body></html>

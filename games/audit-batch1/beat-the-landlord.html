@@ -1,0 +1,45 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;background:#062b18;color:#fff;margin:0;padding:8px;text-align:center}h1{margin:4px;font-size:20px}#t{max-width:860px;margin:auto}.table{position:relative;background:radial-gradient(ellipse at center,#1a9a4e 0%,#0e7137 60%,#094d24 100%);border:10px solid #5a3a1a;border-radius:140px;padding:70px 20px 18px;box-shadow:0 6px 30px #000a;min-height:300px}.seat{position:absolute;background:#0007;border-radius:12px;padding:4px 10px;font-size:13px;min-width:110px}.seat.s0{bottom:6px;left:50%;transform:translateX(-50%)}.seat.s1{top:20px;left:12px}.seat.s2{top:20px;right:12px}.seat.me{outline:2px solid gold}.seat.turn{box-shadow:0 0 12px gold}.center{background:#0004;border-radius:12px;min-height:120px;padding:8px;margin:0 auto;max-width:480px}.bottomcards{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:12px}.card{display:inline-block;width:46px;height:64px;background:#fff;color:#111;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;user-select:none;border:2px solid #fff;line-height:1.15;flex:0 0 auto;box-shadow:0 2px 5px #0007}.card small{font-size:17px}.card.sel{border-color:gold;transform:translateY(-10px);background:#fff3a6}.card.red{color:#c00}.handrow{display:flex;flex-wrap:nowrap;overflow-x:auto;justify-content:center;justify-content:safe center;align-items:flex-end;padding:14px 6px 6px;background:#0005;border-radius:12px;margin-top:8px;scrollbar-width:thin}.handrow .card{margin-left:-22px}.handrow .card:first-child{margin-left:0}.btn{background:gold;border:0;border-radius:8px;padding:9px 16px;font-weight:800;margin:4px;cursor:pointer}.btn2{background:#fff;color:#111;border:0;border-radius:8px;padding:8px 12px;font-weight:700;margin:3px;cursor:pointer}.btn:disabled,.btn2:disabled{opacity:.4}.pill{background:#0006;border-radius:10px;padding:3px 9px;margin:2px;display:inline-block;font-size:12px}.info{font-size:13px;margin:4px}.mini{display:inline-block;width:26px;height:34px;background:#fff;color:#111;border-radius:5px;font-size:12px;font-weight:800;line-height:1.1;margin:1px;vertical-align:middle}.mini.red{color:#c00}.controls{background:#0006;border-radius:12px;padding:6px;margin-top:6px}</style></head><body><h1>🏠 Beat the Landlord</h1><div id="t">loading…</div><script>
+let V=null,PL=[],ME=null,ACT=null,STATUS='ongoing';
+let sel=new Set(),msg='';
+const el=document.getElementById('t');
+const RS=['3','4','5','6','7','8','9','10','J','Q','K','A','2','\uD83C\uDCCF','\uD83D\uDC51'];
+function mini(c){if(!c)return '';let red=(c.s===1||c.s===2)&&c.r<13;let su=c.r>=13?'':['\u2660','\u2665','\u2666','\u2663'][c.s];return `<span class="mini ${red?'red':''}">${RS[c.r]}<br>${su}</span>`}
+function cardHTML(c,i,s){let red=(c.s===1||c.s===2)&&c.r<13;let su=c.r>=13?'':['\u2660','\u2665','\u2666','\u2663'][c.s];return `<div class="card ${red?'red':''} ${s?'sel':''}" data-i="${i}">${RS[c.r]}<br><small>${su}</small></div>`}
+function sendMove(move){parent.postMessage({type:'make_move',move:move},'*')}
+function curSeat(){if(!V)return -1;if(typeof V.curSeat==='number')return V.curSeat;if(typeof V.turnSeat==='number')return V.turnSeat;return -1}
+window.addEventListener('message',e=>{let d=e.data;if(!d||d.type!=='state_changed')return;V=d.view;PL=d.players||[];ME=d.my_player_index;ACT=d.acting_for_player_index;STATUS=d.status;
+ if(d.status==='over'&&!V){el.innerHTML='Game over';return}
+ if(!V){el.innerHTML='Waiting…';return}
+ if(V.hand)sel.forEach(i=>{if(i>=V.hand.length)sel.delete(i)});else sel.clear();
+ render();});
+function role(p){if(!V||V.landlord<0)return '';return p===V.landlord?'\uD83C\uDFE0':'\uD83E\uDDD1\u200D\uD83C\uDF3E'}
+function render(){
+ let ts=curSeat();
+ let seats='';
+ for(let p=0;p<3;p++){let n=V.handCounts?V.handCounts[p]:0;let nm=PL[p]?PL[p].name:'P'+p;let isTurn=(V.phase==='bid'&&V.bidTurn===p)||(V.phase==='play'&&ts===p);
+  let cls='seat s'+((p-(ME===null?0:ME)+3)%3)+(p===ME?' me':'')+(isTurn?' turn':'');
+  seats+=`<div class="${cls}">${role(p)} <b>${nm}</b> \uD83C\uDCA0×${n}<br>${V.phase==='bid'?'bid:'+(V.bids[p]===null?'–':(V.bids[p]===0?'Pass':V.bids[p])):''}${isTurn?' ⏰':''}</div>`;}
+ let center='';
+ if(V.phase==='bid')center=`<div class="info">Bidding — P${V.bidTurn} calls 1/2/3 (must top ${V.highBid}) or Pass</div>`;
+ else if(V.phase==='play'){center=V.last?`<div class="info">P${V.last.player} · ${V.last.combo.label}<br>${V.last.cards.map(mini).join('')}</div>`:`<div class="info">New trick — leader plays anything</div>`}
+ else center=`<div style="font-size:18px">🎉 P${V.winner} wins! ${V.winner!==V.landlord?'\uD83E\uDDD1\u200D\uD83C\uDF3E Peasants win!':'\uD83C\uDFE0 Landlord wins!'} (×${V.highBid})</div>`;
+ let h=`<div class="table"><div class="bottomcards">Bottom: ${V.bot.map(mini).join('')} ${V.landlord>=0?'→ P'+V.landlord:''}</div>${seats}<div class="center">${center}</div></div>`;
+ let myTurn=(ACT===ME&&ACT!==null&&STATUS==='ongoing');
+ if(V.phase==='bid'&&myTurn)h+=`<div><button class="btn2" data-b="0">Pass</button><button class="btn2" data-b="1" ${V.highBid>=1?'disabled':''}>1</button><button class="btn2" data-b="2" ${V.highBid>=2?'disabled':''}>2</button><button class="btn2" data-b="3">3</button></div>`;
+ else if(V.phase==='bid')h+=`<div class="pill">Waiting for P${V.bidTurn}…</div>`;
+ if(V.hand&&ME!==null){
+  h+=`<div class="info">Your hand (${V.hand.length}) ${role(ME)} — <b>one row, scroll ↔</b></div><div class="handrow">`;
+  V.hand.forEach((c,i)=>{h+=cardHTML(c,i,sel.has(i))});h+=`</div>`;
+  if(V.phase==='play'&&myTurn&&ts===ME)h+=`<div class="controls"><button class="btn" id="play">PLAY</button><button class="btn2" id="pass">Pass</button><button class="btn2" id="clr">Clear</button><div id="msg" class="info">${msg}</div></div>`;
+  else if(V.phase==='play'&&STATUS==='ongoing')h+=`<div class="pill">Waiting for P${ts}…</div><div class="info">${msg}</div>`;
+ }
+ if(V.phase==='over'&&V.payoutNote)h+=`<div class="info" style="opacity:.8">${V.payoutNote}</div>`;
+ h+=`<div class="info" style="opacity:.8">Hands: single·pair·trio·trio+1·trio+pair·straight5+·pairs3+·✈️·✈️+singles·✈️+pairs·four+2·four+2pairs·💣·🚀</div>`;
+ el.innerHTML=h;
+ el.querySelectorAll('.card[data-i]').forEach(c=>c.onclick=()=>{if(!(V.phase==='play'&&myTurn))return;let i=+c.dataset.i;msg='';if(sel.has(i))sel.delete(i);else sel.add(i);render()});
+ el.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{msg='';sendMove({kind:'bid',bid:+b.dataset.b})});
+ let pb=document.getElementById('play');if(pb)pb.onclick=()=>{let cards=[...sel].sort((a,b)=>a-b).map(i=>V.hand[i]);if(!cards.length){msg='Select cards first!';render();return}sel.clear();msg='';sendMove({kind:'play',cards:cards})};
+ let ps=document.getElementById('pass');if(ps)ps.onclick=()=>{sel.clear();msg='';sendMove({kind:'pass'})};
+ let cl=document.getElementById('clr');if(cl)cl.onclick=()=>{sel.clear();msg='';render()};
+}
+</script></body></html>

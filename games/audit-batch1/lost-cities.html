@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0d4a33;color:#fff;min-height:100vh}
+#wrap{max-width:960px;margin:0 auto;padding:12px 12px 30px}
+h1{margin:6px 0 2px;font-size:22px;letter-spacing:.5px}
+#sub{opacity:.85;font-size:13px;margin:0 0 10px}
+#status{background:#093626;border:1px solid #ffffff22;border-radius:10px;padding:8px 12px;font-size:14px;margin-bottom:10px}
+#status b{color:#ffe27a}
+.panel{background:#0a3a29;border:1px solid #ffffff1e;border-radius:12px;padding:8px;margin-bottom:10px}
+.panel h3{margin:2px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;opacity:.9}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
+.expcol{flex:1;min-width:105px;background:#00000033;border-radius:10px;padding:6px;border:2px solid transparent}
+.expcol.target{border-color:#ffe27a;cursor:pointer;box-shadow:0 0 10px #ffe27a66}
+.expcol.invalid{opacity:.6}
+.expcol h4{margin:0 0 6px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:4px;vertical-align:middle;border:1px solid #0006}
+.stack{display:flex;flex-direction:column;gap:3px;min-height:44px}
+.mini{background:#fff;color:#222;border-radius:6px;padding:2px 0;text-align:center;font-weight:800;font-size:14px;line-height:22px;box-shadow:0 1px 0 #0006}
+.empty{background:#ffffff14;border:1px dashed #ffffff44;border-radius:6px;text-align:center;font-size:12px;padding:8px 2px;opacity:.7}
+#centerPiles{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+.pile{flex:1;min-width:105px;background:#00000033;border-radius:10px;padding:6px;text-align:center;border:2px solid transparent}
+.pile.clickable{border-color:#7CFC9A;cursor:pointer;box-shadow:0 0 8px #7CFC9A66}
+.pile.hint-dest{border-color:#ffe27a;cursor:pointer;box-shadow:0 0 10px #ffe27a88}
+.pile h4{margin:0 0 6px;font-size:12px}
+.card{width:64px;height:88px;border-radius:10px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:24px;box-shadow:0 3px 6px #0008;border:2px solid #00000033;cursor:pointer;user-select:none;margin:3px;transition:transform .12s,outline .12s,box-shadow .12s}
+.card small{font-size:11px;font-weight:700;opacity:.8}
+.card.back{background:repeating-linear-gradient(45deg,#1a3a8a,#1a3a8a 6px,#244bb5 6px,#244bb5 12px);color:#fff;border-color:#fff3;font-size:18px}
+.card.selected{outline:3px solid #ffe27a;transform:translateY(-8px) scale(1.05);box-shadow:0 8px 16px #000a,0 0 12px #ffe27a}
+.card.dim{opacity:.45;cursor:default}
+#hand{display:flex;flex-wrap:wrap;justify-content:center;min-height:94px}
+#deckCard{width:80px;height:100px;border-radius:10px;background:#102a5a;border:2px dashed #fff6;display:inline-flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;font-weight:800}
+#deckCard.clickable{border:2px solid #7CFC9A;background:#173a7d;cursor:pointer}
+#deckCard.disabled{opacity:.4;cursor:default}
+.hint{font-size:13px;background:#ffe27a22;border:1px solid #ffe27a55;padding:6px 10px;border-radius:8px;margin:6px 0}
+.hint.error{background:#ff525222;border-color:#ff5252;color:#ffd0d0}
+.scoreTable{font-size:13px;border-collapse:collapse;margin-top:6px}
+.scoreTable td,.scoreTable th{padding:2px 8px;border-bottom:1px solid #ffffff22}
+.opp{flex:1;min-width:260px}
+</style>
+</head>
+<body>
+<div id="wrap">
+<h1>🏔️ Lost Cities</h1>
+<p id="sub">Play expeditions in ascending order. Sum − 20 per started color. Highest total wins.</p>
+<div id="status">Waiting for platform…</div>
+<div id="hint" class="hint" style="display:none"></div>
+<div class="panel"><h3 id="oppTitle">Opponents</h3><div id="opps" class="row"></div></div>
+<div class="panel"><h3>Center — Deck & Discards (<span id="deckCount">–</span> left)</h3><div id="centerPiles"></div></div>
+<div class="panel"><h3 id="myExpTitle">My Expeditions</h3><div id="myExps" class="row"></div></div>
+<div class="panel"><h3 id="handTitle">My Hand</h3><div id="hand"></div><div id="handHint" style="font-size:12px;opacity:.8;margin-top:4px"></div></div>
+<div class="panel" id="scorePanel" style="display:none"><h3>Scores</h3><div id="scores"></div></div>
+</div>
+<script>
+var COLORS=[
+ {id:'red',name:'Red',bg:'#e74c3c',fg:'#fff'},
+ {id:'blue',name:'Blue',bg:'#3498db',fg:'#fff'},
+ {id:'green',name:'Green',bg:'#27ae60',fg:'#fff'},
+ {id:'yellow',name:'Yellow',bg:'#f1c40f',fg:'#333'},
+ {id:'white',name:'White',bg:'#f2f2f2',fg:'#333'}
+];
+var CIDS=COLORS.map(function(c){return c.id;});
+var CMAP={};COLORS.forEach(function(c){CMAP[c.id]=c;});
+var latest=null, selected=-1, errorMsg='';
+function sendMove(move){ parent.postMessage({type:'make_move',move:move},'*'); }
+function canPlay(col,card){ if(!col||col.length===0) return true; return card.v>col[col.length-1].v; }
+function liveScores(view,players){
+ if(view.scores) return view.scores;
+ var out=[];
+ for(var i=0;i<players.length;i++){ var e=view.exps[i]||{}; var t=0;
+  CIDS.forEach(function(c){ var a=e[c]||[]; if(a.length){ var s=0; for(var k=0;k<a.length;k++) s+=a[k].v; t+=s-20; } });
+  out.push(t);
+ }
+ return out;
+}
+function winnerOf(scores){ var m=-Infinity,w=0; scores.forEach(function(s,i){ if(s>m){m=s;w=i;} }); return w; }
+addEventListener('message',function(ev){
+ if(ev.source!==parent||!ev.data||ev.data.type!=='state_changed') return;
+ var prevPhase=latest&&latest.view?latest.view.phase:null;
+ latest=ev.data;
+ if(!latest.view||latest.view.phase!==prevPhase){ selected=-1; errorMsg=''; }
+ else if(selected>=0 && latest.view && latest.view.hand && selected>=latest.view.hand.length) selected=-1;
+ render();
+});
+function tryPlayExp(cid){
+ if(!latest||!latest.view) return;
+ var v=latest.view;
+ if(selected<0){ errorMsg='Step 1: select a card in your hand first.'; render(); return; }
+ var card=v.hand[selected];
+ if(!card) return;
+ errorMsg='';
+ sendMove({kind:'play',handIndex:selected,dest:'exp',color:cid});
+}
+function tryDiscard(cid){
+ if(!latest||!latest.view) return;
+ var v=latest.view;
+ if(selected<0){ errorMsg='Select a hand card first, then click a discard pile.'; render(); return; }
+ if(!v.hand[selected]) return;
+ errorMsg='';
+ sendMove({kind:'play',handIndex:selected,dest:'discard',color:cid});
+}
+function tryDraw(src){
+ errorMsg='';
+ sendMove({kind:'draw',source:src});
+}
+function cardDiv(card,opts){
+ opts=opts||{};
+ var d=document.createElement('div');
+ var col=CMAP[card.c];
+ d.className='card'+(opts.selected?' selected':'')+(opts.dim?' dim':'');
+ d.style.background=col.bg; d.style.color=col.fg;
+ d.innerHTML=card.v+'<small>'+col.name+'</small>';
+ if(opts.onClick) d.onclick=opts.onClick;
+ return d;
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function render(){
+ if(!latest) return;
+ var players=latest.players, view=latest.view;
+ var statusEl=document.getElementById('status'), hintEl=document.getElementById('hint');
+ if(!view){ statusEl.textContent='Dealing cards…'; return; }
+ var my=latest.my_player_index;
+ var turnIdx=(latest.turn_of_player_indices&&latest.turn_of_player_indices.length)?latest.turn_of_player_indices[0]:null;
+ var acting=latest.acting_for_player_index;
+ var canAct=acting!==null&&acting!==undefined&&latest.status!=='over'&&view.phase!=='over';
+ var myIdx=(my!==null&&my!==undefined)?my:(typeof view.myIndex==='number'?view.myIndex:0);
+ var cur=typeof view.current==='number'?view.current:turnIdx;
+ var scores=liveScores(view,players);
+ var turnName=(turnIdx!=null&&players[turnIdx])?players[turnIdx].name:'—';
+ var status;
+ if(latest.status==='over'||view.phase==='over'){
+  var w=(view.winner!=null)?view.winner:winnerOf(scores);
+  status='🏆 <b>'+escapeHtml(players[w]?players[w].name:'?')+'</b> wins! ('+scores.map(function(s,i){return escapeHtml(players[i].name)+': '+s;}).join(' • ')+')';
+ } else {
+  var phaseTxt=view.phase==='play'?'— STEP 1: play or discard 1 card':'— STEP 2: draw 1 card';
+  if(canAct) status='Your turn <b>'+escapeHtml(players[myIdx]?players[myIdx].name:turnName)+'</b> '+phaseTxt+' (deck '+view.deckCount+')';
+  else status='<b>'+escapeHtml(turnName)+"</b>'s turn "+phaseTxt+' (deck '+view.deckCount+')';
+  if(view.last) status+=' <span style="opacity:.7">• '+escapeHtml(view.last.text)+'</span>';
+ }
+ statusEl.innerHTML=status;
+ hintEl.style.display='none'; hintEl.classList.remove('error');
+ if(errorMsg){ hintEl.style.display='block'; hintEl.classList.add('error'); hintEl.textContent=errorMsg+' (retry)'; }
+ else if(view.phase!=='over'&&latest.status!=='over'){
+  if(canAct){
+   hintEl.style.display='block';
+   if(view.phase==='play') hintEl.textContent=selected>=0?('Selected '+(view.hand[selected]?view.hand[selected].v+' '+view.hand[selected].c:'')+' — now click YOUR '+(view.hand[selected]?view.hand[selected].c.toUpperCase():'')+' expedition to PLAY, or the matching discard to DISCARD.'):'STEP 1: Click a hand card to select it.';
+   else hintEl.textContent='STEP 2: Click the DECK or a DISCARD top to DRAW back to 8.';
+  } else if(latest.status==='ongoing'){ hintEl.style.display='block'; hintEl.textContent='Waiting for '+turnName+'…'; }
+ }
+ document.getElementById('deckCount').textContent=view.deckCount;
+ var oppsEl=document.getElementById('opps'); oppsEl.innerHTML='';
+ var oppIdxs=players.map(function(_,i){return i;}).filter(function(i){return i!==myIdx;});
+ document.getElementById('oppTitle').textContent=(my===null)?('Players (you are spectating)'):(oppIdxs.length?('Opponent'+(oppIdxs.length>1?'s':'')):'Solo');
+ oppIdxs.forEach(function(i){ oppsEl.appendChild(oppPanel(i,players[i],view,scores)); });
+ if(!oppIdxs.length) oppsEl.innerHTML='<span style="opacity:.7">No opponents</span>';
+ var cEl=document.getElementById('centerPiles'); cEl.innerHTML='';
+ var deckPile=document.createElement('div'); deckPile.className='pile';
+ deckPile.innerHTML='<h4>🃏 Deck ('+view.deckCount+')</h4>';
+ var dc=document.createElement('div'); dc.id='deckCard';
+ dc.innerHTML='<div style="font-size:28px">🂠</div><div>'+view.deckCount+' left</div>';
+ var canDrawDeck=canAct&&view.phase==='draw'&&view.deckCount>0;
+ dc.className=canDrawDeck?'clickable':'disabled';
+ if(canDrawDeck) dc.onclick=function(){tryDraw('deck');};
+ else dc.style.cursor='default';
+ deckPile.appendChild(dc); cEl.appendChild(deckPile);
+ CIDS.forEach(function(cid){
+  var pile=document.createElement('div'); pile.className='pile';
+  var arr=view.discards[cid]||[];
+  var top=arr.length?arr[arr.length-1]:null;
+  pile.innerHTML='<h4><span class="dot" style="background:'+CMAP[cid].bg+'"></span>'+CMAP[cid].name+' ('+arr.length+')</h4>';
+  if(top){ var clickable=canAct&&view.phase==='draw'; pile.appendChild(cardDiv(top,{dim:!clickable,onClick:clickable?(function(c){return function(){tryDraw(c);};})(cid):null})); }
+  else { var e=document.createElement('div'); e.className='empty'; e.textContent='empty'; pile.appendChild(e); }
+  if(canAct&&view.phase==='play'&&selected>=0){
+   var sel=view.hand[selected];
+   if(sel&&sel.c===cid){ pile.classList.add('hint-dest'); pile.onclick=function(){tryDiscard(cid);}; }
+  } else if(canAct&&view.phase==='draw'&&top){ pile.classList.add('clickable'); pile.onclick=(function(c){return function(){tryDraw(c);};})(cid); }
+  cEl.appendChild(pile);
+ });
+ var myEx=document.getElementById('myExps'); myEx.innerHTML='';
+ var expOwnerName=players[myIdx]?players[myIdx].name:'';
+ document.getElementById('myExpTitle').textContent=((my===null)?expOwnerName+"'s Expeditions":'My Expeditions')+' (live: '+scores[myIdx]+' pts)';
+ CIDS.forEach(function(cid){
+  var col=document.createElement('div'); col.className='expcol';
+  var arr=(view.exps[myIdx]&&view.exps[myIdx][cid])||[];
+  var sum=arr.reduce(function(s,x){return s+x.v;},0);
+  var sc=arr.length?(' '+(sum-20)):' —';
+  col.innerHTML='<h4><span><span class="dot" style="background:'+CMAP[cid].bg+'"></span>'+CMAP[cid].name+'</span><span>'+sc+'</span></h4>';
+  var stack=document.createElement('div'); stack.className='stack';
+  if(!arr.length){ var e2=document.createElement('div'); e2.className='empty'; e2.textContent='empty (-20 to start)'; stack.appendChild(e2); }
+  else arr.forEach(function(c){ var m=document.createElement('div'); m.className='mini'; m.style.borderLeft='8px solid '+CMAP[cid].bg; m.textContent=c.v; stack.appendChild(m); });
+  col.appendChild(stack);
+  if(canAct&&view.phase==='play'&&selected>=0){
+   var s2=view.hand[selected];
+   if(s2&&s2.c===cid){
+    if(canPlay(arr,s2)){ col.classList.add('target'); col.onclick=function(){tryPlayExp(cid);}; }
+    else { col.classList.add('invalid'); col.onclick=function(){tryPlayExp(cid);}; }
+   }
+  }
+  myEx.appendChild(col);
+ });
+ var hEl=document.getElementById('hand'); hEl.innerHTML='';
+ var hh=document.getElementById('handHint');
+ document.getElementById('handTitle').textContent=((my===null)?expOwnerName+"'s Hand":'My Hand')+' ('+view.hand.length+' cards)';
+ var hand=view.hand||[];
+ hand.forEach(function(c,i){
+  var isSel=i===selected;
+  var d=cardDiv(c,{selected:isSel,dim:!(canAct&&view.phase==='play')});
+  if(canAct&&view.phase==='play'){ d.onclick=function(){ errorMsg=''; selected=(selected===i?-1:i); render(); }; }
+  hEl.appendChild(d);
+ });
+ if(!hand.length) hEl.innerHTML='<span style="opacity:.7">No cards</span>';
+ hh.textContent=!canAct?'Hand locked — not your turn.':(view.phase==='play'?(selected>=0?('Selected '+hand[selected].v+' '+hand[selected].c+' — click expedition to PLAY or discard to DISCARD.'):'Select a card from your hand.'):'Draw to finish your turn and pass.');
+ var sp=document.getElementById('scorePanel');
+ sp.style.display='block';
+ if(view.phase==='over'||latest.status==='over'||view.scores){
+  var sc2=view.scores||scores; var w2=(view.winner!=null)?view.winner:winnerOf(sc2);
+  var html='<table class="scoreTable"><tr><th>Player</th>';
+  CIDS.forEach(function(c){ html+='<th>'+CMAP[c].name+'</th>'; });
+  html+='<th>Total</th></tr>';
+  players.forEach(function(p,i){
+   html+='<tr><td>'+escapeHtml(p.name)+(i===w2?' 🏆':'')+'</td>';
+   CIDS.forEach(function(cid){ var a=(view.exps[i]&&view.exps[i][cid])||[]; html+='<td>'+(a.length?(a.reduce(function(s,x){return s+x.v;},0)-20):'0')+'</td>'; });
+   html+='<td><b>'+sc2[i]+'</b></td></tr>';
+  });
+  html+='</table>'; document.getElementById('scores').innerHTML=html;
+ } else {
+  document.getElementById('scores').innerHTML=players.map(function(p,i){ return escapeHtml(p.name)+': <b>'+scores[i]+'</b>'; }).join(' • ');
+ }
+}
+function oppPanel(i,p,view,scores){
+ var d=document.createElement('div'); d.className='opp panel'; d.style.margin='0';
+ var hc=view.handCounts?view.handCounts[i]:0;
+ d.innerHTML='<div style="font-size:13px;margin-bottom:6px"><b>'+escapeHtml(p.name)+'</b> <span style="opacity:.7">• '+hc+' cards • '+scores[i]+' pts</span></div>';
+ var r=document.createElement('div'); r.className='row';
+ CIDS.forEach(function(cid){
+  var col=document.createElement('div'); col.className='expcol'; col.style.minWidth='52px';
+  var arr=(view.exps[i]&&view.exps[i][cid])||[];
+  col.innerHTML='<h4 style="font-size:11px">'+CMAP[cid].name+'</h4>';
+  var stack=document.createElement('div'); stack.className='stack';
+  if(!arr.length){ var e=document.createElement('div'); e.className='empty'; e.style.fontSize='11px'; e.textContent='–'; stack.appendChild(e); }
+  else arr.forEach(function(c){ var m=document.createElement('div'); m.className='mini'; m.style.borderLeft='6px solid '+CMAP[cid].bg; m.style.fontSize='12px'; m.textContent=c.v; stack.appendChild(m); });
+  col.appendChild(stack); r.appendChild(col);
+ });
+ var hr=document.createElement('div'); hr.style.marginTop='6px'; hr.style.display='flex'; hr.style.gap='4px'; hr.style.flexWrap='wrap';
+ for(var k=0;k<hc;k++){ var b=document.createElement('div'); b.className='card back'; b.style.width='26px'; b.style.height='36px'; b.style.fontSize='12px'; b.style.margin='0'; b.textContent='•'; hr.appendChild(b); }
+ d.appendChild(r); d.appendChild(hr);
+ return d;
+}
+</script>
+</body>
+</html>

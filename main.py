@@ -174,6 +174,14 @@ def main() -> None:
         if args.purge_example_data:
             purge_example_data(platform)
             return
+        # Published community games live in the data store, not in games/.
+        # This bounded release migration only touches the six audited originals;
+        # hash/version guards preserve subsequent author edits and old matches.
+        from game_platform.game_patch_migrations import apply_audit_batch1
+
+        patch_results = apply_audit_batch1(platform)
+        if any(result["status"] == "updated" for result in patch_results):
+            store.flush()
         platform.resume_computer_moves()
         warn_about_insecure_setup(config, platform)
         app = create_app(
